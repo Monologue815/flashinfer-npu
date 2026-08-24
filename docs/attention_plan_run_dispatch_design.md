@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 024，已将 exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 025，已将量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -686,3 +686,28 @@ bootstrap 构建时执行上述闭合验证，早于 distribution metadata probe
 024 的 8 项增量测试验证 canonical binding、对称/非对称来源、runtime scale policy、capability/
 catalog exact-set、一处曾可构造的 synthetic 假支持拒绝、非 catalog/跨 operation/重复 binding、
 exact plan gate 与 base reason 保留。全量 469 项 Host 测试通过；没有导入或调用 NPU 算子。
+
+## 28. 检查点 025：量化 KV provider run lowering
+
+024 冻结了语义 binding，但尚未把公共 `run(q, kv_cache, ...)` 输入转换为 provider API 的
+实际 argument values。025 增加 `AttentionOperatorQuantizedKVInput`，在不改变 public signature
+的前提下承载六个 opaque provider tensor/object：K/V storage、K/V scale、可选独立 K/V
+zero-point，并携带 exact `QuantSpec`。
+
+`AttentionOperatorQuantizationRunAdapter` 由 bootstrap 自动包裹 provider logical run adapter：
+
+1. dense plan 原样委托；量化 plan 必须收到 `AttentionOperatorQuantizedKVInput`；
+2. input QuantSpec fingerprint 必须与 active plan 及选中 binding 完全相同；
+3. 先把 KV input 解包为 provider adapter 原有的 `(key_storage, value_storage)`；
+4. base lowering 成功后，再按 binding 注入 K/V scale 与可选 zero-point keyword；
+5. runtime `k_scale`/`v_scale` policy=`reject` 时显式拒绝，policy=`argument` 时注入专属参数；
+6. 注入参数不得覆盖 base lowering 已产生的 provider keyword；
+7. 最终 call 继续由 operation binding 校验，整个过程只产生 call description，不执行 callable。
+
+量化 wrapper 只检查 provider-independent 的存在性与语义身份；tensor dtype/shape/stride/device、
+physical layout 和 allocator/stream 生命周期仍由后续真实 Torch/NPU adapter 与既有 tensor/
+capability contracts 验证。现有真实 provider gate 仍未开启量化能力。
+
+025 的 8 项增量测试验证 symmetric/asymmetric input、storage 解包、独立 scale 注入、普通/漂移
+QuantSpec 拒绝、runtime scale reject/argument 两种策略、keyword collision、plan materialization
+复用与零 callable execution。全量 477 项 Host 测试通过；未使用 NPU runtime 或算子。

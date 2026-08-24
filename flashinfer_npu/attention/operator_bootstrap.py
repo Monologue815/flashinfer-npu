@@ -45,6 +45,7 @@ from .operator_plan import AttentionOperatorPlanFactory
 from .operator_quantization import (
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizationPlanGate,
+    AttentionOperatorQuantizationRunAdapter,
     validate_attention_operator_quantization_bindings,
 )
 from .operator_resolver import (
@@ -194,6 +195,9 @@ def build_attention_operator_package_runtime(
     plan_gate = AttentionOperatorQuantizationPlanGate(
         spec.plan_gate, operation, quantization_bindings
     )
+    run_adapter = AttentionOperatorQuantizationRunAdapter(
+        spec.logical_run_adapter, operation, quantization_bindings
+    )
     compatibility = AttentionOperatorPackageCompatibility(
         provider_id=operation.provider_id,
         operation_id=operation.operation_id,
@@ -221,7 +225,7 @@ def build_attention_operator_package_runtime(
         plan_gate=plan_gate,
         authority_resolver=authority_resolver,
         logical_factory=spec.logical_factory,
-        logical_run_adapter=spec.logical_run_adapter,
+        logical_run_adapter=run_adapter,
         tensor_materializer=spec.tensor_materializer,
     )
 

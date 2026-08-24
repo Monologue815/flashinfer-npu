@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping, Sequence, Tuple
 
 from flashinfer_npu.runtime import QuantSpec, SchemaError
@@ -19,6 +19,12 @@ from flashinfer_npu.runtime import QuantSpec, SchemaError
 from .capability import AttentionBackendCapabilityProfile
 from .operation_catalog import AttentionOperatorOperationSpec
 from .operator_integration import AttentionOperatorPlanGate
+from .operator_plan import AttentionOperatorActivePlan
+from .operator_run import (
+    AttentionLoweredOperatorCall,
+    AttentionOperatorRunAdapter,
+    AttentionOperatorRunRequest,
+)
 from .planner import AttentionFrameworkPlan
 
 
@@ -161,6 +167,42 @@ class AttentionOperatorQuantizationBinding:
         return _canonical_hash(self.to_dict())
 
 
+@dataclass(frozen=True)
+class AttentionOperatorQuantizedKVInput:
+    """Opaque provider tensors carried through the unchanged public run slot."""
+
+    quant_spec: QuantSpec
+    key_storage: Any
+    value_storage: Any
+    key_scale: Any
+    value_scale: Any
+    key_zero_point: Any = None
+    value_zero_point: Any = None
+    schema_version: int = ATTENTION_OPERATOR_QUANTIZATION_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_QUANTIZATION_VERSION:
+            raise SchemaError("unsupported Attention quantized KV input version")
+        if not isinstance(self.quant_spec, QuantSpec):
+            raise TypeError("quant_spec must be QuantSpec")
+        for name in ("key_storage", "value_storage", "key_scale", "value_scale"):
+            if getattr(self, name) is None:
+                raise SchemaError("quantized KV input requires %s" % name)
+        zero_points = (self.key_zero_point, self.value_zero_point)
+        if self.quant_spec.has_zero_point and any(
+            item is None for item in zero_points
+        ):
+            raise SchemaError(
+                "asymmetric quantized KV input requires independent zero points"
+            )
+        if not self.quant_spec.has_zero_point and any(
+            item is not None for item in zero_points
+        ):
+            raise SchemaError(
+                "symmetric quantized KV input cannot carry zero points"
+            )
+
+
 def validate_attention_operator_quantization_bindings(
     operation: AttentionOperatorOperationSpec,
     profiles: Sequence[AttentionBackendCapabilityProfile],
@@ -284,10 +326,115 @@ class AttentionOperatorQuantizationPlanGate:
         return tuple(dict.fromkeys(reasons))
 
 
+class AttentionOperatorQuantizationRunAdapter:
+    """Inject bound quant arguments after pure provider run lowering."""
+
+    def __init__(
+        self,
+        base_adapter: AttentionOperatorRunAdapter,
+        operation: AttentionOperatorOperationSpec,
+        bindings: Sequence[AttentionOperatorQuantizationBinding],
+    ) -> None:
+        if not isinstance(base_adapter, AttentionOperatorRunAdapter):
+            raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
+        if not isinstance(operation, AttentionOperatorOperationSpec):
+            raise TypeError("operation must be AttentionOperatorOperationSpec")
+        if base_adapter.provider_id != operation.provider_id:
+            raise SchemaError("quantization run adapter providers differ")
+        values = tuple(bindings)
+        if any(
+            not isinstance(item, AttentionOperatorQuantizationBinding)
+            for item in values
+        ):
+            raise TypeError("bindings must contain quantization bindings")
+        if any(
+            item.provider_id != operation.provider_id
+            or item.operation_id != operation.operation_id
+            for item in values
+        ):
+            raise SchemaError("quantization run binding identity differs")
+        fingerprints = tuple(item.quant_spec.fingerprint for item in values)
+        if len(set(fingerprints)) != len(fingerprints):
+            raise SchemaError("quantization run adapter contains duplicate QuantSpec")
+        self.provider_id = operation.provider_id
+        self.operation_id = operation.operation_id
+        self._base_adapter = base_adapter
+        self._bindings = {
+            item.quant_spec.fingerprint: item for item in values
+        }
+
+    def lower(
+        self,
+        active_plan: AttentionOperatorActivePlan,
+        request: AttentionOperatorRunRequest,
+    ) -> AttentionLoweredOperatorCall:
+        if not isinstance(active_plan, AttentionOperatorActivePlan):
+            raise TypeError("active_plan must be AttentionOperatorActivePlan")
+        if not isinstance(request, AttentionOperatorRunRequest):
+            raise TypeError("request must be AttentionOperatorRunRequest")
+        quant_spec = active_plan.framework_plan.spec.kv_quant_spec
+        if quant_spec is None:
+            return self._base_adapter.lower(active_plan, request)
+        binding = self._bindings.get(quant_spec.fingerprint)
+        if binding is None:
+            raise SchemaError("active quantized plan has no exact API binding")
+        kv_input = request.kv_cache
+        if not isinstance(kv_input, AttentionOperatorQuantizedKVInput):
+            raise SchemaError(
+                "quantized provider plan requires AttentionOperatorQuantizedKVInput"
+            )
+        if kv_input.quant_spec.fingerprint != quant_spec.fingerprint:
+            raise SchemaError("quantized KV input does not match the active QuantSpec")
+        for field_name, policy in (
+            ("k_scale", binding.runtime_k_scale_policy),
+            ("v_scale", binding.runtime_v_scale_policy),
+        ):
+            if policy == "reject" and getattr(request, field_name) is not None:
+                raise SchemaError(
+                    "quantization binding rejects run-time %s" % field_name
+                )
+        delegated_request = replace(
+            request,
+            kv_cache=(kv_input.key_storage, kv_input.value_storage),
+            k_scale=None,
+            v_scale=None,
+        )
+        lowered = self._base_adapter.lower(active_plan, delegated_request)
+        if not isinstance(lowered, AttentionLoweredOperatorCall):
+            raise TypeError("base run adapter returned an invalid call description")
+        values_by_source = {
+            "kv.key.scale": kv_input.key_scale,
+            "kv.value.scale": kv_input.value_scale,
+            "kv.key.zero_point": kv_input.key_zero_point,
+            "kv.value.zero_point": kv_input.value_zero_point,
+            "run.k_scale": request.k_scale,
+            "run.v_scale": request.v_scale,
+        }
+        injected = tuple(
+            (item.argument_name, values_by_source[item.source])
+            for item in binding.argument_bindings
+            if values_by_source[item.source] is not None
+        )
+        existing_names = {name for name, _ in lowered.keyword_arguments}
+        collision = existing_names.intersection(name for name, _ in injected)
+        if collision:
+            raise SchemaError(
+                "quantization argument collides with provider lowering: %s"
+                % sorted(collision)[0]
+            )
+        return replace(
+            lowered,
+            keyword_arguments=lowered.keyword_arguments + injected,
+            consumed_request_fields=request.consumed_fields,
+        )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "AttentionOperatorQuantArgumentBinding",
     "AttentionOperatorQuantizationBinding",
     "AttentionOperatorQuantizationPlanGate",
+    "AttentionOperatorQuantizationRunAdapter",
+    "AttentionOperatorQuantizedKVInput",
     "validate_attention_operator_quantization_bindings",
 ]

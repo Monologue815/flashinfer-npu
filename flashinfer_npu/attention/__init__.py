@@ -410,6 +410,8 @@ from .operator_quantization import (
     AttentionOperatorQuantArgumentBinding,
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizationPlanGate,
+    AttentionOperatorQuantizationRunAdapter,
+    AttentionOperatorQuantizedKVInput,
     validate_attention_operator_quantization_bindings,
 )
 from .operator_materialization import (
@@ -652,6 +654,8 @@ __all__ = [
     "AttentionOperatorQuantArgumentBinding",
     "AttentionOperatorQuantizationBinding",
     "AttentionOperatorQuantizationPlanGate",
+    "AttentionOperatorQuantizationRunAdapter",
+    "AttentionOperatorQuantizedKVInput",
     "AttentionMaterializedOperatorPlanState",
     "AttentionMaterializedOperatorTensor",
     "AttentionMaterializingPlanFactory",

@@ -164,6 +164,8 @@ INT8、lossy asymmetric UINT8、奇数维 packed INT4 和必须拒绝的 scale o
 5. accuracy report 已进一步绑定 launch packet、成功 provider completion 与 lifecycle trace；仍需可信 runner attestation。
 6. package runtime bootstrap 已要求 capability `QuantSpec` 与 catalog quant arguments 完全闭合；
    真实 CANN/flash-attention-npu binding 仍需逐参数语义与版本证据，不能由参数名称推断。
+7. 通用 provider quantized-KV input 与非执行 run lowering 已冻结 storage/scale/zero-point/
+   runtime multiplier 的独立来源；真实 Torch tensor metadata 与 package adapter 尚未接入。
 
 FP8、NVFP4、MX、真实非逻辑 layout descriptor/converter、K/V 不同 `QuantSpec` 配置和
 量化 packed combined-KV allocation 仍是显式 gap。
