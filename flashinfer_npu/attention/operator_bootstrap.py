@@ -42,6 +42,7 @@ from .operator_package import (
     ImportlibAttentionOperatorPackageLoader,
 )
 from .operator_plan import AttentionOperatorPlanFactory
+from .operator_physical_evidence import AttentionOperatorPhysicalLayoutEvidence
 from .operator_quantization import (
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizationPlanGate,
@@ -86,6 +87,9 @@ class AttentionOperatorPackageRuntimeSpec:
     quant_physical_layout_catalog: QuantPhysicalLayoutCatalog = (
         EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG
     )
+    physical_layout_evidence: Tuple[
+        AttentionOperatorPhysicalLayoutEvidence, ...
+    ] = ()
     backend: Union[str, Backend] = "auto"
     tuned_kernel_ids: Tuple[str, ...] = ()
     numerics_policy: AttentionNumericsPolicy = DEFAULT_ATTENTION_NUMERICS_POLICY
@@ -164,6 +168,18 @@ class AttentionOperatorPackageRuntimeSpec:
             raise TypeError(
                 "quant_physical_layout_catalog must be QuantPhysicalLayoutCatalog"
             )
+        physical_layout_evidence = tuple(self.physical_layout_evidence)
+        if any(
+            not isinstance(item, AttentionOperatorPhysicalLayoutEvidence)
+            for item in physical_layout_evidence
+        ):
+            raise TypeError(
+                "physical_layout_evidence must contain physical evidence records"
+            )
+        if len({item.evidence_id for item in physical_layout_evidence}) != len(
+            physical_layout_evidence
+        ):
+            raise SchemaError("bootstrap physical layout evidence ids must be unique")
         if not isinstance(self.numerics_policy, AttentionNumericsPolicy):
             raise TypeError("bootstrap numerics_policy must be AttentionNumericsPolicy")
         if self.corpus is not None and not isinstance(
@@ -188,6 +204,9 @@ class AttentionOperatorPackageRuntimeSpec:
         object.__setattr__(self, "descriptors", descriptors)
         object.__setattr__(
             self, "quantization_bindings", quantization_bindings
+        )
+        object.__setattr__(
+            self, "physical_layout_evidence", physical_layout_evidence
         )
         object.__setattr__(self, "tuned_kernel_ids", tuned_ids)
         object.__setattr__(self, "replay_evidence", bool(self.replay_evidence))
@@ -233,6 +252,7 @@ def build_attention_operator_package_runtime(
             spec.profiles,
             spec.descriptors,
             spec.observed_environment,
+            spec.physical_layout_evidence,
         )
         if quantization_bindings
         else None
@@ -257,6 +277,8 @@ def build_attention_operator_package_runtime(
         corpus=spec.corpus,
         coverage_policy=spec.coverage_policy,
         replay_evidence=spec.replay_evidence,
+        physical_layout_catalog=spec.quant_physical_layout_catalog,
+        physical_layout_evidence=spec.physical_layout_evidence,
     )
     return AttentionOperatorPackageRuntimeImplementation(
         priority=spec.priority,

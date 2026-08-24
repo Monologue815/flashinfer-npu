@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 027，已将 provider physical-layout descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 028，已将 provider physical-layout conformance evidence、descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -761,3 +761,28 @@ non-logical NPU 数值证据：正确的 physical tensor metadata 可以在 Host
 增量测试覆盖 catalog exact-set、dtype、bootstrap、physical shape/alignment、page-axis 可判定性、
 KV POD v2 ABI 门禁、Host metadata 成功与 authority fail-closed。全量 493 项 Host 测试通过；
 没有导入或调用 NPU package/runtime/operator。
+
+## 31. 检查点 028：non-logical provider conformance evidence
+
+027 能校验 physical tensor metadata，但没有一种合法方式让外部 NPU provider 提交 non-logical
+布局测试证据。028 增加版本化 `AttentionOperatorPhysicalLayoutEvidence`，它不是 tensor 或 plan
+参数，而是 bootstrap 私有 authority 输入。每条 evidence 必须绑定：
+
+- provider/operation、exact QuantSpec、descriptor 与 catalog fingerprint；
+- capability profile/rule、完整 runtime environment；
+- kernel、artifact、launch ABI 与 KV POD v2 binary ABI；
+- 外部 runner、conformance suite id/fingerprint、非空 passed case id 集合和 result digest。
+
+`select_attention_operator_physical_layout_dispatch()` 只为 non-logical plan 工作。它仍执行
+capability rule、numerics、kernel constraints、backend/tuning 与环境校验，但以精确的外部 physical
+evidence 取代无法表示物理存储的 Host reference corpus。缺失、重复或任何 fingerprint 漂移都会在
+package callable import 前失败。成功发布的 receipt 使用 physical evidence id/result digest；run-time
+`bind_attention_kv_physical_layout()` 再通过 `AttentionKVPhysicalLayoutEvidence` 协议把 receipt 与
+实际 KV view 重新闭合，防止 plan 后 tensor/catalog/evidence 漂移。
+
+默认 bootstrap 的 evidence 集合仍为空，真实 CANN/flash-attention-npu integration 也仍未声明
+non-logical capability。028 测试中使用的 suite/result digest 明确为 synthetic，只证明 authority
+交易链能够 fail-open-on-exact-evidence / fail-closed-on-drift，不证明 NPU 数值正确性或性能。
+8 项增量测试覆盖 schema round-trip、case/digest 门禁、missing evidence、exact authority+lowering、
+QuantSpec/descriptor/catalog、profile/environment/kernel/ABI、operation/duplicate drift，以及公共
+FlashInfer plan/run 签名不变。全量 501 项 Host 测试通过；未执行任何外部算子。

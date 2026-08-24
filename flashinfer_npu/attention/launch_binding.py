@@ -7,7 +7,16 @@ import json
 from dataclasses import dataclass
 from functools import reduce
 from operator import mul
-from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
+from typing import (
+    Any,
+    Dict,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    runtime_checkable,
+)
 
 from flashinfer_npu.runtime import KernelDescriptor, SchemaError
 
@@ -429,6 +438,25 @@ class AttentionKVPhysicalLayoutBinding:
         return _canonical_hash(self.to_dict())
 
 
+@runtime_checkable
+class AttentionKVPhysicalLayoutEvidence(Protocol):
+    """External evidence capable of authorizing one physical KV binding."""
+
+    evidence_id: str
+    result_digest: str
+
+    def validate_authority(
+        self,
+        kv: KVCacheView,
+        catalog: QuantPhysicalLayoutCatalog,
+        profile: AttentionBackendCapabilityProfile,
+        kernel: KernelDescriptor,
+        observed_environment: AttentionRuntimeEnvironment,
+        receipt: AttentionDispatchReceipt,
+    ) -> None:
+        """Raise unless every physical-layout authority identity is exact."""
+
+
 def bind_attention_kv_physical_layout(
     kv: KVCacheView,
     catalog: QuantPhysicalLayoutCatalog,
@@ -436,6 +464,7 @@ def bind_attention_kv_physical_layout(
     kernel: KernelDescriptor,
     observed_environment: AttentionRuntimeEnvironment,
     receipt: AttentionDispatchReceipt,
+    physical_layout_evidence: Optional[AttentionKVPhysicalLayoutEvidence] = None,
 ) -> AttentionKVPhysicalLayoutBinding:
     """Verify and bind one kernel-native physical KV layout candidate."""
 
@@ -466,15 +495,35 @@ def bind_attention_kv_physical_layout(
 
     validate_attention_kernel_bindings((profile,), (kernel,))
     rule = next((item for item in profile.rules if item.rule_id == receipt.rule_id), None)
-    evidence = next(
-        (
-            item
-            for item in profile.evidence
-            if item.evidence_id == receipt.evidence_id
-            and item.result_digest == receipt.evidence_result_digest
-        ),
-        None,
-    )
+    if physical_layout_evidence is None:
+        evidence = next(
+            (
+                item
+                for item in profile.evidence
+                if item.evidence_id == receipt.evidence_id
+                and item.result_digest == receipt.evidence_result_digest
+            ),
+            None,
+        )
+        evidence_digest = evidence.result_digest if evidence is not None else None
+    else:
+        if not isinstance(
+            physical_layout_evidence, AttentionKVPhysicalLayoutEvidence
+        ):
+            raise TypeError(
+                "physical_layout_evidence must implement "
+                "AttentionKVPhysicalLayoutEvidence"
+            )
+        physical_layout_evidence.validate_authority(
+            kv,
+            catalog,
+            profile,
+            kernel,
+            observed_environment,
+            receipt,
+        )
+        evidence = physical_layout_evidence
+        evidence_digest = physical_layout_evidence.result_digest
     binding = kernel.capability_binding
     if (
         observed_environment != profile.environment
@@ -513,7 +562,7 @@ def bind_attention_kv_physical_layout(
         profile.fingerprint,
         rule.rule_id,
         observed_environment.fingerprint,
-        evidence.result_digest,
+        evidence_digest,
         kernel.fingerprint,
         descriptor.required_features,
     )
@@ -1025,6 +1074,7 @@ __all__ = [
     "AttentionKVCacheViewPOD",
     "AttentionKVCacheViewPODV2",
     "AttentionKVPhysicalLayoutBinding",
+    "AttentionKVPhysicalLayoutEvidence",
     "AttentionTensorViewPOD",
     "bind_attention_kv_physical_layout",
     "materialize_attention_auxiliary_view",

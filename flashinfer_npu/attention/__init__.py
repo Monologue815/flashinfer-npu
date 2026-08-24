@@ -244,6 +244,7 @@ from .launch_binding import (
     AttentionKVCacheViewPOD,
     AttentionKVCacheViewPODV2,
     AttentionKVPhysicalLayoutBinding,
+    AttentionKVPhysicalLayoutEvidence,
     AttentionTensorViewPOD,
     bind_attention_kv_physical_layout,
     materialize_attention_auxiliary_view,
@@ -419,6 +420,11 @@ from .operator_quantization import (
     validate_attention_operator_quant_physical_layouts,
     validate_attention_operator_quantization_bindings,
 )
+from .operator_physical_evidence import (
+    ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION,
+    AttentionOperatorPhysicalLayoutEvidence,
+    select_attention_operator_physical_layout_dispatch,
+)
 from .operator_materialization import (
     ATTENTION_OPERATOR_MATERIALIZATION_VERSION,
     AttentionMaterializedOperatorPlanState,
@@ -494,6 +500,7 @@ __all__ = [
     "ATTENTION_OPERATOR_AUTHORITY_VERSION",
     "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
+    "ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION",
     "ATTENTION_OPERATOR_MATERIALIZATION_VERSION",
     "ATTENTION_PROTOCOL_TRACE_SCHEMA_VERSION",
     "ATTENTION_MAX_TENSOR_RANK",
@@ -561,6 +568,7 @@ __all__ = [
     "AttentionKVCacheViewPODV2",
     "AttentionKVPhysicalLayoutAccessCode",
     "AttentionKVPhysicalLayoutBinding",
+    "AttentionKVPhysicalLayoutEvidence",
     "AttentionModeCode",
     "AttentionPlanFlags",
     "AttentionPositionEncodingCode",
@@ -663,6 +671,7 @@ __all__ = [
     "AttentionOperatorQuantizationRunAdapter",
     "AttentionOperatorQuantizationRunAdapterFactory",
     "AttentionOperatorQuantizedKVInput",
+    "AttentionOperatorPhysicalLayoutEvidence",
     "AttentionOperatorTensorMetadataInspector",
     "AttentionMaterializedOperatorPlanState",
     "AttentionMaterializedOperatorTensor",
@@ -809,6 +818,7 @@ __all__ = [
     "validate_attention_operator_quantization_bindings",
     "validate_attention_operator_quant_physical_layouts",
     "inspect_attention_operator_quantized_kv_input",
+    "select_attention_operator_physical_layout_dispatch",
     "normalize_quant_axes",
     "plan_quant_layout_conversion",
     "normalize_attention_logits",

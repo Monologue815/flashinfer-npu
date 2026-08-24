@@ -24,6 +24,10 @@ from .numerics import (
     AttentionNumericsPolicy,
 )
 from .operation_catalog import AttentionOperatorOperationSpec
+from .operator_physical_evidence import (
+    AttentionOperatorPhysicalLayoutEvidence,
+    select_attention_operator_physical_layout_dispatch,
+)
 from .operator_integration import AttentionOperatorRuntimeAuthority
 from .operator_provider import (
     AttentionOperatorProviderProbe,
@@ -31,6 +35,10 @@ from .operator_provider import (
     bind_attention_operator_provider,
 )
 from .planner import AttentionFrameworkPlan
+from .quant_physical_layout import (
+    EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG,
+    QuantPhysicalLayoutCatalog,
+)
 
 
 ATTENTION_OPERATOR_AUTHORITY_VERSION = 1
@@ -53,6 +61,12 @@ class AttentionEvidenceOperatorRuntimeAuthorityResolver:
         corpus: Optional[AttentionTraceCorpus] = None,
         coverage_policy: Optional[AttentionCoveragePolicy] = None,
         replay_evidence: bool = False,
+        physical_layout_catalog: QuantPhysicalLayoutCatalog = (
+            EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG
+        ),
+        physical_layout_evidence: Sequence[
+            AttentionOperatorPhysicalLayoutEvidence
+        ] = (),
     ) -> None:
         if not isinstance(operation, AttentionOperatorOperationSpec):
             raise TypeError("operation must be AttentionOperatorOperationSpec")
@@ -79,6 +93,22 @@ class AttentionEvidenceOperatorRuntimeAuthorityResolver:
             coverage_policy, AttentionCoveragePolicy
         ):
             raise TypeError("coverage_policy must be AttentionCoveragePolicy")
+        if not isinstance(physical_layout_catalog, QuantPhysicalLayoutCatalog):
+            raise TypeError(
+                "physical_layout_catalog must be QuantPhysicalLayoutCatalog"
+            )
+        physical_evidence_values = tuple(physical_layout_evidence)
+        if any(
+            not isinstance(item, AttentionOperatorPhysicalLayoutEvidence)
+            for item in physical_evidence_values
+        ):
+            raise TypeError(
+                "physical_layout_evidence must contain physical evidence records"
+            )
+        if len({item.evidence_id for item in physical_evidence_values}) != len(
+            physical_evidence_values
+        ):
+            raise SchemaError("physical layout evidence ids must be unique")
         if backend != "auto":
             try:
                 backend = Backend(backend)
@@ -122,6 +152,8 @@ class AttentionEvidenceOperatorRuntimeAuthorityResolver:
         self._corpus = corpus
         self._coverage_policy = coverage_policy
         self._replay_evidence = bool(replay_evidence)
+        self._physical_layout_catalog = physical_layout_catalog
+        self._physical_layout_evidence = physical_evidence_values
 
     @property
     def profile_ids(self) -> Tuple[str, ...]:
@@ -154,18 +186,33 @@ class AttentionEvidenceOperatorRuntimeAuthorityResolver:
             raise SchemaError("operator authority received a different operation")
         if not provider_probe.available or provider_probe.provider_id != self.provider_id:
             raise SchemaError("operator authority requires its available provider probe")
-        receipt = select_attention_dispatch(
-            plan,
-            self._profiles,
-            self._descriptors,
-            self._observed_environment,
-            backend=self._backend,
-            tuned_kernel_ids=self._tuned_kernel_ids,
-            numerics_policy=self._numerics_policy,
-            corpus=self._corpus,
-            coverage_policy=self._coverage_policy,
-            replay_evidence=self._replay_evidence,
-        )
+        quant_spec = plan.spec.kv_quant_spec
+        if quant_spec is not None and quant_spec.physical_layout != "logical":
+            receipt = select_attention_operator_physical_layout_dispatch(
+                plan,
+                operation,
+                self._profiles,
+                self._descriptors,
+                self._observed_environment,
+                self._physical_layout_catalog,
+                self._physical_layout_evidence,
+                backend=self._backend,
+                tuned_kernel_ids=self._tuned_kernel_ids,
+                numerics_policy=self._numerics_policy,
+            )
+        else:
+            receipt = select_attention_dispatch(
+                plan,
+                self._profiles,
+                self._descriptors,
+                self._observed_environment,
+                backend=self._backend,
+                tuned_kernel_ids=self._tuned_kernel_ids,
+                numerics_policy=self._numerics_policy,
+                corpus=self._corpus,
+                coverage_policy=self._coverage_policy,
+                replay_evidence=self._replay_evidence,
+            )
         provider_record = AttentionOperatorProviderRecord(
             probe=provider_probe,
             profiles=self._profiles,

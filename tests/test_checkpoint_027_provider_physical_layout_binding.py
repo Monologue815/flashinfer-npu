@@ -169,7 +169,7 @@ class ProviderPhysicalLayoutBindingCheckpoint(unittest.TestCase):
         self.assertTrue(inspected.quantized)
         self.assertEqual(len(values["tensor_metadata_inspector"].calls), 4)
         with self.assertRaisesRegex(
-            AttentionDispatchError, "capability evidence invalid"
+            AttentionDispatchError, "requires exactly one physical-layout evidence"
         ):
             active_session(values, spec=spec, plan=plan)
         self.assertEqual(package_attention.calls, [])

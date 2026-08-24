@@ -24,6 +24,7 @@ from .launch_binding import bind_attention_kv_physical_layout
 from .operation_catalog import AttentionOperatorOperationSpec
 from .operator_integration import AttentionOperatorPlanGate
 from .operator_plan import AttentionOperatorActivePlan
+from .operator_physical_evidence import AttentionOperatorPhysicalLayoutEvidence
 from .operator_run import (
     AttentionLoweredOperatorCall,
     AttentionOperatorRunAdapter,
@@ -574,6 +575,9 @@ class AttentionOperatorQuantizationRunAdapter:
         profiles: Sequence[AttentionBackendCapabilityProfile],
         descriptors: Sequence[KernelDescriptor],
         observed_environment: AttentionRuntimeEnvironment,
+        physical_layout_evidence: Sequence[
+            AttentionOperatorPhysicalLayoutEvidence
+        ],
     ) -> None:
         if not isinstance(base_adapter, AttentionOperatorRunAdapter):
             raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
@@ -603,6 +607,14 @@ class AttentionOperatorQuantizationRunAdapter:
             raise TypeError("descriptors must contain KernelDescriptor values")
         if not isinstance(observed_environment, AttentionRuntimeEnvironment):
             raise TypeError("observed_environment must be AttentionRuntimeEnvironment")
+        physical_evidence_values = tuple(physical_layout_evidence)
+        if any(
+            not isinstance(item, AttentionOperatorPhysicalLayoutEvidence)
+            for item in physical_evidence_values
+        ):
+            raise TypeError(
+                "physical_layout_evidence must contain physical evidence records"
+            )
         values = tuple(bindings)
         if any(
             not isinstance(item, AttentionOperatorQuantizationBinding)
@@ -630,6 +642,7 @@ class AttentionOperatorQuantizationRunAdapter:
         self._profiles = profile_values
         self._descriptors = descriptor_values
         self._observed_environment = observed_environment
+        self._physical_layout_evidence = physical_evidence_values
 
     def lower(
         self,
@@ -688,6 +701,19 @@ class AttentionOperatorQuantizationRunAdapter:
                 raise SchemaError(
                     "physical KV layout authority is absent from package runtime"
                 )
+            physical_evidence = next(
+                (
+                    item
+                    for item in self._physical_layout_evidence
+                    if item.evidence_id == receipt.evidence_id
+                    and item.result_digest == receipt.evidence_result_digest
+                ),
+                None,
+            )
+            if physical_evidence is None:
+                raise SchemaError(
+                    "active physical KV layout evidence is absent from package runtime"
+                )
             bind_attention_kv_physical_layout(
                 kv_view,
                 self._physical_layout_catalog,
@@ -695,6 +721,7 @@ class AttentionOperatorQuantizationRunAdapter:
                 kernel,
                 self._observed_environment,
                 receipt,
+                physical_evidence,
             )
         for field_name, policy in (
             ("k_scale", binding.runtime_k_scale_policy),
@@ -752,6 +779,9 @@ class AttentionOperatorQuantizationRunAdapterFactory:
         profiles: Sequence[AttentionBackendCapabilityProfile],
         descriptors: Sequence[KernelDescriptor],
         observed_environment: AttentionRuntimeEnvironment,
+        physical_layout_evidence: Sequence[
+            AttentionOperatorPhysicalLayoutEvidence
+        ],
     ) -> None:
         if not isinstance(operation, AttentionOperatorOperationSpec):
             raise TypeError("operation must be AttentionOperatorOperationSpec")
@@ -785,6 +815,7 @@ class AttentionOperatorQuantizationRunAdapterFactory:
         self._profiles = tuple(profiles)
         self._descriptors = tuple(descriptors)
         self._observed_environment = observed_environment
+        self._physical_layout_evidence = tuple(physical_layout_evidence)
 
     def build(
         self, base_adapter: AttentionOperatorRunAdapter, device: str
@@ -801,6 +832,7 @@ class AttentionOperatorQuantizationRunAdapterFactory:
             self._profiles,
             self._descriptors,
             self._observed_environment,
+            self._physical_layout_evidence,
         )
 
 
