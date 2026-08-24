@@ -49,6 +49,10 @@ from .operator_quantization import (
     AttentionOperatorTensorMetadataInspector,
     validate_attention_operator_quantization_bindings,
 )
+from .quant_physical_layout import (
+    EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG,
+    QuantPhysicalLayoutCatalog,
+)
 from .operator_resolver import (
     EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS,
     AttentionOperatorRuntimeImplementationRegistry,
@@ -79,6 +83,9 @@ class AttentionOperatorPackageRuntimeSpec:
     tensor_metadata_inspector: Optional[
         AttentionOperatorTensorMetadataInspector
     ] = None
+    quant_physical_layout_catalog: QuantPhysicalLayoutCatalog = (
+        EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG
+    )
     backend: Union[str, Backend] = "auto"
     tuned_kernel_ids: Tuple[str, ...] = ()
     numerics_policy: AttentionNumericsPolicy = DEFAULT_ATTENTION_NUMERICS_POLICY
@@ -151,6 +158,12 @@ class AttentionOperatorPackageRuntimeSpec:
                 "tensor_metadata_inspector must implement "
                 "AttentionOperatorTensorMetadataInspector"
             )
+        if not isinstance(
+            self.quant_physical_layout_catalog, QuantPhysicalLayoutCatalog
+        ):
+            raise TypeError(
+                "quant_physical_layout_catalog must be QuantPhysicalLayoutCatalog"
+            )
         if not isinstance(self.numerics_policy, AttentionNumericsPolicy):
             raise TypeError("bootstrap numerics_policy must be AttentionNumericsPolicy")
         if self.corpus is not None and not isinstance(
@@ -216,6 +229,10 @@ def build_attention_operator_package_runtime(
             operation,
             quantization_bindings,
             spec.tensor_metadata_inspector,
+            spec.quant_physical_layout_catalog,
+            spec.profiles,
+            spec.descriptors,
+            spec.observed_environment,
         )
         if quantization_bindings
         else None

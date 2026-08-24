@@ -22,7 +22,7 @@ from tests.test_checkpoint_022_operator_runtime_bootstrap import (
 )
 
 
-def active_session(values, *, spec=None, catalog=None):
+def active_session(values, *, spec=None, catalog=None, plan=None):
     spec = values["spec"] if spec is None else spec
     catalog = values["catalog"] if catalog is None else catalog
     implementation = build_attention_operator_package_runtime(
@@ -30,7 +30,7 @@ def active_session(values, *, spec=None, catalog=None):
         operation_catalog=catalog,
         package_loader=values["loader"],
     )
-    plan = group_plan()
+    plan = group_plan() if plan is None else plan
     resolved = implementation.resolve(plan, "npu:0")
     session = AttentionOperatorWrapperSession(catalog)
     session.plan(

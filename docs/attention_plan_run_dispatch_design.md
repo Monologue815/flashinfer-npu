@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 026，已将量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 027，已将 provider physical-layout descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -735,8 +735,29 @@ bootstrap 对所有量化 binding 强制要求 inspector。runtime 先完成 pro
    最大 page index；ragged/single KV token 数必须与 plan metadata 完全一致；
 6. 所有校验成功后才允许 base provider lowering 与 quant argument 注入。
 
-当前 provider metadata 路径只授权 `physical_layout="logical"`；非 logical layout 必须在后续由
+026 的 provider metadata 路径只授权 `physical_layout="logical"`；非 logical layout 必须由
 provider 声明并绑定精确 `QuantPhysicalLayoutDescriptor`，不能依靠猜测放行。026 的 8 项增量
 测试覆盖合法 lowering、dtype/shape/page capacity、scale、asymmetric zero-point、stride、精确
 device、alias、inspector bootstrap/output 门禁。全量 485 项 Host 测试通过；没有导入或调用
 NPU package/runtime/operator。
+
+## 30. 检查点 027：provider physical-layout descriptor binding
+
+027 为 non-logical quantized KV 增加 provider-owned `QuantPhysicalLayoutCatalog`。bootstrap
+要求 catalog descriptor id 集合与所有 non-logical QuantSpec binding 的 physical layout 集合
+完全相等：缺失 descriptor、未绑定的多余 descriptor、layout id 或 storage dtype 不匹配都会在
+package probe/import 之前失败。
+
+run-time metadata validator 现在可以把 catalog 解析出的 descriptor 交给 K/V 两个
+`QuantizedTensorView`，从而校验 physical storage/scale/zero-point shape 与 alignment。paged KV
+只接受能保持精确、未 block 的 page axis 的 descriptor；否则物理 padding 会让实际 logical
+page count 产生歧义，框架明确拒绝猜测。若未来 evidence authority 产生合法 non-logical receipt，
+run adapter 还会调用既有 `bind_attention_kv_physical_layout`，把 descriptor/catalog 与 profile、
+rule、environment、evidence、kernel artifact、launch ABI 和 KV POD v2 identity 闭合绑定。
+
+当前 Host conformance trace 明确只能解码 `physical_layout="logical"`，所以 027 不伪造
+non-logical NPU 数值证据：正确的 physical tensor metadata 可以在 Host 被验证，但公共自动 runtime
+仍会被 evidence authority 拒绝，直至真实 provider 物理布局 corpus/evidence 可用。027 的 8 项
+增量测试覆盖 catalog exact-set、dtype、bootstrap、physical shape/alignment、page-axis 可判定性、
+KV POD v2 ABI 门禁、Host metadata 成功与 authority fail-closed。全量 493 项 Host 测试通过；
+没有导入或调用 NPU package/runtime/operator。

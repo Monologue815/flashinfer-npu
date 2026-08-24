@@ -416,6 +416,7 @@ from .operator_quantization import (
     AttentionOperatorQuantizedKVInput,
     AttentionOperatorTensorMetadataInspector,
     inspect_attention_operator_quantized_kv_input,
+    validate_attention_operator_quant_physical_layouts,
     validate_attention_operator_quantization_bindings,
 )
 from .operator_materialization import (
@@ -806,6 +807,7 @@ __all__ = [
     "validate_attention_lowered_operator_call",
     "validate_attention_kernel_bindings",
     "validate_attention_operator_quantization_bindings",
+    "validate_attention_operator_quant_physical_layouts",
     "inspect_attention_operator_quantized_kv_input",
     "normalize_quant_axes",
     "plan_quant_layout_conversion",

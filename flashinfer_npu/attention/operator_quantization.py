@@ -12,11 +12,15 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, replace
-from typing import Any, Mapping, Protocol, Sequence, Tuple, runtime_checkable
+from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_checkable
 
-from flashinfer_npu.runtime import QuantSpec, SchemaError
+from flashinfer_npu.runtime import KernelDescriptor, QuantSpec, SchemaError
 
-from .capability import AttentionBackendCapabilityProfile
+from .capability import (
+    AttentionBackendCapabilityProfile,
+    AttentionRuntimeEnvironment,
+)
+from .launch_binding import bind_attention_kv_physical_layout
 from .operation_catalog import AttentionOperatorOperationSpec
 from .operator_integration import AttentionOperatorPlanGate
 from .operator_plan import AttentionOperatorActivePlan
@@ -26,6 +30,11 @@ from .operator_run import (
     AttentionOperatorRunRequest,
 )
 from .planner import AttentionFrameworkPlan
+from .quant_physical_layout import (
+    EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG,
+    QuantPhysicalLayoutCatalog,
+    QuantPhysicalLayoutDescriptor,
+)
 from .schema import (
     MixedPagedKVMetadata,
     PagedKVCacheSpec,
@@ -245,6 +254,7 @@ def _quantized_kv_cache_spec(
     plan: AttentionFrameworkPlan,
     key_storage: TensorView,
     expected_device: str,
+    physical_layout_descriptor: Optional[QuantPhysicalLayoutDescriptor] = None,
 ):
     spec = plan.spec
     metadata = plan.metadata
@@ -264,11 +274,6 @@ def _quantized_kv_cache_spec(
         metadata,
         (PagedKVMetadata, PagedPrefillMetadata, MixedPagedKVMetadata),
     ):
-        if quant_spec.physical_layout != "logical":
-            raise SchemaError(
-                "provider tensor metadata validation requires an explicit "
-                "non-logical physical layout descriptor"
-            )
         if not key_storage.shape:
             raise SchemaError("kv.key.storage must expose a page dimension")
         paged = (
@@ -276,12 +281,30 @@ def _quantized_kv_cache_spec(
             if isinstance(metadata, PagedPrefillMetadata)
             else metadata
         )
-        if key_storage.shape[0] <= paged.max_page_index:
+        if quant_spec.physical_layout == "logical":
+            num_pages = key_storage.shape[0]
+        else:
+            descriptor = physical_layout_descriptor
+            if descriptor is None:
+                raise SchemaError(
+                    "provider tensor metadata validation requires an explicit "
+                    "non-logical physical layout descriptor"
+                )
+            transform = descriptor.storage_transform
+            if transform.axis_blocks[0] != 1 or "o0" not in transform.physical_axes:
+                raise SchemaError(
+                    "non-logical paged KV layout must preserve an exact page axis"
+                )
+            page_axis = transform.physical_axes.index("o0")
+            if page_axis >= len(key_storage.shape):
+                raise SchemaError("physical KV storage rank omits the page axis")
+            num_pages = key_storage.shape[page_axis]
+        if num_pages <= paged.max_page_index:
             raise SchemaError(
                 "quantized KV storage does not contain every referenced page"
             )
         return PagedKVCacheSpec(
-            num_pages=key_storage.shape[0],
+            num_pages=num_pages,
             page_size=paged.page_size,
             structure="separate",
             **common,
@@ -300,6 +323,7 @@ def inspect_attention_operator_quantized_kv_input(
     value: AttentionOperatorQuantizedKVInput,
     inspector: AttentionOperatorTensorMetadataInspector,
     expected_device: str,
+    physical_layout_descriptor: Optional[QuantPhysicalLayoutDescriptor] = None,
 ) -> KVCacheView:
     """Validate opaque quantized K/V tensors against one active logical plan."""
 
@@ -316,6 +340,15 @@ def inspect_attention_operator_quantized_kv_input(
     quant_spec = plan.spec.kv_quant_spec
     if quant_spec is None or value.quant_spec.fingerprint != quant_spec.fingerprint:
         raise SchemaError("quantized KV input does not match the active QuantSpec")
+    if quant_spec.physical_layout == "logical":
+        if physical_layout_descriptor is not None:
+            raise SchemaError("logical quantized KV cannot use a physical descriptor")
+    elif not isinstance(
+        physical_layout_descriptor, QuantPhysicalLayoutDescriptor
+    ):
+        raise SchemaError(
+            "non-logical quantized KV requires an exact physical descriptor"
+        )
 
     components = {
         "key_storage": _inspect_quant_component(
@@ -339,7 +372,10 @@ def inspect_attention_operator_quantized_kv_input(
             inspector, value.value_zero_point, "kv.value.zero_point"
         )
     cache_spec = _quantized_kv_cache_spec(
-        plan, components["key_storage"], str(expected_device)
+        plan,
+        components["key_storage"],
+        str(expected_device),
+        physical_layout_descriptor,
     )
     key_shape, value_shape = cache_spec.expected_shapes
     key = QuantizedTensorView(
@@ -348,6 +384,7 @@ def inspect_attention_operator_quantized_kv_input(
         scale=components["key_scale"],
         zero_point=components.get("key_zero_point"),
         quant_spec=quant_spec,
+        physical_layout_descriptor=physical_layout_descriptor,
     )
     val = QuantizedTensorView(
         logical_shape=value_shape,
@@ -355,6 +392,7 @@ def inspect_attention_operator_quantized_kv_input(
         scale=components["value_scale"],
         zero_point=components.get("value_zero_point"),
         quant_spec=quant_spec,
+        physical_layout_descriptor=physical_layout_descriptor,
     )
     return KVCacheView(cache_spec, key, val)
 
@@ -421,6 +459,46 @@ def validate_attention_operator_quantization_bindings(
     return tuple(
         sorted(binding_values, key=lambda item: item.quant_spec.fingerprint)
     )
+
+
+def validate_attention_operator_quant_physical_layouts(
+    bindings: Sequence[AttentionOperatorQuantizationBinding],
+    catalog: QuantPhysicalLayoutCatalog = EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG,
+) -> QuantPhysicalLayoutCatalog:
+    """Require an exact provider-owned descriptor set for non-logical bindings."""
+
+    values = tuple(bindings)
+    if any(
+        not isinstance(item, AttentionOperatorQuantizationBinding)
+        for item in values
+    ):
+        raise TypeError("bindings must contain quantization bindings")
+    if not isinstance(catalog, QuantPhysicalLayoutCatalog):
+        raise TypeError("catalog must be QuantPhysicalLayoutCatalog")
+    required_layouts = {
+        item.quant_spec.physical_layout
+        for item in values
+        if item.quant_spec.physical_layout != "logical"
+    }
+    catalog_layouts = {item.layout_id for item in catalog.descriptors}
+    if required_layouts != catalog_layouts:
+        if required_layouts.difference(catalog_layouts):
+            raise SchemaError(
+                "non-logical quantization binding has no physical descriptor"
+            )
+        raise SchemaError(
+            "quant physical layout catalog contains an unbound descriptor"
+        )
+    for binding in values:
+        quant_spec = binding.quant_spec
+        if quant_spec.physical_layout == "logical":
+            continue
+        descriptor = catalog.resolve(quant_spec)
+        if quant_spec.storage_dtype not in descriptor.storage_dtypes:
+            raise SchemaError(
+                "quant physical layout does not support bound storage dtype"
+            )
+    return catalog
 
 
 class AttentionOperatorQuantizationPlanGate:
@@ -492,6 +570,10 @@ class AttentionOperatorQuantizationRunAdapter:
         bindings: Sequence[AttentionOperatorQuantizationBinding],
         tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
         expected_device: str,
+        physical_layout_catalog: QuantPhysicalLayoutCatalog,
+        profiles: Sequence[AttentionBackendCapabilityProfile],
+        descriptors: Sequence[KernelDescriptor],
+        observed_environment: AttentionRuntimeEnvironment,
     ) -> None:
         if not isinstance(base_adapter, AttentionOperatorRunAdapter):
             raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
@@ -508,6 +590,19 @@ class AttentionOperatorQuantizationRunAdapter:
             )
         if not str(expected_device):
             raise SchemaError("quantization run expected_device must be non-empty")
+        if not isinstance(physical_layout_catalog, QuantPhysicalLayoutCatalog):
+            raise TypeError("physical_layout_catalog must be QuantPhysicalLayoutCatalog")
+        profile_values = tuple(profiles)
+        descriptor_values = tuple(descriptors)
+        if any(
+            not isinstance(item, AttentionBackendCapabilityProfile)
+            for item in profile_values
+        ):
+            raise TypeError("profiles must contain capability profiles")
+        if any(not isinstance(item, KernelDescriptor) for item in descriptor_values):
+            raise TypeError("descriptors must contain KernelDescriptor values")
+        if not isinstance(observed_environment, AttentionRuntimeEnvironment):
+            raise TypeError("observed_environment must be AttentionRuntimeEnvironment")
         values = tuple(bindings)
         if any(
             not isinstance(item, AttentionOperatorQuantizationBinding)
@@ -531,6 +626,10 @@ class AttentionOperatorQuantizationRunAdapter:
         }
         self._tensor_metadata_inspector = tensor_metadata_inspector
         self._expected_device = str(expected_device)
+        self._physical_layout_catalog = physical_layout_catalog
+        self._profiles = profile_values
+        self._descriptors = descriptor_values
+        self._observed_environment = observed_environment
 
     def lower(
         self,
@@ -554,12 +653,49 @@ class AttentionOperatorQuantizationRunAdapter:
             )
         if kv_input.quant_spec.fingerprint != quant_spec.fingerprint:
             raise SchemaError("quantized KV input does not match the active QuantSpec")
-        inspect_attention_operator_quantized_kv_input(
+        descriptor = (
+            None
+            if quant_spec.physical_layout == "logical"
+            else self._physical_layout_catalog.resolve(quant_spec)
+        )
+        kv_view = inspect_attention_operator_quantized_kv_input(
             active_plan.framework_plan,
             kv_input,
             self._tensor_metadata_inspector,
             self._expected_device,
+            descriptor,
         )
+        if descriptor is not None:
+            receipt = active_plan.dispatch_receipt
+            profile = next(
+                (
+                    item
+                    for item in self._profiles
+                    if item.profile_id == receipt.profile_id
+                    and item.fingerprint == receipt.profile_fingerprint
+                ),
+                None,
+            )
+            kernel = next(
+                (
+                    item
+                    for item in self._descriptors
+                    if item.fingerprint == receipt.kernel_fingerprint
+                ),
+                None,
+            )
+            if profile is None or kernel is None:
+                raise SchemaError(
+                    "physical KV layout authority is absent from package runtime"
+                )
+            bind_attention_kv_physical_layout(
+                kv_view,
+                self._physical_layout_catalog,
+                profile,
+                kernel,
+                self._observed_environment,
+                receipt,
+            )
         for field_name, policy in (
             ("k_scale", binding.runtime_k_scale_policy),
             ("v_scale", binding.runtime_v_scale_policy),
@@ -612,6 +748,10 @@ class AttentionOperatorQuantizationRunAdapterFactory:
         operation: AttentionOperatorOperationSpec,
         bindings: Sequence[AttentionOperatorQuantizationBinding],
         tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+        physical_layout_catalog: QuantPhysicalLayoutCatalog,
+        profiles: Sequence[AttentionBackendCapabilityProfile],
+        descriptors: Sequence[KernelDescriptor],
+        observed_environment: AttentionRuntimeEnvironment,
     ) -> None:
         if not isinstance(operation, AttentionOperatorOperationSpec):
             raise TypeError("operation must be AttentionOperatorOperationSpec")
@@ -639,6 +779,12 @@ class AttentionOperatorQuantizationRunAdapterFactory:
         self._operation = operation
         self._bindings = values
         self._tensor_metadata_inspector = tensor_metadata_inspector
+        self._physical_layout_catalog = validate_attention_operator_quant_physical_layouts(
+            values, physical_layout_catalog
+        )
+        self._profiles = tuple(profiles)
+        self._descriptors = tuple(descriptors)
+        self._observed_environment = observed_environment
 
     def build(
         self, base_adapter: AttentionOperatorRunAdapter, device: str
@@ -651,6 +797,10 @@ class AttentionOperatorQuantizationRunAdapterFactory:
             self._bindings,
             self._tensor_metadata_inspector,
             str(device),
+            self._physical_layout_catalog,
+            self._profiles,
+            self._descriptors,
+            self._observed_environment,
         )
 
 
@@ -665,4 +815,5 @@ __all__ = [
     "AttentionOperatorTensorMetadataInspector",
     "inspect_attention_operator_quantized_kv_input",
     "validate_attention_operator_quantization_bindings",
+    "validate_attention_operator_quant_physical_layouts",
 ]
