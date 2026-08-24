@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 030，已将独立 Attention JIT spec/registry/cache-decision 框架、package evidence manifest、provider physical-layout conformance evidence、descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 031，已将 wrapper-owned JIT cache resolution/active-plan identity、独立 Attention JIT spec/registry/cache-decision 框架、package evidence manifest、provider physical-layout conformance evidence、descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -832,3 +832,27 @@ torch-npu、CANN 或 flash-attention-npu。详细边界见
 `docs/attention_jit_framework.md`。增量测试覆盖结构、序列化、注册冲突、缓存漂移、策略决策、
 plan/environment/backend、动态 shape、量化 identity 与 isolated import。18 项增量测试与全量
 527 项 Host 测试通过；通过只表示框架合同成立。
+
+## 34. 检查点 031：wrapper-owned JIT resolution 与 active-plan identity
+
+030 的 JIT module spec/cache decision 仍是独立函数，尚未进入公共 `BatchAttention.plan()` 的原子
+runtime publication。031 在不改变 constructor/plan/run 签名的前提下闭合此链路：
+
+- `AttentionResolvedOperatorRuntime` 对 `ascendc_jit` 强制要求 ready
+  `AttentionJitPlanBinding`，对 AOT/aclnn 则禁止携带该 binding；
+- package integration 在 authority dispatch 之后、package callable import 之前调用私有
+  `AttentionJitPlanResolver`；缺少 resolver、cache miss 或 `build_required` 均不能形成 runnable
+  runtime；
+- JIT binding fingerprint 被写入 v2 `AttentionOperatorActivePlan` 并参与 active plan fingerprint，因而
+  自动进入 operation/callable/runtime binding 和 lowered call 的既有身份链；
+- `AttentionOperatorBatchRuntime` 只在 framework/provider/callable/JIT 全部成功后一次性发布，失败
+  replan 保留旧 framework plan、JIT binding 与 executor；
+- `run()` 在 provider lowering/executor 之前再次校验 active plan、receipt、recipe、cache record
+  identity；内部状态漂移 fail closed；
+- resolver/bootstrap schema 同步升级为 v2；`JitSpecRegistry` 与 `JitCacheIndex` 的幂等
+  publish/lookup 增加进程内并发锁。
+
+12 项增量测试覆盖公共签名隔离、cache-hit plan/run、cache-only/build-required、缺失 resolver、
+AOT/JIT 互斥、package import 顺序、失败/成功 replan、run-time drift 和 32-way 并发幂等；本机全量
+539 项 Host 测试通过。测试只使用 synthetic cache record/fake executor，没有 compiler、loader、
+外部 package import、NPU runtime 或算子执行。

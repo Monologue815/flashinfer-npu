@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Optional, Sequence, Tuple, Union
 
 from flashinfer_npu.runtime import Backend, KernelDescriptor, SchemaError
+from flashinfer_npu.jit.attention import AttentionJitPlanResolver
 
 from .capability import (
     AttentionBackendCapabilityProfile,
@@ -64,7 +65,7 @@ from .operator_resolver import (
 from .operator_run import AttentionOperatorRunAdapter
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 1
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ class AttentionOperatorPackageRuntimeSpec:
     physical_layout_evidence_bundle: Optional[
         AttentionVerifiedOperatorPhysicalEvidenceBundle
     ] = None
+    jit_plan_resolver: Optional[AttentionJitPlanResolver] = None
     backend: Union[str, Backend] = "auto"
     tuned_kernel_ids: Tuple[str, ...] = ()
     numerics_policy: AttentionNumericsPolicy = DEFAULT_ATTENTION_NUMERICS_POLICY
@@ -122,20 +124,25 @@ class AttentionOperatorPackageRuntimeSpec:
         if not descriptors or any(
             not isinstance(item, KernelDescriptor) for item in descriptors
         ):
-            raise TypeError("bootstrap descriptors must contain KernelDescriptor values")
+            raise TypeError(
+                "bootstrap descriptors must contain KernelDescriptor values"
+            )
         if not isinstance(self.observed_environment, AttentionRuntimeEnvironment):
             raise TypeError(
                 "bootstrap observed_environment must be AttentionRuntimeEnvironment"
             )
         if not isinstance(self.plan_gate, AttentionOperatorPlanGate):
-            raise TypeError("bootstrap plan_gate must implement AttentionOperatorPlanGate")
+            raise TypeError(
+                "bootstrap plan_gate must implement AttentionOperatorPlanGate"
+            )
         if not isinstance(self.logical_factory, AttentionOperatorPlanFactory):
             raise TypeError(
                 "bootstrap logical_factory must implement AttentionOperatorPlanFactory"
             )
         if not isinstance(self.logical_run_adapter, AttentionOperatorRunAdapter):
             raise TypeError(
-                "bootstrap logical_run_adapter must implement AttentionOperatorRunAdapter"
+                "bootstrap logical_run_adapter must implement "
+                "AttentionOperatorRunAdapter"
             )
         if not isinstance(
             self.tensor_materializer, AttentionOperatorTensorMaterializer
@@ -176,6 +183,12 @@ class AttentionOperatorPackageRuntimeSpec:
         ):
             raise TypeError(
                 "physical_layout_evidence_bundle must be a verified bundle"
+            )
+        if self.jit_plan_resolver is not None and not isinstance(
+            self.jit_plan_resolver, AttentionJitPlanResolver
+        ):
+            raise TypeError(
+                "jit_plan_resolver must implement AttentionJitPlanResolver"
             )
         if not isinstance(self.numerics_policy, AttentionNumericsPolicy):
             raise TypeError("bootstrap numerics_policy must be AttentionNumericsPolicy")
@@ -294,6 +307,7 @@ def build_attention_operator_package_runtime(
         logical_run_adapter=spec.logical_run_adapter,
         tensor_materializer=spec.tensor_materializer,
         run_adapter_factory=run_adapter_factory,
+        jit_plan_resolver=spec.jit_plan_resolver,
     )
 
 
@@ -306,7 +320,10 @@ def build_attention_operator_runtime_resolvers(
     """Build the immutable NPU resolver tree from explicit integration specs."""
 
     values = tuple(specs)
-    if any(not isinstance(item, AttentionOperatorPackageRuntimeSpec) for item in values):
+    if any(
+        not isinstance(item, AttentionOperatorPackageRuntimeSpec)
+        for item in values
+    ):
         raise TypeError("specs must contain AttentionOperatorPackageRuntimeSpec values")
     if not values:
         return EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS

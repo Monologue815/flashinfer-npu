@@ -6,9 +6,19 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, Protocol, Sequence, Tuple, runtime_checkable
+from typing import (
+    Any,
+    Dict,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    runtime_checkable,
+)
 
-from flashinfer_npu.runtime import DispatchError, SchemaError
+from flashinfer_npu.jit.attention import AttentionJitPlanBinding
+from flashinfer_npu.runtime import Backend, DispatchError, SchemaError
 
 from .operation_catalog import (
     AttentionOperatorOperationCatalog,
@@ -24,11 +34,15 @@ from .operator_run import (
     AttentionOperatorWrapperSession,
 )
 from .dispatch import AttentionDispatchReceipt
-from .planner import AttentionFrameworkPlan, AttentionFrameworkSession, AttentionStateError
+from .planner import (
+    AttentionFrameworkPlan,
+    AttentionFrameworkSession,
+    AttentionStateError,
+)
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 1
+ATTENTION_OPERATOR_RESOLVER_VERSION = 2
 
 _DEVICE_TYPE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -64,6 +78,9 @@ class AttentionResolvedOperatorRuntime:
     callable_binding: AttentionOperatorCallableBinding = field(
         repr=False, compare=False
     )
+    jit_plan_binding: Optional[AttentionJitPlanBinding] = field(
+        default=None, repr=False, compare=False
+    )
     schema_version: int = ATTENTION_OPERATOR_RESOLVER_VERSION
 
     def __post_init__(self) -> None:
@@ -81,6 +98,20 @@ class AttentionResolvedOperatorRuntime:
             raise TypeError("selection must be AttentionOperatorProviderSelection")
         if not isinstance(self.callable_binding, AttentionOperatorCallableBinding):
             raise TypeError("callable_binding must be AttentionOperatorCallableBinding")
+        if self.receipt.backend == Backend.ASCENDC_JIT:
+            if not isinstance(self.jit_plan_binding, AttentionJitPlanBinding):
+                raise SchemaError(
+                    "ascendc_jit runtime requires an Attention JIT plan binding"
+                )
+            self.jit_plan_binding.validate_resolved_runtime(
+                self.framework_plan_fingerprint,
+                self.receipt,
+            )
+            self.jit_plan_binding.require_ready()
+        elif self.jit_plan_binding is not None:
+            raise SchemaError(
+                "non-JIT Attention runtime cannot publish a JIT plan binding"
+            )
         provider_id = self.selection.provider_id
         operation_id = self.factory.operation_id
         if (
@@ -317,8 +348,9 @@ class AttentionOperatorRuntimeImplementationRegistry:
                     )
                     for item in report.candidates
                 )
-                message = "no Attention runtime implementation accepts the plan (%s)" % (
-                    details or "no implementations registered"
+                message = (
+                    "no Attention runtime implementation accepts the plan (%s)"
+                    % (details or "no implementations registered")
                 )
             else:
                 identities = ", ".join(
@@ -361,7 +393,9 @@ class AttentionOperatorRuntimeResolverRegistry:
             if not _DEVICE_TYPE.fullmatch(device_type):
                 raise SchemaError("invalid Attention resolver device type")
             if not isinstance(resolver, AttentionOperatorRuntimeResolver):
-                raise TypeError("resolver must implement AttentionOperatorRuntimeResolver")
+                raise TypeError(
+                    "resolver must implement AttentionOperatorRuntimeResolver"
+                )
             normalized.append((device_type, resolver))
         names = tuple(item[0] for item in normalized)
         if len(set(names)) != len(names):
@@ -413,7 +447,9 @@ class AttentionOperatorBatchRuntime:
         if operation_catalog is None:
             operation_catalog = load_packaged_attention_operator_catalog()
         if not isinstance(operation_catalog, AttentionOperatorOperationCatalog):
-            raise TypeError("operation_catalog must be AttentionOperatorOperationCatalog")
+            raise TypeError(
+                "operation_catalog must be AttentionOperatorOperationCatalog"
+            )
         self.device = str(device)
         self._resolver_registry = resolver_registry
         self._operation_catalog = operation_catalog
@@ -422,6 +458,7 @@ class AttentionOperatorBatchRuntime:
         )
         self._operator_session = None
         self._executor = None
+        self._jit_plan_binding = None
         self._last_lowered_call = None
 
     @property
@@ -444,6 +481,12 @@ class AttentionOperatorBatchRuntime:
             raise AttentionStateError("Attention operator runtime has not been run")
         return self._last_lowered_call
 
+    @property
+    def jit_plan_binding(self):
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        return self._jit_plan_binding
+
     def plan(self, spec: AttentionPlanSpec, metadata: AttentionMetadata) -> None:
         """Resolve and prepare completely, then publish all wrapper state."""
 
@@ -459,8 +502,19 @@ class AttentionOperatorBatchRuntime:
             resolved.receipt,
             resolved.selection,
             resolved.callable_binding,
+            (
+                resolved.jit_plan_binding.fingerprint
+                if resolved.jit_plan_binding is not None
+                else None
+            ),
         )
         candidate_executor = resolved.executor
+        candidate_jit_plan_binding = resolved.jit_plan_binding
+        if candidate_jit_plan_binding is not None and (
+            candidate_operator_session.active_plan.jit_plan_binding_fingerprint
+            != candidate_jit_plan_binding.fingerprint
+        ):
+            raise SchemaError("active plan did not freeze the JIT binding identity")
         if isinstance(candidate_executor, AttentionRuntimeBindingAwareExecutor):
             candidate_executor = candidate_executor.bind_runtime(
                 candidate_operator_session.runtime_binding
@@ -483,6 +537,7 @@ class AttentionOperatorBatchRuntime:
         self._framework_session.commit_prepared_plan(candidate_plan)
         self._operator_session = candidate_operator_session
         self._executor = candidate_executor
+        self._jit_plan_binding = candidate_jit_plan_binding
         self._last_lowered_call = None
 
     def run(
@@ -500,6 +555,17 @@ class AttentionOperatorBatchRuntime:
         session = self.operator_session
         if self._executor is None:  # defensive; plan publication is atomic
             raise AttentionStateError("Attention operator executor is not initialized")
+        if self._jit_plan_binding is not None:
+            if (
+                session.active_plan.jit_plan_binding_fingerprint
+                != self._jit_plan_binding.fingerprint
+            ):
+                raise AttentionStateError("Attention JIT active-plan identity is stale")
+            self._jit_plan_binding.validate_plan(
+                session.active_plan.framework_plan,
+                session.active_plan.dispatch_receipt,
+            )
+            self._jit_plan_binding.require_ready()
         lowered = session.run(
             q,
             kv_cache,

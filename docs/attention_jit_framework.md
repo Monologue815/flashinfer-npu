@@ -1,6 +1,6 @@
 # Attention JIT framework contract
 
-> Status: checkpoint 030, Host framework only. No Ascend source generation,
+> Status: through checkpoint 031, Host framework only. No Ascend source generation,
 > compiler invocation, artifact loading, NPU runtime initialization, or
 > operator execution is implemented or claimed.
 
@@ -143,3 +143,32 @@ This evidence proves only the Host framework contract.  It does not prove:
 - numerical correctness or performance of any JIT kernel.
 
 Those capabilities must be introduced and verified as separate checkpoints.
+
+## 8. Wrapper-owned active-plan binding
+
+Checkpoint 031 connects the pure decision layer to the existing automatic
+provider runtime without changing `BatchAttention` constructor, `plan()` or
+`run()`:
+
+1. capability/evidence dispatch first selects an exact backend and receipt;
+2. only an `ascendc_jit` receipt invokes the private `AttentionJitPlanResolver`;
+3. the resolver generates the recipe, registers it and performs the exact cache
+   lookup before the provider callable is imported;
+4. only `cache_hit` may form an `AttentionResolvedOperatorRuntime`;
+5. the JIT binding fingerprint becomes part of
+   `AttentionOperatorActivePlan.fingerprint` and therefore also of operation,
+   callable/runtime and lowered-call authorization;
+6. framework plan, provider plan, executor and JIT binding are published only
+   at the existing final atomic commit point;
+7. `run()` revalidates the active-plan/JIT identity before lowering or calling
+   the provider executor.
+
+A cache-only miss, a future-build decision with no authorized builder, a
+missing JIT resolver, a stale environment/receipt, or an AOT/JIT route mix-up
+fails before package callable import and cannot replace a previously working
+wrapper plan.  Replanning dynamic sequence lengths may reuse the same static
+JIT recipe, but produces a new exact active-plan binding.
+
+The framework still does not claim that a cache record's artifact has been
+loaded.  A later loader checkpoint must reverify its bytes and symbols before
+any real executor can be published.

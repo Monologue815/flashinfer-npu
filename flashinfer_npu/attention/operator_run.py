@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from typing import Any, Protocol, Tuple, runtime_checkable
+from typing import Any, Optional, Protocol, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import SchemaError
 
@@ -398,6 +398,7 @@ class AttentionOperatorWrapperSession:
         receipt: AttentionDispatchReceipt,
         selection: AttentionOperatorProviderSelection,
         callable_binding: AttentionOperatorCallableBinding,
+        jit_plan_binding_fingerprint: Optional[str] = None,
     ) -> None:
         """Prepare a complete runtime candidate, then atomically publish it."""
 
@@ -421,7 +422,13 @@ class AttentionOperatorWrapperSession:
         ):
             raise SchemaError("callable binding does not authorize the planned operation")
         candidate_session = AttentionOperatorPlanSession()
-        candidate_session.plan(factory, framework_plan, receipt, selection)
+        candidate_session.plan(
+            factory,
+            framework_plan,
+            receipt,
+            selection,
+            jit_plan_binding_fingerprint,
+        )
         candidate_binding = bind_attention_operator_operation(
             self._operation_catalog, candidate_session.active_plan
         )

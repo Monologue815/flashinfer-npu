@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
+from threading import RLock
 from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
 
 from flashinfer_npu.runtime import (
@@ -115,7 +116,9 @@ class JitSpec:
         if len({item.locator for item in sources}) != len(sources):
             raise SchemaError("JIT source artifact locators must be unique")
         object.__setattr__(
-            self, "source_artifacts", tuple(sorted(sources, key=lambda item: item.locator))
+            self,
+            "source_artifacts",
+            tuple(sorted(sources, key=lambda item: item.locator)),
         )
 
         options = tuple(str(item) for item in self.compile_options)
@@ -205,44 +208,51 @@ class JitSpecRegistry:
         self._specs: Dict[str, JitSpec] = {}
         self._generations: Dict[str, int] = {}
         self._generation = 0
+        self._lock = RLock()
         for spec in specs:
             self.register(spec)
 
     def register(self, spec: JitSpec) -> JitSpec:
         if not isinstance(spec, JitSpec):
             raise TypeError("JIT registry accepts JitSpec")
-        existing = self._specs.get(spec.name)
-        if existing is not None:
-            if existing.fingerprint != spec.fingerprint:
-                raise SchemaError("conflicting JIT spec name %r" % spec.name)
-            return existing
-        self._generation += 1
-        self._specs[spec.name] = spec
-        self._generations[spec.name] = self._generation
-        return spec
+        with self._lock:
+            existing = self._specs.get(spec.name)
+            if existing is not None:
+                if existing.fingerprint != spec.fingerprint:
+                    raise SchemaError("conflicting JIT spec name %r" % spec.name)
+                return existing
+            self._generation += 1
+            self._specs[spec.name] = spec
+            self._generations[spec.name] = self._generation
+            return spec
 
     def get(self, name: str) -> Optional[JitSpec]:
-        return self._specs.get(str(name))
+        with self._lock:
+            return self._specs.get(str(name))
 
     def get_all_specs(self) -> Dict[str, JitSpec]:
-        return dict(self._specs)
+        with self._lock:
+            return dict(self._specs)
 
     def specs(self, domain: Optional[str] = None) -> Tuple[JitSpec, ...]:
-        values = self._specs.values()
+        with self._lock:
+            values = tuple(self._specs.values())
         if domain is not None:
-            values = (item for item in values if item.domain == domain)
+            values = tuple(item for item in values if item.domain == domain)
         return tuple(sorted(values, key=lambda item: item.name))
 
     def get_spec_status(self, name: str) -> Optional[JitSpecStatus]:
-        spec = self.get(name)
-        if spec is None:
-            return None
-        return JitSpecStatus(
-            name=spec.name,
-            spec_fingerprint=spec.fingerprint,
-            registration_generation=self._generations[spec.name],
-            source_materialized=spec.source_materialized,
-        )
+        with self._lock:
+            spec = self._specs.get(str(name))
+            if spec is None:
+                return None
+            generation = self._generations[spec.name]
+            return JitSpecStatus(
+                name=spec.name,
+                spec_fingerprint=spec.fingerprint,
+                registration_generation=generation,
+                source_materialized=spec.source_materialized,
+            )
 
     def get_all_statuses(self) -> Tuple[JitSpecStatus, ...]:
         statuses = []

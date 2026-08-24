@@ -10,6 +10,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from enum import Enum
+from threading import RLock
 from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
 
 from flashinfer_npu.runtime import (
@@ -115,26 +116,29 @@ class JitCacheIndex:
 
     def __init__(self, records: Iterable[JitCacheRecord] = ()) -> None:
         self._records: Dict[str, JitCacheRecord] = {}
+        self._lock = RLock()
         for record in records:
             self.publish(record)
 
     def publish(self, record: JitCacheRecord) -> JitCacheRecord:
         if not isinstance(record, JitCacheRecord):
             raise TypeError("JIT cache accepts JitCacheRecord")
-        existing = self._records.get(record.spec_name)
-        if existing is not None:
-            if existing.fingerprint != record.fingerprint:
-                raise SchemaError(
-                    "conflicting JIT cache record for %r" % record.spec_name
-                )
-            return existing
-        self._records[record.spec_name] = record
-        return record
+        with self._lock:
+            existing = self._records.get(record.spec_name)
+            if existing is not None:
+                if existing.fingerprint != record.fingerprint:
+                    raise SchemaError(
+                        "conflicting JIT cache record for %r" % record.spec_name
+                    )
+                return existing
+            self._records[record.spec_name] = record
+            return record
 
     def lookup(self, spec: JitSpec) -> Optional[JitCacheRecord]:
         if not isinstance(spec, JitSpec):
             raise TypeError("JIT cache lookup requires JitSpec")
-        record = self._records.get(spec.name)
+        with self._lock:
+            record = self._records.get(spec.name)
         if record is None:
             return None
         record.validate_spec(spec)
@@ -142,7 +146,9 @@ class JitCacheIndex:
 
     @property
     def records(self) -> Tuple[JitCacheRecord, ...]:
-        return tuple(sorted(self._records.values(), key=lambda item: item.spec_name))
+        with self._lock:
+            values = tuple(self._records.values())
+        return tuple(sorted(values, key=lambda item: item.spec_name))
 
 
 class JitResolutionState(str, Enum):
@@ -177,6 +183,19 @@ class JitResolution:
     @property
     def ready(self) -> bool:
         return self.state == JitResolutionState.CACHE_HIT
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "spec_name": self.spec_name,
+            "spec_fingerprint": self.spec_fingerprint,
+            "state": self.state.value,
+            "reason": self.reason,
+            "cache_record_fingerprint": self.cache_record_fingerprint,
+        }
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_hash(self.to_dict())
 
 
 class MissingJITCacheError(RuntimeError):

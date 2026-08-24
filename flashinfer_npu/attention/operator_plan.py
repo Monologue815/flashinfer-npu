@@ -5,16 +5,16 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol, runtime_checkable
+from typing import Any, Mapping, Optional, Protocol, runtime_checkable
 
-from flashinfer_npu.runtime import SchemaError
+from flashinfer_npu.runtime import Backend, SchemaError
 
 from .dispatch import AttentionDispatchReceipt
 from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
 
 
-ATTENTION_OPERATOR_PLAN_VERSION = 1
+ATTENTION_OPERATOR_PLAN_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -103,6 +103,7 @@ class AttentionOperatorActivePlan:
     dispatch_receipt: AttentionDispatchReceipt
     provider_selection: AttentionOperatorProviderSelection
     prepared_plan: AttentionPreparedOperatorPlan
+    jit_plan_binding_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_PLAN_VERSION
 
     def __post_init__(self) -> None:
@@ -145,6 +146,18 @@ class AttentionOperatorActivePlan:
             or prepared.framework_plan_generation != plan.generation
         ):
             raise SchemaError("prepared operator plan identity is stale")
+        if receipt.backend == Backend.ASCENDC_JIT:
+            value = self.jit_plan_binding_fingerprint
+            if value is None or len(value) != 64 or any(
+                item not in "0123456789abcdef" for item in value
+            ):
+                raise SchemaError(
+                    "ascendc_jit active plan requires a JIT binding fingerprint"
+                )
+        elif self.jit_plan_binding_fingerprint is not None:
+            raise SchemaError(
+                "non-JIT active plan cannot contain a JIT binding fingerprint"
+            )
 
     @property
     def fingerprint(self) -> str:
@@ -156,6 +169,7 @@ class AttentionOperatorActivePlan:
                 "dispatch_receipt_fingerprint": self.dispatch_receipt.fingerprint,
                 "provider_selection_fingerprint": self.provider_selection.fingerprint,
                 "prepared_plan_fingerprint": self.prepared_plan.fingerprint,
+                "jit_plan_binding_fingerprint": self.jit_plan_binding_fingerprint,
             }
         )
 
@@ -182,6 +196,7 @@ class AttentionOperatorPlanSession:
         framework_plan: AttentionFrameworkPlan,
         receipt: AttentionDispatchReceipt,
         selection: AttentionOperatorProviderSelection,
+        jit_plan_binding_fingerprint: Optional[str] = None,
     ) -> None:
         """Prepare then publish; a failed re-plan preserves the previous state."""
 
@@ -197,6 +212,7 @@ class AttentionOperatorPlanSession:
             dispatch_receipt=receipt,
             provider_selection=selection,
             prepared_plan=prepared,
+            jit_plan_binding_fingerprint=jit_plan_binding_fingerprint,
         )
         self._active_plan = candidate
 
