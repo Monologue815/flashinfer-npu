@@ -35,6 +35,7 @@ def bootstrap_components(*, package_version="1.0.0", gate_reasons=()):
     gate = FakePlanGate(events, gate_reasons)
     profile = functional_profile()
     materializer = FakeTensorMaterializer(events)
+    tensor_metadata_inspector = FakeTensorMetadataInspector()
     quantization_binding = AttentionOperatorQuantizationBinding(
         provider_id="cann",
         operation_id=operation.operation_id,
@@ -61,6 +62,7 @@ def bootstrap_components(*, package_version="1.0.0", gate_reasons=()):
         logical_run_adapter=FakeLogicalRunAdapter(),
         tensor_materializer=materializer,
         quantization_bindings=(quantization_binding,),
+        tensor_metadata_inspector=tensor_metadata_inspector,
     )
     return {
         "events": events,
@@ -69,12 +71,27 @@ def bootstrap_components(*, package_version="1.0.0", gate_reasons=()):
         "loader": loader,
         "gate": gate,
         "materializer": materializer,
+        "tensor_metadata_inspector": tensor_metadata_inspector,
         "spec": spec,
     }
 
 
 class ForeignPlanGate(FakePlanGate):
     provider_id = "flash_attention_npu"
+
+
+class FakeTensorMetadataInspector:
+    """Strict metadata-only inspector used by synthetic package fixtures."""
+
+    def __init__(self):
+        self.calls = []
+
+    def to_view(self, tensor, *, name, writable=False):
+        self.calls.append((tensor, name, writable))
+        view = getattr(tensor, "tensor_view", None)
+        if view is None:
+            raise SchemaError("synthetic tensor has no TensorView metadata")
+        return view
 
 
 class OperatorRuntimeBootstrapCheckpoint(unittest.TestCase):
@@ -176,6 +193,7 @@ class OperatorRuntimeBootstrapCheckpoint(unittest.TestCase):
             logical_run_adapter=spec.logical_run_adapter,
             tensor_materializer=spec.tensor_materializer,
             quantization_bindings=spec.quantization_bindings,
+            tensor_metadata_inspector=spec.tensor_metadata_inspector,
         )
 
         with self.assertRaisesRegex(SchemaError, "providers differ"):

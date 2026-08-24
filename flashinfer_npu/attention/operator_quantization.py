@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, replace
-from typing import Any, Mapping, Sequence, Tuple
+from typing import Any, Mapping, Protocol, Sequence, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import QuantSpec, SchemaError
 
@@ -26,6 +26,16 @@ from .operator_run import (
     AttentionOperatorRunRequest,
 )
 from .planner import AttentionFrameworkPlan
+from .schema import (
+    MixedPagedKVMetadata,
+    PagedKVCacheSpec,
+    PagedKVMetadata,
+    PagedPrefillMetadata,
+    RaggedKVCacheSpec,
+    RaggedKVMetadata,
+    SingleAttentionMetadata,
+)
+from .tensor_contract import KVCacheView, QuantizedTensorView, TensorView
 
 
 ATTENTION_OPERATOR_QUANTIZATION_VERSION = 1
@@ -203,6 +213,152 @@ class AttentionOperatorQuantizedKVInput:
             )
 
 
+@runtime_checkable
+class AttentionOperatorTensorMetadataInspector(Protocol):
+    """Read an opaque provider tensor as a framework ``TensorView``.
+
+    Implementations may inspect shape/stride/dtype/device/storage metadata only;
+    importing an operator package, allocating a tensor, or touching device data
+    is outside this protocol.
+    """
+
+    def to_view(
+        self, tensor: Any, *, name: str, writable: bool = False
+    ) -> TensorView:
+        """Return a non-copying metadata view for ``tensor``."""
+
+
+def _inspect_quant_component(
+    inspector: AttentionOperatorTensorMetadataInspector,
+    value: Any,
+    name: str,
+) -> TensorView:
+    view = inspector.to_view(value, name=name, writable=False)
+    if not isinstance(view, TensorView):
+        raise TypeError("tensor metadata inspector must return TensorView")
+    if not view.is_contiguous:
+        raise SchemaError("%s must be contiguous for provider lowering" % name)
+    return view
+
+
+def _quantized_kv_cache_spec(
+    plan: AttentionFrameworkPlan,
+    key_storage: TensorView,
+    expected_device: str,
+):
+    spec = plan.spec
+    metadata = plan.metadata
+    quant_spec = spec.kv_quant_spec
+    if quant_spec is None:
+        raise SchemaError("quantized KV metadata validation requires a quantized plan")
+    common = {
+        "num_kv_heads": spec.num_kv_heads,
+        "head_dim_qk": spec.head_dim_qk,
+        "head_dim_vo": int(spec.head_dim_vo),
+        "dtype": str(spec.kv_dtype),
+        "layout": spec.kv_layout,
+        "device": str(expected_device),
+        "quant_spec": quant_spec,
+    }
+    if isinstance(
+        metadata,
+        (PagedKVMetadata, PagedPrefillMetadata, MixedPagedKVMetadata),
+    ):
+        if quant_spec.physical_layout != "logical":
+            raise SchemaError(
+                "provider tensor metadata validation requires an explicit "
+                "non-logical physical layout descriptor"
+            )
+        if not key_storage.shape:
+            raise SchemaError("kv.key.storage must expose a page dimension")
+        paged = (
+            metadata.paged_kv
+            if isinstance(metadata, PagedPrefillMetadata)
+            else metadata
+        )
+        if key_storage.shape[0] <= paged.max_page_index:
+            raise SchemaError(
+                "quantized KV storage does not contain every referenced page"
+            )
+        return PagedKVCacheSpec(
+            num_pages=key_storage.shape[0],
+            page_size=paged.page_size,
+            structure="separate",
+            **common,
+        )
+    if isinstance(metadata, RaggedKVMetadata):
+        total_kv_tokens = metadata.total_kv_tokens
+    elif isinstance(metadata, SingleAttentionMetadata):
+        total_kv_tokens = metadata.kv_len
+    else:  # guarded by the framework plan schema; retained for future modes
+        raise SchemaError("unsupported metadata for quantized provider KV validation")
+    return RaggedKVCacheSpec(total_kv_tokens=total_kv_tokens, **common)
+
+
+def inspect_attention_operator_quantized_kv_input(
+    plan: AttentionFrameworkPlan,
+    value: AttentionOperatorQuantizedKVInput,
+    inspector: AttentionOperatorTensorMetadataInspector,
+    expected_device: str,
+) -> KVCacheView:
+    """Validate opaque quantized K/V tensors against one active logical plan."""
+
+    if not isinstance(plan, AttentionFrameworkPlan):
+        raise TypeError("plan must be AttentionFrameworkPlan")
+    if not isinstance(value, AttentionOperatorQuantizedKVInput):
+        raise TypeError("value must be AttentionOperatorQuantizedKVInput")
+    if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+        raise TypeError(
+            "inspector must implement AttentionOperatorTensorMetadataInspector"
+        )
+    if not str(expected_device):
+        raise SchemaError("expected provider tensor device must be non-empty")
+    quant_spec = plan.spec.kv_quant_spec
+    if quant_spec is None or value.quant_spec.fingerprint != quant_spec.fingerprint:
+        raise SchemaError("quantized KV input does not match the active QuantSpec")
+
+    components = {
+        "key_storage": _inspect_quant_component(
+            inspector, value.key_storage, "kv.key.storage"
+        ),
+        "value_storage": _inspect_quant_component(
+            inspector, value.value_storage, "kv.value.storage"
+        ),
+        "key_scale": _inspect_quant_component(
+            inspector, value.key_scale, "kv.key.scale"
+        ),
+        "value_scale": _inspect_quant_component(
+            inspector, value.value_scale, "kv.value.scale"
+        ),
+    }
+    if value.key_zero_point is not None:
+        components["key_zero_point"] = _inspect_quant_component(
+            inspector, value.key_zero_point, "kv.key.zero_point"
+        )
+        components["value_zero_point"] = _inspect_quant_component(
+            inspector, value.value_zero_point, "kv.value.zero_point"
+        )
+    cache_spec = _quantized_kv_cache_spec(
+        plan, components["key_storage"], str(expected_device)
+    )
+    key_shape, value_shape = cache_spec.expected_shapes
+    key = QuantizedTensorView(
+        logical_shape=key_shape,
+        storage=components["key_storage"],
+        scale=components["key_scale"],
+        zero_point=components.get("key_zero_point"),
+        quant_spec=quant_spec,
+    )
+    val = QuantizedTensorView(
+        logical_shape=value_shape,
+        storage=components["value_storage"],
+        scale=components["value_scale"],
+        zero_point=components.get("value_zero_point"),
+        quant_spec=quant_spec,
+    )
+    return KVCacheView(cache_spec, key, val)
+
+
 def validate_attention_operator_quantization_bindings(
     operation: AttentionOperatorOperationSpec,
     profiles: Sequence[AttentionBackendCapabilityProfile],
@@ -334,6 +490,8 @@ class AttentionOperatorQuantizationRunAdapter:
         base_adapter: AttentionOperatorRunAdapter,
         operation: AttentionOperatorOperationSpec,
         bindings: Sequence[AttentionOperatorQuantizationBinding],
+        tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+        expected_device: str,
     ) -> None:
         if not isinstance(base_adapter, AttentionOperatorRunAdapter):
             raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
@@ -341,6 +499,15 @@ class AttentionOperatorQuantizationRunAdapter:
             raise TypeError("operation must be AttentionOperatorOperationSpec")
         if base_adapter.provider_id != operation.provider_id:
             raise SchemaError("quantization run adapter providers differ")
+        if not isinstance(
+            tensor_metadata_inspector, AttentionOperatorTensorMetadataInspector
+        ):
+            raise TypeError(
+                "tensor_metadata_inspector must implement "
+                "AttentionOperatorTensorMetadataInspector"
+            )
+        if not str(expected_device):
+            raise SchemaError("quantization run expected_device must be non-empty")
         values = tuple(bindings)
         if any(
             not isinstance(item, AttentionOperatorQuantizationBinding)
@@ -362,6 +529,8 @@ class AttentionOperatorQuantizationRunAdapter:
         self._bindings = {
             item.quant_spec.fingerprint: item for item in values
         }
+        self._tensor_metadata_inspector = tensor_metadata_inspector
+        self._expected_device = str(expected_device)
 
     def lower(
         self,
@@ -385,6 +554,12 @@ class AttentionOperatorQuantizationRunAdapter:
             )
         if kv_input.quant_spec.fingerprint != quant_spec.fingerprint:
             raise SchemaError("quantized KV input does not match the active QuantSpec")
+        inspect_attention_operator_quantized_kv_input(
+            active_plan.framework_plan,
+            kv_input,
+            self._tensor_metadata_inspector,
+            self._expected_device,
+        )
         for field_name, policy in (
             ("k_scale", binding.runtime_k_scale_policy),
             ("v_scale", binding.runtime_v_scale_policy),
@@ -429,12 +604,65 @@ class AttentionOperatorQuantizationRunAdapter:
         )
 
 
+class AttentionOperatorQuantizationRunAdapterFactory:
+    """Attach quantized tensor validation after device resolution."""
+
+    def __init__(
+        self,
+        operation: AttentionOperatorOperationSpec,
+        bindings: Sequence[AttentionOperatorQuantizationBinding],
+        tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+    ) -> None:
+        if not isinstance(operation, AttentionOperatorOperationSpec):
+            raise TypeError("operation must be AttentionOperatorOperationSpec")
+        values = tuple(bindings)
+        if not values or any(
+            not isinstance(item, AttentionOperatorQuantizationBinding)
+            for item in values
+        ):
+            raise TypeError("bindings must contain quantization bindings")
+        if any(
+            item.provider_id != operation.provider_id
+            or item.operation_id != operation.operation_id
+            for item in values
+        ):
+            raise SchemaError("quantization run factory binding identity differs")
+        if not isinstance(
+            tensor_metadata_inspector, AttentionOperatorTensorMetadataInspector
+        ):
+            raise TypeError(
+                "tensor_metadata_inspector must implement "
+                "AttentionOperatorTensorMetadataInspector"
+            )
+        self.provider_id = operation.provider_id
+        self.operation_id = operation.operation_id
+        self._operation = operation
+        self._bindings = values
+        self._tensor_metadata_inspector = tensor_metadata_inspector
+
+    def build(
+        self, base_adapter: AttentionOperatorRunAdapter, device: str
+    ) -> AttentionOperatorRunAdapter:
+        if not isinstance(base_adapter, AttentionOperatorRunAdapter):
+            raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
+        return AttentionOperatorQuantizationRunAdapter(
+            base_adapter,
+            self._operation,
+            self._bindings,
+            self._tensor_metadata_inspector,
+            str(device),
+        )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "AttentionOperatorQuantArgumentBinding",
     "AttentionOperatorQuantizationBinding",
     "AttentionOperatorQuantizationPlanGate",
     "AttentionOperatorQuantizationRunAdapter",
+    "AttentionOperatorQuantizationRunAdapterFactory",
     "AttentionOperatorQuantizedKVInput",
+    "AttentionOperatorTensorMetadataInspector",
+    "inspect_attention_operator_quantized_kv_input",
     "validate_attention_operator_quantization_bindings",
 ]

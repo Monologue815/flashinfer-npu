@@ -45,7 +45,8 @@ from .operator_plan import AttentionOperatorPlanFactory
 from .operator_quantization import (
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizationPlanGate,
-    AttentionOperatorQuantizationRunAdapter,
+    AttentionOperatorQuantizationRunAdapterFactory,
+    AttentionOperatorTensorMetadataInspector,
     validate_attention_operator_quantization_bindings,
 )
 from .operator_resolver import (
@@ -75,6 +76,9 @@ class AttentionOperatorPackageRuntimeSpec:
     logical_run_adapter: AttentionOperatorRunAdapter
     tensor_materializer: AttentionOperatorTensorMaterializer
     quantization_bindings: Tuple[AttentionOperatorQuantizationBinding, ...] = ()
+    tensor_metadata_inspector: Optional[
+        AttentionOperatorTensorMetadataInspector
+    ] = None
     backend: Union[str, Backend] = "auto"
     tuned_kernel_ids: Tuple[str, ...] = ()
     numerics_policy: AttentionNumericsPolicy = DEFAULT_ATTENTION_NUMERICS_POLICY
@@ -134,6 +138,18 @@ class AttentionOperatorPackageRuntimeSpec:
         ):
             raise TypeError(
                 "bootstrap quantization_bindings must contain quantization bindings"
+            )
+        if quantization_bindings and self.tensor_metadata_inspector is None:
+            raise SchemaError(
+                "bootstrap quantization bindings require a tensor metadata inspector"
+            )
+        if self.tensor_metadata_inspector is not None and not isinstance(
+            self.tensor_metadata_inspector,
+            AttentionOperatorTensorMetadataInspector,
+        ):
+            raise TypeError(
+                "tensor_metadata_inspector must implement "
+                "AttentionOperatorTensorMetadataInspector"
             )
         if not isinstance(self.numerics_policy, AttentionNumericsPolicy):
             raise TypeError("bootstrap numerics_policy must be AttentionNumericsPolicy")
@@ -195,8 +211,14 @@ def build_attention_operator_package_runtime(
     plan_gate = AttentionOperatorQuantizationPlanGate(
         spec.plan_gate, operation, quantization_bindings
     )
-    run_adapter = AttentionOperatorQuantizationRunAdapter(
-        spec.logical_run_adapter, operation, quantization_bindings
+    run_adapter_factory = (
+        AttentionOperatorQuantizationRunAdapterFactory(
+            operation,
+            quantization_bindings,
+            spec.tensor_metadata_inspector,
+        )
+        if quantization_bindings
+        else None
     )
     compatibility = AttentionOperatorPackageCompatibility(
         provider_id=operation.provider_id,
@@ -225,8 +247,9 @@ def build_attention_operator_package_runtime(
         plan_gate=plan_gate,
         authority_resolver=authority_resolver,
         logical_factory=spec.logical_factory,
-        logical_run_adapter=run_adapter,
+        logical_run_adapter=spec.logical_run_adapter,
         tensor_materializer=spec.tensor_materializer,
+        run_adapter_factory=run_adapter_factory,
     )
 
 

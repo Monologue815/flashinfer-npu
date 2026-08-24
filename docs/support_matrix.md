@@ -41,6 +41,7 @@ checks. Absence from the table means unverified, not implicitly supported.
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 461 Host tests through checkpoint 023: atomic process-bootstrap registry snapshots, generation compare-and-swap, future-wrapper-only integration swaps and unchanged provider-free public plan/run signatures; injected fake resolver only, default registry empty, no NPU package/runtime used |
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 469 Host tests through checkpoint 024: exact capability QuantSpec-to-catalog argument closure, independent K/V scale and asymmetric zero-point sources, explicit runtime scale policy and composed plan gate; synthetic bindings only, real provider quant gates remain closed, no NPU package/runtime used |
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 477 Host tests through checkpoint 025: generic quantized provider KV input, exact active-plan binding, storage unwrap, independent scale/zero-point and explicit runtime multiplier injection, collision protection and non-executing lowering; synthetic objects only, real provider quant gates remain closed, no NPU package/runtime used |
+| 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 485 Host tests through checkpoint 026: injected metadata-only tensor inspection before provider lowering, exact dtype/shape/contiguous-stride/device/page-capacity/zero-point/alias validation through TensorView, QuantizedTensorView and KVCacheView; synthetic views only, no NPU package/runtime/operator used |
 
 ## Remote framework checks
 
@@ -55,6 +56,7 @@ checks. Absence from the table means unverified, not implicitly supported.
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 023 isolated wheel, 8/8 atomic registry snapshot, generation compare-and-swap, future-wrapper isolation and provider-free public signature tests with a fake resolver; no package probe, CANN environment load, NPU query, external Attention package import or operator call |
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 024 isolated wheel, 8/8 exact capability QuantSpec-to-catalog argument closure, independent scale/zero-point source, runtime scale policy and composed plan-gate tests with synthetic bindings; real provider quant gates remain closed, no package import, NPU query or operator call |
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 025 isolated wheel, 8/8 generic quantized KV input, storage unwrap, independent bound scale/zero-point/runtime multiplier injection, collision protection and plan-materialization reuse tests with opaque Python objects; callable not executed, no NPU package/runtime used |
+| 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 026 isolated wheel, matching SHA-256 inputs and 8/8 metadata-only quantized provider KV validation tests for dtype/shape/contiguous stride/exact device/page capacity/zero-point/alias gates; forbidden module set empty, no torch_npu/flash_attn import, package callable or Attention operator execution |
 
 Verified Host quantized KV storage contracts are `int8`, `uint8`,
 `int4_packed`, and `uint4_packed` with `physical_layout="logical"`. This is

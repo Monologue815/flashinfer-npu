@@ -7,7 +7,12 @@ from flashinfer_npu.attention import (
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizedKVInput,
     AttentionOperatorWrapperSession,
+    TensorView,
     build_attention_operator_package_runtime,
+    contiguous_strides,
+    dtype_itemsize,
+    infer_quant_scale_shape,
+    infer_quant_storage_shape,
 )
 from flashinfer_npu.runtime import SchemaError
 from tests.test_attention_capability import group_plan
@@ -39,13 +44,58 @@ def active_session(values, *, spec=None, catalog=None):
     return plan, session
 
 
+class MetadataTensor:
+    def __init__(self, tensor_view):
+        self.tensor_view = tensor_view
+
+
+def metadata_tensor(name, shape, dtype, *, device="npu:0", strides=None):
+    shape = tuple(shape)
+    numel = 1
+    for dim in shape:
+        numel *= dim
+    return MetadataTensor(
+        TensorView(
+            shape=shape,
+            strides=contiguous_strides(shape) if strides is None else tuple(strides),
+            dtype=dtype,
+            device=device,
+            storage_id="checkpoint-025:" + name,
+            storage_nbytes=numel * dtype_itemsize(dtype),
+        )
+    )
+
+
 def quantized_input(quant_spec, **overrides):
+    key_shape = (2, 2, 1, 3)
+    value_shape = (2, 2, 1, 2)
+    storage_dtype = (
+        "uint8"
+        if quant_spec.storage_dtype in {"int4_packed", "uint4_packed"}
+        else quant_spec.storage_dtype
+    )
     values = {
         "quant_spec": quant_spec,
-        "key_storage": object(),
-        "value_storage": object(),
-        "key_scale": object(),
-        "value_scale": object(),
+        "key_storage": metadata_tensor(
+            "key-storage",
+            infer_quant_storage_shape(key_shape, quant_spec),
+            storage_dtype,
+        ),
+        "value_storage": metadata_tensor(
+            "value-storage",
+            infer_quant_storage_shape(value_shape, quant_spec),
+            storage_dtype,
+        ),
+        "key_scale": metadata_tensor(
+            "key-scale",
+            infer_quant_scale_shape(key_shape, quant_spec),
+            quant_spec.scale_dtype,
+        ),
+        "value_scale": metadata_tensor(
+            "value-scale",
+            infer_quant_scale_shape(value_shape, quant_spec),
+            quant_spec.scale_dtype,
+        ),
     }
     values.update(overrides)
     return AttentionOperatorQuantizedKVInput(**values)

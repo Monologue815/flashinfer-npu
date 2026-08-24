@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Protocol, Sequence, Tuple, runtime_checkable
+from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import SchemaError
 
@@ -31,7 +31,10 @@ from .operator_provider import (
     AttentionOperatorProviderSelection,
 )
 from .operator_resolver import AttentionResolvedOperatorRuntime
-from .operator_run import AttentionOperatorRunAdapter
+from .operator_run import (
+    AttentionOperatorRunAdapter,
+    AttentionOperatorRunAdapterFactory,
+)
 from .planner import AttentionFrameworkPlan
 
 
@@ -165,6 +168,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         logical_factory: AttentionOperatorPlanFactory,
         logical_run_adapter: AttentionOperatorRunAdapter,
         tensor_materializer: AttentionOperatorTensorMaterializer,
+        run_adapter_factory: Optional[AttentionOperatorRunAdapterFactory] = None,
     ) -> None:
         if not isinstance(priority, int) or isinstance(priority, bool):
             raise SchemaError("package runtime priority must be an integer")
@@ -190,6 +194,13 @@ class AttentionOperatorPackageRuntimeImplementation:
                 "tensor_materializer must implement "
                 "AttentionOperatorTensorMaterializer"
             )
+        if run_adapter_factory is not None and not isinstance(
+            run_adapter_factory, AttentionOperatorRunAdapterFactory
+        ):
+            raise TypeError(
+                "run_adapter_factory must implement "
+                "AttentionOperatorRunAdapterFactory"
+            )
         operation = package_resolver.operation
         identities = (
             (plan_gate.provider_id, plan_gate.operation_id),
@@ -207,6 +218,11 @@ class AttentionOperatorPackageRuntimeImplementation:
             or tensor_materializer.provider_id != operation.provider_id
         ):
             raise SchemaError("package runtime provider components differ")
+        if run_adapter_factory is not None and (
+            run_adapter_factory.provider_id != operation.provider_id
+            or run_adapter_factory.operation_id != operation.operation_id
+        ):
+            raise SchemaError("package runtime run adapter factory differs")
         self.provider_id = operation.provider_id
         self.operation_id = operation.operation_id
         self.priority = priority
@@ -216,6 +232,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         self._logical_factory = logical_factory
         self._logical_run_adapter = logical_run_adapter
         self._tensor_materializer = tensor_materializer
+        self._run_adapter_factory = run_adapter_factory
 
     def rejection_reasons(
         self, plan: AttentionFrameworkPlan, device: str
@@ -289,6 +306,10 @@ class AttentionOperatorPackageRuntimeImplementation:
         run_adapter = AttentionMaterializingRunAdapter(
             self._logical_run_adapter
         )
+        if self._run_adapter_factory is not None:
+            run_adapter = self._run_adapter_factory.build(
+                run_adapter, str(device)
+            )
         return AttentionResolvedOperatorRuntime(
             framework_plan_fingerprint=plan.fingerprint,
             factory=factory,

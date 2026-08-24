@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 025，已将量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 026，已将量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -704,10 +704,39 @@ zero-point，并携带 exact `QuantSpec`。
 6. 注入参数不得覆盖 base lowering 已产生的 provider keyword；
 7. 最终 call 继续由 operation binding 校验，整个过程只产生 call description，不执行 callable。
 
-量化 wrapper 只检查 provider-independent 的存在性与语义身份；tensor dtype/shape/stride/device、
-physical layout 和 allocator/stream 生命周期仍由后续真实 Torch/NPU adapter 与既有 tensor/
-capability contracts 验证。现有真实 provider gate 仍未开启量化能力。
+025 的 wrapper 只检查 provider-independent 的存在性与语义身份；tensor metadata 安全边界由
+026 补齐。physical layout converter 和 allocator/stream 生命周期仍留给后续检查点。现有真实
+provider gate 仍未开启量化能力。
 
 025 的 8 项增量测试验证 symmetric/asymmetric input、storage 解包、独立 scale 注入、普通/漂移
 QuantSpec 拒绝、runtime scale reject/argument 两种策略、keyword collision、plan materialization
 复用与零 callable execution。全量 477 项 Host 测试通过；未使用 NPU runtime 或算子。
+
+## 29. 检查点 026：量化 provider tensor metadata validation
+
+025 的 opaque tensor 可以被正确解包，但仅凭对象存在不能证明 provider 接收到的实际 storage、
+scale 和 zero-point 与 active plan 一致。026 新增可注入的
+`AttentionOperatorTensorMetadataInspector`；其唯一能力是把 opaque tensor 读取为既有
+`TensorView`，不拥有 package import、tensor allocation、device data access 或 operator call。
+
+bootstrap 对所有量化 binding 强制要求 inspector。runtime 先完成 provider/device 选择，再通过
+`AttentionOperatorQuantizationRunAdapterFactory` 把校验 adapter 包在 materialization adapter
+之外，因此 run-time 校验可以使用精确设备实例（例如 `npu:0`），同时 provider logical adapter
+仍只看到原有 opaque plan state。
+
+校验流程复用既有 `TensorView -> QuantizedTensorView -> KVCacheView` 契约：
+
+1. inspector 只读取 K/V storage、scale 和可选 zero-point 的 metadata；
+2. 每个 component 必须是无内部重叠的 contiguous view，且 storage 范围有效；
+3. storage dtype/physical shape、scale dtype/shape 和 zero-point int32/shape 必须匹配 exact
+   `QuantSpec`；
+4. K/V component 必须共享 active runtime 的精确 device，且 component/KV storage 不得别名；
+5. paged KV 的实际 page 数从 logical physical storage metadata 推导，并必须覆盖 plan 引用的
+   最大 page index；ragged/single KV token 数必须与 plan metadata 完全一致；
+6. 所有校验成功后才允许 base provider lowering 与 quant argument 注入。
+
+当前 provider metadata 路径只授权 `physical_layout="logical"`；非 logical layout 必须在后续由
+provider 声明并绑定精确 `QuantPhysicalLayoutDescriptor`，不能依靠猜测放行。026 的 8 项增量
+测试覆盖合法 lowering、dtype/shape/page capacity、scale、asymmetric zero-point、stride、精确
+device、alias、inspector bootstrap/output 门禁。全量 485 项 Host 测试通过；没有导入或调用
+NPU package/runtime/operator。

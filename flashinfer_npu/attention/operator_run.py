@@ -239,6 +239,19 @@ class AttentionOperatorRunAdapter(Protocol):
         """Lower a run using only the already selected active implementation."""
 
 
+@runtime_checkable
+class AttentionOperatorRunAdapterFactory(Protocol):
+    """Late-bind a run adapter to the device selected for one wrapper."""
+
+    provider_id: str
+    operation_id: str
+
+    def build(
+        self, base_adapter: AttentionOperatorRunAdapter, device: str
+    ) -> AttentionOperatorRunAdapter:
+        """Decorate ``base_adapter`` without importing or executing an operator."""
+
+
 def lower_attention_operator_run(
     adapter: AttentionOperatorRunAdapter,
     active_plan: AttentionOperatorActivePlan,
@@ -468,6 +481,7 @@ __all__ = [
     "ATTENTION_OPERATOR_RUN_VERSION",
     "AttentionLoweredOperatorCall",
     "AttentionOperatorRunAdapter",
+    "AttentionOperatorRunAdapterFactory",
     "AttentionOperatorRunRequest",
     "AttentionOperatorWrapperSession",
     "lower_attention_operator_run",
