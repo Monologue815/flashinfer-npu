@@ -1,7 +1,7 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 017，已将可解释的自动选择、plan-time provider tensor 物化与受 runtime identity
-> 保护的 injected callable executor 收入公共 `BatchAttention` 生命周期，
+> 状态：检查点 018，已将可解释的自动选择、plan-time provider tensor 物化、受 runtime identity
+> 保护的 callable execution 与惰性外部 package resolution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
 
@@ -482,3 +482,38 @@ runtime binding 失败仍发生在 `commit_prepared_plan()` 之前，因此重�
 已有的 framework plan、operator session 与 executable。017 的 5 项增量测试和 418 项
 全量测试仅使用注入的 Python fake callable；没有导入或调用 CANN、torch_npu、
 flash-attention-npu 或 NPU runtime。
+
+## 21. 检查点 018：惰性外部 package 与 callable resolution
+
+017 从一个已经注入的 callable 开始，尚未定义真实 package integration 如何安全地产生
+该对象。018 增加 `AttentionOperatorPackageResolver`，将过程分成两个明确阶段：
+
+```text
+metadata stage
+  -> 查询 distribution version（不 import package）
+  -> 对照 adapter 明确声明的 exact supported versions
+
+callable stage（仅 metadata accepted 后）
+  -> 解析 catalog 中的 exact callable path
+  -> inspect 实际 signature
+  -> provider probe + observation + callable binding
+  -> 产生未绑定、未执行的 AttentionInjectedCallableExecutor
+```
+
+`AttentionOperatorPackageCompatibility` 的 package version 集合属于 adapter 声明，不能
+用 operation 的 API version 猜测，也不能使用宽泛的“版本大于某值”替代已验证组合。
+package 可安装、可 import 仍不等于 plan capability：018 不创建 dispatch receipt、不发布
+capability profile，也不把 resolver 放进默认 NPU registry。完整执行仍必须依次经过
+capability/evidence dispatch、provider selection、provider prepare 和 017 的最终 runtime
+binding。
+
+框架提供通用 `ImportlibAttentionOperatorPackageLoader`，但不会默认实例化或注册它。
+`package_version()` 只读取 Python distribution metadata；`resolve_callable()` 仅解析受信任
+operation catalog 的 module path，并且从不调用 callable。实际 CANN 与
+flash-attention-npu integration 后续必须显式提供 compatibility、tensor materializer、
+capability evidence 与 runtime implementation。
+
+018 的 8 项增量测试覆盖：构造零副作用、metadata-only explain、缺包、未授权版本、
+非 callable、签名漂移、成功产生未绑定 executor 以及显式 importlib path 解析。全量
+426 项测试通过；除 Python 标准库解析测试外全部使用 fake loader，没有导入任何 NPU
+package、初始化设备或调用 Attention 算子。

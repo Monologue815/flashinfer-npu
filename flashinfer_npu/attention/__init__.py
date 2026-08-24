@@ -367,6 +367,16 @@ from .operator_execution import (
     AttentionOperatorExecutionReceipt,
     AttentionRuntimeBindingAwareExecutor,
 )
+from .operator_package import (
+    ATTENTION_OPERATOR_PACKAGE_VERSION,
+    AttentionOperatorPackageCompatibility,
+    AttentionOperatorPackageLoader,
+    AttentionOperatorPackageResolutionError,
+    AttentionOperatorPackageResolutionReport,
+    AttentionOperatorPackageResolver,
+    AttentionResolvedOperatorPackage,
+    ImportlibAttentionOperatorPackageLoader,
+)
 from .operator_materialization import (
     ATTENTION_OPERATOR_MATERIALIZATION_VERSION,
     AttentionMaterializedOperatorPlanState,
@@ -437,6 +447,7 @@ __all__ = [
     "ATTENTION_PROVIDER_ADAPTER_VERSION",
     "ATTENTION_OPERATOR_RESOLVER_VERSION",
     "ATTENTION_OPERATOR_EXECUTION_VERSION",
+    "ATTENTION_OPERATOR_PACKAGE_VERSION",
     "ATTENTION_OPERATOR_MATERIALIZATION_VERSION",
     "ATTENTION_PROTOCOL_TRACE_SCHEMA_VERSION",
     "ATTENTION_MAX_TENSOR_RANK",
@@ -584,6 +595,13 @@ __all__ = [
     "AttentionInjectedCallableExecutor",
     "AttentionOperatorExecutionReceipt",
     "AttentionRuntimeBindingAwareExecutor",
+    "AttentionOperatorPackageCompatibility",
+    "AttentionOperatorPackageLoader",
+    "AttentionOperatorPackageResolutionError",
+    "AttentionOperatorPackageResolutionReport",
+    "AttentionOperatorPackageResolver",
+    "AttentionResolvedOperatorPackage",
+    "ImportlibAttentionOperatorPackageLoader",
     "AttentionMaterializedOperatorPlanState",
     "AttentionMaterializedOperatorTensor",
     "AttentionMaterializingPlanFactory",

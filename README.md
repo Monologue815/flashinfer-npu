@@ -123,6 +123,6 @@ python3 -m flashinfer_npu attention-accuracy-corpus --pretty
 python3 -m flashinfer_npu attention-protocol-validate path/to/protocol.json
 ```
 
-The current Host-only suite contains 418 tests. It validates framework
+The current Host-only suite contains 426 tests. It validates framework
 contracts and injected fake callables; passing it is not evidence of NPU
 operator correctness or performance.
