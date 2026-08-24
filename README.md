@@ -122,8 +122,10 @@ Host-only and deliberately exposes no compiler or default dynamic loader. An int
 selected `ascendc_jit` route must now produce an exact cache-hit binding during
 wrapper `plan()`, then reverify the selected artifact bytes through an injected
 reader and resolve its exact internal module symbols through an injected loader
-before package callable import. All identities are frozen into the active plan
-and revalidated by `run()` before any provider executor may be called.
+before package callable import. An injected integration binder must then bind
+the loaded module, exact package callable and executor as one private receipt.
+All identities are frozen into the active plan and revalidated by `run()` before
+any provider executor may be called.
 Untrusted trace/corpus decoding limits are specified in
 [`docs/attention_json_envelope.md`](docs/attention_json_envelope.md).
 Independent quantization-drift and future backend-error budgets are specified

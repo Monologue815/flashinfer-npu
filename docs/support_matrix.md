@@ -65,9 +65,10 @@ provenance, tensor materialization and an authorized executor.
 | Registry and cache decision | `framework` | Exact cache hit, build required or unavailable |
 | Artifact byte verification | `framework` | Injected reader, exact size and SHA-256 receipt |
 | Module and symbol resolution | `framework` | Injected loader, exact single/batch entry-point set |
+| Callable and executor binding | `framework` | Injected binder, exact module/callable/executor receipt |
 | Compiler/build provider | `planned` | No source generator or compiler invocation is installed |
 | Concrete filesystem cache | `planned` | No default cache root, lock or atomic writer is installed |
-| Callable NPU executor | `planned` | No loaded symbol is invoked |
+| Callable NPU execution | `planned` | No loaded symbol or real provider operator is invoked |
 
 ## Explicit non-claims
 

@@ -36,6 +36,7 @@ from flashinfer_npu.jit import (
     MissingJITCacheError,
 )
 from flashinfer_npu.jit.attention import (
+    AttentionJitExecutorBinding,
     ConfiguredAttentionJitArtifactResolver,
     ConfiguredAttentionJitModuleResolver,
     ConfiguredAttentionJitPlanResolver,
@@ -228,6 +229,32 @@ def callable_authority(plan, receipt, provider_id, operation_id):
     return selection, bind_attention_operator_callable(probe, operation, observed)
 
 
+class SyntheticJitExecutorBinder:
+    binder_id = "checkpoint031.synthetic"
+    binder_version = "1"
+
+    def __init__(self, provider_id, operation_id, events=None):
+        self.provider_id = provider_id
+        self.operation_id = operation_id
+        self.events = events
+        self.calls = []
+
+    def bind(self, module_binding, callable_binding, executor):
+        self.calls.append((module_binding, callable_binding, executor))
+        if self.events is not None:
+            self.events.append("executor_bind")
+        return AttentionJitExecutorBinding(
+            jit_module_binding_fingerprint=module_binding.fingerprint,
+            callable_binding_fingerprint=callable_binding.fingerprint,
+            provider_id=self.provider_id,
+            operation_id=self.operation_id,
+            binder_id=self.binder_id,
+            binder_version=self.binder_version,
+            executor_token="executor:%s" % module_binding.fingerprint,
+            executor=executor,
+        )
+
+
 class FakeJitAutoResolver:
     """Synthetic resolver that never compiles, loads, imports, or calls an op."""
 
@@ -243,6 +270,8 @@ class FakeJitAutoResolver:
         self.artifact_events = []
         self.module_bindings = []
         self.module_events = []
+        self.executor_bindings = []
+        self.executor_binding_mode = "exact"
         self.module_symbol_mode = "exact"
 
     def resolve(self, plan, device):
@@ -294,6 +323,19 @@ class FakeJitAutoResolver:
             FLASH_ATTENTION_NPU_V3_KVCACHE_OPERATION_ID,
             plan.generation,
         )
+        executor_binding = None
+        if module_binding is not None:
+            executor_binding = SyntheticJitExecutorBinder(
+                "flash_attention_npu",
+                FLASH_ATTENTION_NPU_V3_KVCACHE_OPERATION_ID,
+            ).bind(module_binding, callable_binding, executor)
+            if self.executor_binding_mode == "stale_callable":
+                executor_binding = replace(
+                    executor_binding,
+                    callable_binding_fingerprint=digest("stale-callable"),
+                )
+            elif self.executor_binding_mode == "missing":
+                executor_binding = None
         resolved = AttentionResolvedOperatorRuntime(
             framework_plan_fingerprint=plan.fingerprint,
             factory=FlashAttentionNpuV3PagedPlanFactory(),
@@ -305,11 +347,13 @@ class FakeJitAutoResolver:
             jit_plan_binding=binding,
             jit_artifact_binding=artifact_binding,
             jit_module_binding=module_binding,
+            jit_executor_binding=executor_binding,
         )
         self.executors.append(executor)
         self.bindings.append(binding)
         self.artifact_bindings.append(artifact_binding)
         self.module_bindings.append(module_binding)
+        self.executor_bindings.append(executor_binding)
         return resolved
 
 
@@ -428,6 +472,12 @@ def package_jit_implementation(
     module_resolver = RecordingJitModuleResolver(
         components["events"], jit_resolver, symbol_mode
     )
+    executor_binder = SyntheticJitExecutorBinder(
+        "cann",
+        fake_operation().operation_id,
+        components["events"],
+    )
+    components["jit_executor_binder"] = executor_binder
     base = components["implementation"]
     implementation = AttentionOperatorPackageRuntimeImplementation(
         priority=base.priority,
@@ -440,6 +490,7 @@ def package_jit_implementation(
         jit_plan_resolver=jit_resolver,
         jit_artifact_resolver=artifact_resolver,
         jit_module_resolver=module_resolver,
+        jit_executor_binder=executor_binder,
     )
     return (
         components,

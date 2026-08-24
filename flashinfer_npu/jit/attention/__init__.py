@@ -30,10 +30,16 @@ from .loading import (
     AttentionJitModuleResolver,
     ConfiguredAttentionJitModuleResolver,
 )
+from .execution import (
+    ATTENTION_JIT_EXECUTOR_BINDING_VERSION,
+    AttentionJitExecutorBinder,
+    AttentionJitExecutorBinding,
+)
 
 __all__ = [
     "ATTENTION_JIT_ARTIFACT_BINDING_VERSION",
     "ATTENTION_JIT_GENERATOR_ID",
+    "ATTENTION_JIT_EXECUTOR_BINDING_VERSION",
     "ATTENTION_JIT_GENERATOR_VERSION",
     "ATTENTION_JIT_MODULE_SCHEMA_VERSION",
     "ATTENTION_JIT_LOADED_MODULE_BINDING_VERSION",
@@ -41,6 +47,8 @@ __all__ = [
     "ATTENTION_JIT_VARIANT_SCHEMA_VERSION",
     "AttentionJitArtifactBinding",
     "AttentionJitArtifactResolver",
+    "AttentionJitExecutorBinder",
+    "AttentionJitExecutorBinding",
     "AttentionJitModuleSpec",
     "AttentionJitLoadedModuleBinding",
     "AttentionJitModuleResolver",
