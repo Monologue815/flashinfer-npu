@@ -14,7 +14,7 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
 
 
-ATTENTION_OPERATOR_PLAN_VERSION = 3
+ATTENTION_OPERATOR_PLAN_VERSION = 4
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -105,6 +105,7 @@ class AttentionOperatorActivePlan:
     prepared_plan: AttentionPreparedOperatorPlan
     jit_plan_binding_fingerprint: Optional[str] = None
     jit_artifact_binding_fingerprint: Optional[str] = None
+    jit_module_binding_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_PLAN_VERSION
 
     def __post_init__(self) -> None:
@@ -151,6 +152,7 @@ class AttentionOperatorActivePlan:
             values = (
                 self.jit_plan_binding_fingerprint,
                 self.jit_artifact_binding_fingerprint,
+                self.jit_module_binding_fingerprint,
             )
             if any(
                 value is None
@@ -159,11 +161,12 @@ class AttentionOperatorActivePlan:
                 for value in values
             ):
                 raise SchemaError(
-                    "ascendc_jit active plan requires JIT plan and artifact fingerprints"
+                    "ascendc_jit active plan requires JIT plan, artifact and module fingerprints"
                 )
         elif (
             self.jit_plan_binding_fingerprint is not None
             or self.jit_artifact_binding_fingerprint is not None
+            or self.jit_module_binding_fingerprint is not None
         ):
             raise SchemaError(
                 "non-JIT active plan cannot contain JIT binding fingerprints"
@@ -182,6 +185,9 @@ class AttentionOperatorActivePlan:
                 "jit_plan_binding_fingerprint": self.jit_plan_binding_fingerprint,
                 "jit_artifact_binding_fingerprint": (
                     self.jit_artifact_binding_fingerprint
+                ),
+                "jit_module_binding_fingerprint": (
+                    self.jit_module_binding_fingerprint
                 ),
             }
         )
@@ -211,6 +217,7 @@ class AttentionOperatorPlanSession:
         selection: AttentionOperatorProviderSelection,
         jit_plan_binding_fingerprint: Optional[str] = None,
         jit_artifact_binding_fingerprint: Optional[str] = None,
+        jit_module_binding_fingerprint: Optional[str] = None,
     ) -> None:
         """Prepare then publish; a failed re-plan preserves the previous state."""
 
@@ -228,6 +235,7 @@ class AttentionOperatorPlanSession:
             prepared_plan=prepared,
             jit_plan_binding_fingerprint=jit_plan_binding_fingerprint,
             jit_artifact_binding_fingerprint=jit_artifact_binding_fingerprint,
+            jit_module_binding_fingerprint=jit_module_binding_fingerprint,
         )
         self._active_plan = candidate
 

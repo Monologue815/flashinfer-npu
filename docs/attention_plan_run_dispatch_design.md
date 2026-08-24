@@ -879,3 +879,25 @@ AOT/JIT 互斥、package import 顺序、失败/成功 replan、run-time drift �
 缺失 resolver、pre-import corruption gate、plan/run 复用、失败 replan、run-time drift 与 active-plan
 fingerprint。全量 550 项 Host 测试通过。测试只使用内存 synthetic bytes；仍无 filesystem reader、
 compiler、dynamic loader、symbol resolution、外部 package import、NPU runtime 或算子执行。
+
+## 36. 检查点 033：JIT loaded module 与精确符号身份
+
+官方 FlashInfer `JitSpec` 的 lifecycle 是 `try_load/build/load/build_and_load`，operator-specific
+`load_*`/`get_*` 返回 wrapper 使用的 module。033 对齐这条责任链，但只引入私有注入协议，不提供
+默认 Ascend loader 或 build：
+
+- `JitModuleLoader` 接收 032 已验证的 cache record/artifact receipt 和 exact entry-point set；
+- `JitModuleLoadReceipt` 冻结 spec、cache record、artifact verification、artifact、loader id/version、
+  load generation 与全部 resolved symbol；opaque module 不进入 fingerprint；
+- single Attention module 要求 `run`，batch prefill/decode/mixed module 要求 `plan`、`run`；缺失、
+  多余、重复符号或 loader identity 漂移全部 fail closed；
+- package integration 顺序扩展为 authority → cache → byte verification → module/symbol resolution →
+  callable import；任一失败都不会触发后续 import；
+- v4 active plan 同时冻结 plan/artifact/module 三层 JIT fingerprint，wrapper 在最终 commit point 原子
+  发布 module binding，`run()` 在 provider lowering 前复核且不会重复加载；
+- failed replan 保留旧 framework plan、loaded module 与 executor。
+
+11 项增量测试覆盖单/批 entry points、exact receipt、缺失/多余 symbol、loader identity、cache
+disappearance、缺失 resolver、pre-import 顺序、plan/run 复用、失败 replan、run-time drift 与公共接口
+隔离。全量 561 项 Host 测试通过。测试 loader 只返回 synthetic opaque object/token；没有 filesystem
+reader、compiler、真实 dynamic loader、callable symbol、外部 package import、NPU runtime 或算子执行。

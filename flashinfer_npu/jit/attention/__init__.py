@@ -5,6 +5,7 @@ from .modules import (
     ATTENTION_JIT_GENERATOR_VERSION,
     ATTENTION_JIT_MODULE_SCHEMA_VERSION,
     AttentionJitModuleSpec,
+    attention_jit_entry_points,
     gen_attention_jit_module_spec,
     jit_environment_from_attention,
 )
@@ -23,23 +24,34 @@ from .artifacts import (
     AttentionJitArtifactResolver,
     ConfiguredAttentionJitArtifactResolver,
 )
+from .loading import (
+    ATTENTION_JIT_LOADED_MODULE_BINDING_VERSION,
+    AttentionJitLoadedModuleBinding,
+    AttentionJitModuleResolver,
+    ConfiguredAttentionJitModuleResolver,
+)
 
 __all__ = [
     "ATTENTION_JIT_ARTIFACT_BINDING_VERSION",
     "ATTENTION_JIT_GENERATOR_ID",
     "ATTENTION_JIT_GENERATOR_VERSION",
     "ATTENTION_JIT_MODULE_SCHEMA_VERSION",
+    "ATTENTION_JIT_LOADED_MODULE_BINDING_VERSION",
     "ATTENTION_JIT_PLAN_BINDING_VERSION",
     "ATTENTION_JIT_VARIANT_SCHEMA_VERSION",
     "AttentionJitArtifactBinding",
     "AttentionJitArtifactResolver",
     "AttentionJitModuleSpec",
+    "AttentionJitLoadedModuleBinding",
+    "AttentionJitModuleResolver",
     "AttentionJitPlanBinding",
     "AttentionJitPlanResolver",
     "AttentionJitVariant",
     "ConfiguredAttentionJitArtifactResolver",
+    "ConfiguredAttentionJitModuleResolver",
     "ConfiguredAttentionJitPlanResolver",
     "attention_jit_module_name",
+    "attention_jit_entry_points",
     "gen_attention_jit_module_spec",
     "jit_environment_from_attention",
     "resolve_attention_jit_plan",

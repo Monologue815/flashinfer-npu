@@ -176,12 +176,13 @@ class AttentionJitArtifactVerificationCheckpointTests(unittest.TestCase):
         self.assertNotIn("resolve_callable", components["events"])
 
     def test_corrupt_artifact_stops_before_package_import(self):
-        components, implementation, _, artifact_resolver = (
+        components, implementation, _, artifact_resolver, module_resolver = (
             package_jit_implementation(artifact_mode="corrupt")
         )
         with self.assertRaises(ArtifactVerificationError):
             implementation.resolve(framework_plan(), "npu:0")
         self.assertEqual(artifact_resolver.calls, 1)
+        self.assertEqual(module_resolver.calls, 0)
         self.assertIn("artifact_verify", components["events"])
         self.assertNotIn("resolve_callable", components["events"])
         self.assertEqual(components["loader"].resolve_calls, 0)

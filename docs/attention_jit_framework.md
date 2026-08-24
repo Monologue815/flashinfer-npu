@@ -1,7 +1,7 @@
 # Attention JIT framework contract
 
-> Status: through checkpoint 032, Host framework only. No Ascend source generation,
-> compiler invocation, artifact loading, NPU runtime initialization, or
+> Status: through checkpoint 033, Host framework only. No Ascend source generation,
+> compiler invocation, default dynamic loader, NPU runtime initialization, or
 > operator execution is implemented or claimed.
 
 ## 1. Why this package exists
@@ -32,18 +32,21 @@ flashinfer_npu/jit/
 ├── env.py                  # explicit toolchain target and compilation policy
 ├── cache.py                # verified cache identity and pure resolution
 ├── artifacts.py            # injected byte reader and verification receipt
+├── loading.py              # injected module loader and exact symbol receipt
 └── attention/
     ├── __init__.py
     ├── plan.py             # wrapper plan to exact cache-hit binding
     ├── artifacts.py        # cache hit to byte-verification binding
+    ├── loading.py          # verified artifact to loaded-module binding
     ├── modules.py          # selected plan -> AttentionJitModuleSpec
     ├── variants.py         # static Attention specialization identity
     └── utils.py            # stable generated-module naming
 ```
 
 There is intentionally no compiler, subprocess runner, file cache writer,
-dynamic loader, or NPU launcher in checkpoint 030.  Consequently the package
-does not yet expose an upstream-style `build_jit_specs()` implementation.
+default dynamic loader, or NPU launcher. Consequently the package does not yet
+expose an upstream-style `build_jit_specs()` implementation. Checkpoint 033
+adds only a loader protocol supplied by an authorized integration.
 
 ## 3. Wrapper-owned selection flow
 
@@ -200,7 +203,48 @@ Missing verifier configuration, non-byte reader results, size/digest mismatch,
 cache drift and internal binding drift all fail before package execution. A
 failed replan preserves the previously verified plan and executor.
 
-This checkpoint still has no filesystem implementation, compiler, dynamic
-library loader, symbol resolver, NPU runtime initialization or kernel call. A
-future loader checkpoint must resolve and verify the required symbols against
-this byte-verified identity before any real JIT executor is authorized.
+Checkpoint 032 itself has no filesystem implementation, compiler, dynamic
+library loader, symbol resolver, NPU runtime initialization or kernel call.
+Checkpoint 033 adds the next identity layer below; it still does not install a
+concrete loader or authorize a real JIT executor.
+
+## 10. Loaded module and exact symbol binding
+
+The upstream architecture was rechecked against official
+`flashinfer-ai/flashinfer` commit `bf6a0471c0b3387c3707c1f97b8c89cf5b5660ce`.
+Its `JitSpec` owns `try_load()`, `build()`, `load()` and `build_and_load()`;
+operator modules commonly cache `load_*`/`get_*` helpers and return the loaded
+module used by the wrapper. Checkpoint 033 preserves that responsibility chain
+without bringing CUDA implementation details into the Ascend project.
+
+The Ascend Host framework now defines:
+
+- `JitModuleLoader`, an injected integration protocol with an exact loader
+  id/version;
+- `JitModuleLoadReceipt`, binding spec, cache record, byte-verification receipt,
+  compiled artifact, load generation and the exact resolved-symbol set;
+- `JitLoadedModule`, retaining the opaque loader-owned module internally while
+  excluding it from deterministic fingerprints;
+- `AttentionJitLoadedModuleBinding`, closing the loaded receipt against the
+  wrapper-owned plan and artifact bindings;
+- `ConfiguredAttentionJitModuleResolver`, which repeats the cache identity gate,
+  invokes the injected loader and rejects missing/extra symbols or loader
+  identity drift.
+
+Single-request module recipes require exactly `run`; batch prefill, decode and
+mixed recipes require exactly `plan` and `run`, matching the FlashInfer module
+lifecycle exposed behind its wrappers. Package resolution order is now:
+
+```text
+authority -> JIT recipe/cache -> artifact bytes -> module/symbols
+          -> package callable -> provider plan -> atomic wrapper publication
+```
+
+The loaded-module fingerprint is part of the v4 active plan. Failed loading or
+replanning cannot replace a working module/executor, and `run()` revalidates the
+plan/artifact/module chain without reloading it.
+
+This still does not mean a real Ascend module can run: there is no installed
+filesystem reader, `dlopen`/CANN loader, compiler, symbol-call adapter, device
+initialization or NPU kernel. The opaque module in tests is a synthetic Python
+object and the exported symbols are non-callable tokens.

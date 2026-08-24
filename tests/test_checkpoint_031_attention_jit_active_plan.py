@@ -26,6 +26,9 @@ from flashinfer_npu.attention import (
 )
 from flashinfer_npu.jit import (
     ConfiguredJitArtifactVerifier,
+    JitLoadedModule,
+    JitModuleLoadReceipt,
+    JitResolvedSymbol,
     JitCacheIndex,
     JitCacheRecord,
     JitCompilationPolicy,
@@ -34,6 +37,7 @@ from flashinfer_npu.jit import (
 )
 from flashinfer_npu.jit.attention import (
     ConfiguredAttentionJitArtifactResolver,
+    ConfiguredAttentionJitModuleResolver,
     ConfiguredAttentionJitPlanResolver,
     gen_attention_jit_module_spec,
     resolve_attention_jit_plan,
@@ -143,6 +147,54 @@ def verified_artifact_binding(binding, cache, record, events=None, payload=None)
     return resolver.resolve(binding)
 
 
+class SyntheticModuleLoader:
+    loader_id = "checkpoint031.synthetic"
+    loader_version = "1"
+
+    def __init__(self, events=None, symbol_mode="exact"):
+        self.events = events
+        self.symbol_mode = symbol_mode
+        self.calls = []
+
+    def load(self, record, verification, required_entry_points):
+        self.calls.append((record, verification, required_entry_points))
+        if self.events is not None:
+            self.events.append("module_load")
+        names = tuple(required_entry_points)
+        if self.symbol_mode == "missing":
+            names = names[:-1]
+        elif self.symbol_mode == "extra":
+            names = names + ("unexpected",)
+        symbols = tuple(
+            JitResolvedSymbol(name, "symbol:%s" % name) for name in names
+        )
+        receipt = JitModuleLoadReceipt(
+            spec_name=record.spec_name,
+            spec_fingerprint=record.spec_fingerprint,
+            cache_record_fingerprint=record.fingerprint,
+            artifact_verification_fingerprint=verification.fingerprint,
+            artifact_fingerprint=record.artifact.fingerprint,
+            loader_id=self.loader_id,
+            loader_version=self.loader_version,
+            module_token="module:%s" % record.spec_name,
+            load_generation=1,
+            symbols=symbols,
+        )
+        return JitLoadedModule(receipt, object())
+
+
+def loaded_module_binding(
+    binding,
+    artifact_binding,
+    cache,
+    events=None,
+    symbol_mode="exact",
+):
+    loader = SyntheticModuleLoader(events, symbol_mode)
+    resolver = ConfiguredAttentionJitModuleResolver(cache, loader)
+    return resolver.resolve(binding, artifact_binding), loader
+
+
 def callable_authority(plan, receipt, provider_id, operation_id):
     operation = load_packaged_attention_operator_catalog().get(operation_id)
     probe = AttentionOperatorProviderProbe(
@@ -189,6 +241,9 @@ class FakeJitAutoResolver:
         self.bindings = []
         self.artifact_bindings = []
         self.artifact_events = []
+        self.module_bindings = []
+        self.module_events = []
+        self.module_symbol_mode = "exact"
 
     def resolve(self, plan, device):
         self.resolve_calls.append((plan, device))
@@ -213,12 +268,20 @@ class FakeJitAutoResolver:
         )
         binding = resolver.resolve(plan, receipt)
         artifact_binding = None
+        module_binding = None
         if binding.ready:
             payload = cache_payload(binding.module_spec.jit_spec)
             if self.artifact_mode == "corrupt":
                 payload = payload[:-1] + bytes([payload[-1] ^ 1])
             artifact_binding = verified_artifact_binding(
                 binding, cache, record, self.artifact_events, payload
+            )
+            module_binding, _ = loaded_module_binding(
+                binding,
+                artifact_binding,
+                cache,
+                self.module_events,
+                self.module_symbol_mode,
             )
         selection, callable_binding = callable_authority(
             plan,
@@ -241,10 +304,12 @@ class FakeJitAutoResolver:
             callable_binding=callable_binding,
             jit_plan_binding=binding,
             jit_artifact_binding=artifact_binding,
+            jit_module_binding=module_binding,
         )
         self.executors.append(executor)
         self.bindings.append(binding)
         self.artifact_bindings.append(artifact_binding)
+        self.module_bindings.append(module_binding)
         return resolved
 
 
@@ -328,7 +393,29 @@ class RecordingJitArtifactResolver:
         )
 
 
-def package_jit_implementation(cache_mode="hit", artifact_mode="valid"):
+class RecordingJitModuleResolver:
+    def __init__(self, events, jit_resolver, symbol_mode="exact"):
+        self.events = events
+        self.jit_resolver = jit_resolver
+        self.symbol_mode = symbol_mode
+        self.calls = 0
+        self.loader = None
+
+    def resolve(self, plan_binding, artifact_binding):
+        self.calls += 1
+        result, self.loader = loaded_module_binding(
+            plan_binding,
+            artifact_binding,
+            self.jit_resolver.cache,
+            self.events,
+            self.symbol_mode,
+        )
+        return result
+
+
+def package_jit_implementation(
+    cache_mode="hit", artifact_mode="valid", symbol_mode="exact"
+):
     components = build_components()
     environment = runtime_environment()
     authority = FakeJitAuthorityResolver(components["events"], environment)
@@ -337,6 +424,9 @@ def package_jit_implementation(cache_mode="hit", artifact_mode="valid"):
     )
     artifact_resolver = RecordingJitArtifactResolver(
         components["events"], jit_resolver, artifact_mode
+    )
+    module_resolver = RecordingJitModuleResolver(
+        components["events"], jit_resolver, symbol_mode
     )
     base = components["implementation"]
     implementation = AttentionOperatorPackageRuntimeImplementation(
@@ -349,8 +439,15 @@ def package_jit_implementation(cache_mode="hit", artifact_mode="valid"):
         tensor_materializer=components["materializer"],
         jit_plan_resolver=jit_resolver,
         jit_artifact_resolver=artifact_resolver,
+        jit_module_resolver=module_resolver,
     )
-    return components, implementation, jit_resolver, artifact_resolver
+    return (
+        components,
+        implementation,
+        jit_resolver,
+        artifact_resolver,
+        module_resolver,
+    )
 
 
 class AttentionJitActivePlanCheckpointTests(unittest.TestCase):
@@ -539,28 +636,34 @@ class AttentionJitActivePlanCheckpointTests(unittest.TestCase):
         self.assertEqual(components["loader"].resolve_calls, 0)
 
     def test_package_cache_miss_stops_before_callable_import(self):
-        components, implementation, jit_resolver, artifact_resolver = package_jit_implementation(
-            "miss"
+        components, implementation, jit_resolver, artifact_resolver, module_resolver = (
+            package_jit_implementation("miss")
         )
         with self.assertRaises(MissingJITCacheError):
             implementation.resolve(framework_plan(), "npu:0")
         self.assertEqual(jit_resolver.calls, 1)
         self.assertEqual(artifact_resolver.calls, 0)
+        self.assertEqual(module_resolver.calls, 0)
         self.assertIn("authorize", components["events"])
         self.assertIn("jit_resolve", components["events"])
         self.assertNotIn("resolve_callable", components["events"])
         self.assertEqual(components["loader"].resolve_calls, 0)
 
     def test_package_cache_hit_precedes_callable_import(self):
-        components, implementation, jit_resolver, artifact_resolver = package_jit_implementation()
+        components, implementation, jit_resolver, artifact_resolver, module_resolver = (
+            package_jit_implementation()
+        )
         resolved = implementation.resolve(framework_plan(), "npu:0")
         events = components["events"]
         self.assertTrue(resolved.jit_plan_binding.ready)
         self.assertLess(events.index("authorize"), events.index("jit_resolve"))
         self.assertLess(events.index("jit_resolve"), events.index("artifact_verify"))
         self.assertLess(events.index("artifact_verify"), events.index("resolve_callable"))
+        self.assertLess(events.index("artifact_verify"), events.index("module_load"))
+        self.assertLess(events.index("module_load"), events.index("resolve_callable"))
         self.assertEqual(jit_resolver.calls, 1)
         self.assertEqual(artifact_resolver.calls, 1)
+        self.assertEqual(module_resolver.calls, 1)
 
     def test_registry_and_cache_publication_are_thread_safe_and_idempotent(self):
         environment = runtime_environment()

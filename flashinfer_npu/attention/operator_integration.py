@@ -15,6 +15,8 @@ from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_ch
 from flashinfer_npu.jit.attention import (
     AttentionJitArtifactBinding,
     AttentionJitArtifactResolver,
+    AttentionJitLoadedModuleBinding,
+    AttentionJitModuleResolver,
     AttentionJitPlanBinding,
     AttentionJitPlanResolver,
 )
@@ -44,7 +46,7 @@ from .operator_run import (
 from .planner import AttentionFrameworkPlan
 
 
-ATTENTION_OPERATOR_INTEGRATION_VERSION = 2
+ATTENTION_OPERATOR_INTEGRATION_VERSION = 3
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -177,6 +179,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         run_adapter_factory: Optional[AttentionOperatorRunAdapterFactory] = None,
         jit_plan_resolver: Optional[AttentionJitPlanResolver] = None,
         jit_artifact_resolver: Optional[AttentionJitArtifactResolver] = None,
+        jit_module_resolver: Optional[AttentionJitModuleResolver] = None,
     ) -> None:
         if not isinstance(priority, int) or isinstance(priority, bool):
             raise SchemaError("package runtime priority must be an integer")
@@ -223,6 +226,12 @@ class AttentionOperatorPackageRuntimeImplementation:
             raise TypeError(
                 "jit_artifact_resolver must implement AttentionJitArtifactResolver"
             )
+        if jit_module_resolver is not None and not isinstance(
+            jit_module_resolver, AttentionJitModuleResolver
+        ):
+            raise TypeError(
+                "jit_module_resolver must implement AttentionJitModuleResolver"
+            )
         operation = package_resolver.operation
         identities = (
             (plan_gate.provider_id, plan_gate.operation_id),
@@ -257,6 +266,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         self._run_adapter_factory = run_adapter_factory
         self._jit_plan_resolver = jit_plan_resolver
         self._jit_artifact_resolver = jit_artifact_resolver
+        self._jit_module_resolver = jit_module_resolver
 
     def rejection_reasons(
         self, plan: AttentionFrameworkPlan, device: str
@@ -322,6 +332,7 @@ class AttentionOperatorPackageRuntimeImplementation:
 
         jit_plan_binding = None
         jit_artifact_binding = None
+        jit_module_binding = None
         if authority.receipt.backend == Backend.ASCENDC_JIT:
             if self._jit_plan_resolver is None:
                 raise AttentionOperatorIntegrationError(
@@ -330,6 +341,10 @@ class AttentionOperatorPackageRuntimeImplementation:
             if self._jit_artifact_resolver is None:
                 raise AttentionOperatorIntegrationError(
                     "ascendc_jit runtime requires a configured JIT artifact resolver"
+                )
+            if self._jit_module_resolver is None:
+                raise AttentionOperatorIntegrationError(
+                    "ascendc_jit runtime requires a configured JIT module resolver"
                 )
             jit_plan_binding = self._jit_plan_resolver.resolve(
                 plan, authority.receipt
@@ -351,6 +366,16 @@ class AttentionOperatorPackageRuntimeImplementation:
                     "JIT artifact resolver returned an invalid binding"
                 )
             jit_artifact_binding.validate_plan_binding(jit_plan_binding)
+            jit_module_binding = self._jit_module_resolver.resolve(
+                jit_plan_binding, jit_artifact_binding
+            )
+            if not isinstance(
+                jit_module_binding, AttentionJitLoadedModuleBinding
+            ):
+                raise TypeError("JIT module resolver returned an invalid binding")
+            jit_module_binding.validate_bindings(
+                jit_plan_binding, jit_artifact_binding
+            )
 
         package = self._package_resolver.resolve(
             expected_provider_probe=provider_probe
@@ -376,6 +401,7 @@ class AttentionOperatorPackageRuntimeImplementation:
             callable_binding=package.callable_binding,
             jit_plan_binding=jit_plan_binding,
             jit_artifact_binding=jit_artifact_binding,
+            jit_module_binding=jit_module_binding,
         )
 
 

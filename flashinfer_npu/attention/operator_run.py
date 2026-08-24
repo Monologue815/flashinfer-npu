@@ -400,6 +400,7 @@ class AttentionOperatorWrapperSession:
         callable_binding: AttentionOperatorCallableBinding,
         jit_plan_binding_fingerprint: Optional[str] = None,
         jit_artifact_binding_fingerprint: Optional[str] = None,
+        jit_module_binding_fingerprint: Optional[str] = None,
     ) -> None:
         """Prepare a complete runtime candidate, then atomically publish it."""
 
@@ -430,6 +431,7 @@ class AttentionOperatorWrapperSession:
             selection,
             jit_plan_binding_fingerprint,
             jit_artifact_binding_fingerprint,
+            jit_module_binding_fingerprint,
         )
         candidate_binding = bind_attention_operator_operation(
             self._operation_catalog, candidate_session.active_plan

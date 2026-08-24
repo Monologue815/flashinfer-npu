@@ -14,6 +14,7 @@ from typing import Any, Dict, Mapping, Optional
 from flashinfer_npu.attention.capability import AttentionRuntimeEnvironment
 from flashinfer_npu.attention.dispatch import AttentionDispatchReceipt
 from flashinfer_npu.attention.planner import AttentionFrameworkPlan
+from flashinfer_npu.attention.schema import AttentionMode
 from flashinfer_npu.jit.core import JitSpec, JitSpecRegistry, gen_jit_spec
 from flashinfer_npu.jit.env import JitEnvironment
 from flashinfer_npu.runtime import Backend, SchemaError
@@ -25,6 +26,15 @@ from .variants import AttentionJitVariant
 ATTENTION_JIT_MODULE_SCHEMA_VERSION = 1
 ATTENTION_JIT_GENERATOR_ID = "attention.ascendc"
 ATTENTION_JIT_GENERATOR_VERSION = "1"
+
+
+def attention_jit_entry_points(mode: AttentionMode):
+    """Return the exact FlashInfer-style module surface for one mode."""
+
+    mode = AttentionMode(mode)
+    if mode in {AttentionMode.SINGLE_PREFILL, AttentionMode.SINGLE_DECODE}:
+        return ("run",)
+    return ("plan", "run")
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -162,7 +172,7 @@ def gen_attention_jit_module_spec(
             ("kernel", receipt.kernel_fingerprint),
             ("launch_abi", receipt.launch_abi_fingerprint),
         ),
-        entry_points=(),
+        entry_points=attention_jit_entry_points(plan.spec.mode),
         registry=registry,
     )
     return AttentionJitModuleSpec(
@@ -181,6 +191,7 @@ __all__ = [
     "ATTENTION_JIT_GENERATOR_VERSION",
     "ATTENTION_JIT_MODULE_SCHEMA_VERSION",
     "AttentionJitModuleSpec",
+    "attention_jit_entry_points",
     "gen_attention_jit_module_spec",
     "jit_environment_from_attention",
 ]

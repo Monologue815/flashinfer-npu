@@ -19,6 +19,7 @@ from typing import (
 
 from flashinfer_npu.jit.attention import (
     AttentionJitArtifactBinding,
+    AttentionJitLoadedModuleBinding,
     AttentionJitPlanBinding,
 )
 from flashinfer_npu.runtime import Backend, DispatchError, SchemaError
@@ -45,7 +46,7 @@ from .planner import (
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 3
+ATTENTION_OPERATOR_RESOLVER_VERSION = 4
 
 _DEVICE_TYPE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -87,6 +88,9 @@ class AttentionResolvedOperatorRuntime:
     jit_artifact_binding: Optional[AttentionJitArtifactBinding] = field(
         default=None, repr=False, compare=False
     )
+    jit_module_binding: Optional[AttentionJitLoadedModuleBinding] = field(
+        default=None, repr=False, compare=False
+    )
     schema_version: int = ATTENTION_OPERATOR_RESOLVER_VERSION
 
     def __post_init__(self) -> None:
@@ -123,9 +127,20 @@ class AttentionResolvedOperatorRuntime:
             self.jit_artifact_binding.validate_plan_binding(
                 self.jit_plan_binding
             )
+            if not isinstance(
+                self.jit_module_binding, AttentionJitLoadedModuleBinding
+            ):
+                raise SchemaError(
+                    "ascendc_jit runtime requires an Attention JIT module binding"
+                )
+            self.jit_module_binding.validate_bindings(
+                self.jit_plan_binding,
+                self.jit_artifact_binding,
+            )
         elif (
             self.jit_plan_binding is not None
             or self.jit_artifact_binding is not None
+            or self.jit_module_binding is not None
         ):
             raise SchemaError(
                 "non-JIT Attention runtime cannot publish JIT bindings"
@@ -478,6 +493,7 @@ class AttentionOperatorBatchRuntime:
         self._executor = None
         self._jit_plan_binding = None
         self._jit_artifact_binding = None
+        self._jit_module_binding = None
         self._last_lowered_call = None
 
     @property
@@ -512,6 +528,12 @@ class AttentionOperatorBatchRuntime:
             raise AttentionStateError("Attention operator runtime has not been planned")
         return self._jit_artifact_binding
 
+    @property
+    def jit_module_binding(self):
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        return self._jit_module_binding
+
     def plan(self, spec: AttentionPlanSpec, metadata: AttentionMetadata) -> None:
         """Resolve and prepare completely, then publish all wrapper state."""
 
@@ -537,10 +559,16 @@ class AttentionOperatorBatchRuntime:
                 if resolved.jit_artifact_binding is not None
                 else None
             ),
+            (
+                resolved.jit_module_binding.fingerprint
+                if resolved.jit_module_binding is not None
+                else None
+            ),
         )
         candidate_executor = resolved.executor
         candidate_jit_plan_binding = resolved.jit_plan_binding
         candidate_jit_artifact_binding = resolved.jit_artifact_binding
+        candidate_jit_module_binding = resolved.jit_module_binding
         if candidate_jit_plan_binding is not None and (
             candidate_operator_session.active_plan.jit_plan_binding_fingerprint
             != candidate_jit_plan_binding.fingerprint
@@ -553,6 +581,11 @@ class AttentionOperatorBatchRuntime:
             raise SchemaError(
                 "active plan did not freeze the JIT artifact identity"
             )
+        if candidate_jit_module_binding is not None and (
+            candidate_operator_session.active_plan.jit_module_binding_fingerprint
+            != candidate_jit_module_binding.fingerprint
+        ):
+            raise SchemaError("active plan did not freeze the JIT module identity")
         if isinstance(candidate_executor, AttentionRuntimeBindingAwareExecutor):
             candidate_executor = candidate_executor.bind_runtime(
                 candidate_operator_session.runtime_binding
@@ -577,6 +610,7 @@ class AttentionOperatorBatchRuntime:
         self._executor = candidate_executor
         self._jit_plan_binding = candidate_jit_plan_binding
         self._jit_artifact_binding = candidate_jit_artifact_binding
+        self._jit_module_binding = candidate_jit_module_binding
         self._last_lowered_call = None
 
     def run(
@@ -618,6 +652,21 @@ class AttentionOperatorBatchRuntime:
                 )
             self._jit_artifact_binding.validate_plan_binding(
                 self._jit_plan_binding
+            )
+            if self._jit_module_binding is None:
+                raise AttentionStateError(
+                    "Attention JIT module binding is not initialized"
+                )
+            if (
+                session.active_plan.jit_module_binding_fingerprint
+                != self._jit_module_binding.fingerprint
+            ):
+                raise AttentionStateError(
+                    "Attention JIT module active-plan identity is stale"
+                )
+            self._jit_module_binding.validate_bindings(
+                self._jit_plan_binding,
+                self._jit_artifact_binding,
             )
         lowered = session.run(
             q,
