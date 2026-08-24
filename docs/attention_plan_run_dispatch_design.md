@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 021，已将自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 022，已将声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -610,3 +610,32 @@ backend policy 或 provider ownership 任一漂移都会阻止 callable import �
 revalidate、环境漂移、backend 排除、provider/operation/device 身份拒绝、tuned kernel gate
 和零 package import。全量 445 项 Host 测试通过；这些 synthetic evidence 不构成真实 NPU
 能力声明，默认 provider registry 仍为空。
+
+## 25. 检查点 022：声明式 package runtime bootstrap
+
+021 之前，package resolver、evidence authority、plan gate、provider lowering、tensor
+materializer 与自动 implementation registry 虽然都已存在，但只能由测试或未来集成代码逐件
+手工拼装。022 增加单一 composition root：`AttentionOperatorPackageRuntimeSpec`。
+
+每个 spec 必须显式提交：
+
+- catalog 中的 exact operation id、adapter version 与允许的 exact distribution versions；
+- priority、capability profiles、bound kernel descriptors 与 observed runtime environment；
+- plan gate、logical plan factory、logical run adapter 与 provider tensor materializer；
+- backend/tuning/numerics/evidence replay policy。
+
+`build_attention_operator_package_runtime()` 将一个 spec 组装为完整 candidate；
+`build_attention_operator_runtime_resolvers()` 将多个 candidate 放入确定性 implementation
+registry，并只对 `npu` device type 安装 resolver。公共 `BatchAttention` 构造器仍没有 backend、
+provider 或 plan handle 参数，它从 `build_default_attention_operator_runtime_resolvers()` 获得
+内部 registry，因此继续保持 FlashInfer 风格的 `plan()`/`run()` 使用面。
+
+bootstrap 构建阶段不读取 distribution metadata、不 import callable、不加载 artifact、不初始化
+设备、不物化 tensor，也不调用算子。`explain()` 才允许 metadata-only probe；选中 candidate 后，
+`resolve()` 依次完成 evidence authority 和 callable binding；tensor materialization 仍只发生在
+wrapper `plan()`。默认 packaged spec tuple 目前为空，避免在没有真实 environment/evidence/
+materializer 的情况下把已安装 package 误当成可运行能力。
+
+022 的 8 项增量测试验证空默认入口、零副作用构建、NPU 路由、metadata-only explain、完整
+evidence-before-import resolve、缺包短路、跨 provider 身份拒绝以及重复 operation/version/tuning
+声明拒绝。全量 453 项 Host 测试通过；未导入外部 Attention package 或使用 NPU runtime。

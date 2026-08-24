@@ -18,9 +18,9 @@ from .frontend import (
 )
 from .planner import AttentionFrameworkSession
 from .operator_resolver import (
-    EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS,
     AttentionOperatorBatchRuntime,
 )
+from .operator_bootstrap import build_default_attention_operator_runtime_resolvers
 from .reference import ReferenceAttentionExecutor, ReferenceTensor
 from .schema import AttentionMode, AttentionPlanSpec, MixedPagedKVMetadata
 from .workspace import AttentionWorkspaceContract
@@ -29,7 +29,7 @@ from .tensor_contract import validate_reference_attention_views
 
 # Package integrations replace this immutable registry at bootstrap.  Keeping
 # it module-private avoids adding provider controls to the public constructor.
-_operator_runtime_resolvers = EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS
+_operator_runtime_resolvers = build_default_attention_operator_runtime_resolvers()
 
 
 class BatchAttention:

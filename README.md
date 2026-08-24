@@ -35,9 +35,12 @@ attention.plan(
 output, lse = attention.run(q, (k_cache, v_cache))
 ```
 
-This example documents the target interface. The default NPU provider registry
-is intentionally empty today: no real CANN or flash-attention-npu package is
-imported or called until a separately verified integration is installed.
+This example documents the target interface. Internally, a declarative
+bootstrap composes exact package versions, capability evidence, kernel/ABI
+provenance, provider adapters and tensor materializers into the automatic NPU
+resolver. The packaged declaration set is intentionally empty today: no real
+CANN or flash-attention-npu package is imported or called until a separately
+verified integration is installed.
 
 The authoritative design is in
 [`docs/architecture.md`](docs/architecture.md). The current repository is a
@@ -123,6 +126,6 @@ python3 -m flashinfer_npu attention-accuracy-corpus --pretty
 python3 -m flashinfer_npu attention-protocol-validate path/to/protocol.json
 ```
 
-The current Host-only suite contains 445 tests. It validates framework
+The current Host-only suite contains 453 tests. It validates framework
 contracts and injected fake callables; passing it is not evidence of NPU
 operator correctness or performance.

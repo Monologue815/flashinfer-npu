@@ -393,6 +393,13 @@ from .operator_authority import (
     ATTENTION_OPERATOR_AUTHORITY_VERSION,
     AttentionEvidenceOperatorRuntimeAuthorityResolver,
 )
+from .operator_bootstrap import (
+    ATTENTION_OPERATOR_BOOTSTRAP_VERSION,
+    AttentionOperatorPackageRuntimeSpec,
+    build_attention_operator_package_runtime,
+    build_attention_operator_runtime_resolvers,
+    build_default_attention_operator_runtime_resolvers,
+)
 from .operator_materialization import (
     ATTENTION_OPERATOR_MATERIALIZATION_VERSION,
     AttentionMaterializedOperatorPlanState,
@@ -466,6 +473,7 @@ __all__ = [
     "ATTENTION_OPERATOR_PACKAGE_VERSION",
     "ATTENTION_OPERATOR_INTEGRATION_VERSION",
     "ATTENTION_OPERATOR_AUTHORITY_VERSION",
+    "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
     "ATTENTION_OPERATOR_MATERIALIZATION_VERSION",
     "ATTENTION_PROTOCOL_TRACE_SCHEMA_VERSION",
     "ATTENTION_MAX_TENSOR_RANK",
@@ -626,6 +634,7 @@ __all__ = [
     "AttentionOperatorRuntimeAuthority",
     "AttentionOperatorRuntimeAuthorityResolver",
     "AttentionEvidenceOperatorRuntimeAuthorityResolver",
+    "AttentionOperatorPackageRuntimeSpec",
     "AttentionMaterializedOperatorPlanState",
     "AttentionMaterializedOperatorTensor",
     "AttentionMaterializingPlanFactory",
@@ -732,6 +741,9 @@ __all__ = [
     "bind_attention_operator_callable",
     "bind_attention_operator_runtime",
     "build_attention_dense_page_table",
+    "build_attention_operator_package_runtime",
+    "build_attention_operator_runtime_resolvers",
+    "build_default_attention_operator_runtime_resolvers",
     "explain_cann_v2_paged_plan",
     "explain_flash_attention_npu_v3_paged_plan",
     "collect_attention_operator_tensor_plans",
