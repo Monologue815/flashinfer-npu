@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 028，已将 provider physical-layout conformance evidence、descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 029，已将 package evidence manifest、provider physical-layout conformance evidence、descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -786,3 +786,27 @@ non-logical capability。028 测试中使用的 suite/result digest 明确为 sy
 8 项增量测试覆盖 schema round-trip、case/digest 门禁、missing evidence、exact authority+lowering、
 QuantSpec/descriptor/catalog、profile/environment/kernel/ABI、operation/duplicate drift，以及公共
 FlashInfer plan/run 签名不变。全量 501 项 Host 测试通过；未执行任何外部算子。
+
+## 32. 检查点 029：package-shipped evidence manifest
+
+028 的 evidence 已能授权 non-logical runtime，但直接构造 Python 对象不足以定义 package 交付
+边界。029 增加严格 JSON `AttentionOperatorPhysicalEvidenceManifest`：manifest 将 provider、
+operation、package name、adapter version、exact supported package versions、physical catalog 与
+全部 evidence 记录闭合，并为每条 evidence 声明一个 `evidence/` 下的 canonical relative result
+artifact locator、size 和 SHA-256。
+
+加载使用既有 bounded JSON envelope，拒绝重复 key、未知字段、非标准数值、超限 bytes/nesting/
+nodes/arrays/strings；manifest 额外限制 evidence 记录数量和所有 result artifact 的总字节数，拒绝
+绝对路径、`..`、反斜杠、路径规范化歧义及 `evidence/` 外 locator。
+`verify_attention_operator_physical_evidence_results()` 只接收调用方已经读取的 bytes，要求 payload
+集合、类型、size 与 digest 完全相同，返回不可变
+`AttentionVerifiedOperatorPhysicalEvidenceBundle`；它本身不访问文件系统或 import package。
+
+bootstrap 只接受 verified bundle，不接受裸 manifest 或未经摘要验证的 evidence。构建 runtime 时
+还会把 manifest 的 package/adapter/version/catalog identity 与 operation catalog 和 runtime spec
+重新核对。manifest/bundle 继续隐藏在内部 registry，公共 FlashInfer plan/run surface 不变。
+
+029 的 8 项增量测试覆盖 bounded canonical JSON round-trip、duplicate/unknown/oversize、safe
+locator、payload set/size/digest、package/adapter/version/catalog drift、verified-bundle gate、完整
+authority+lowering 和公共接口隔离。全量 509 项 Host 测试通过；所有 manifest/result 都是
+synthetic bytes，未访问 NPU runtime 或执行算子。

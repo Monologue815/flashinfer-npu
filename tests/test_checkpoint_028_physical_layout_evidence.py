@@ -5,8 +5,11 @@ from dataclasses import replace
 
 from flashinfer_npu.attention import (
     AttentionDispatchError,
+    AttentionOperatorEvidenceResultArtifact,
     AttentionOperatorPhysicalLayoutEvidence,
+    AttentionOperatorPhysicalEvidenceManifest,
     BatchAttention,
+    verify_attention_operator_physical_evidence_results,
 )
 from flashinfer_npu.runtime import SchemaError
 from tests.test_checkpoint_019_package_runtime_integration import package_attention
@@ -51,6 +54,35 @@ def physical_evidence(spec, operation, quant_spec, descriptor, **overrides):
     }
     values.update(overrides)
     return AttentionOperatorPhysicalLayoutEvidence(**values)
+
+
+def evidence_bundle(spec, operation, evidences):
+    evidences = tuple(evidences)
+    payload = b"synthetic-external-result-record"
+    artifacts = tuple(
+        AttentionOperatorEvidenceResultArtifact(
+            evidence_id=item.evidence_id,
+            locator="evidence/%s.result" % item.evidence_id,
+            digest=item.result_digest,
+            size_bytes=len(payload),
+        )
+        for item in evidences
+    )
+    manifest = AttentionOperatorPhysicalEvidenceManifest(
+        name="checkpoint-028-synthetic-manifest",
+        provider_id=operation.provider_id,
+        operation_id=evidences[0].operation_id,
+        package_name=operation.package_name,
+        adapter_version=spec.adapter_version,
+        supported_package_versions=spec.supported_package_versions,
+        catalog_fingerprint=spec.quant_physical_layout_catalog.fingerprint,
+        evidences=evidences,
+        result_artifacts=artifacts,
+    )
+    return verify_attention_operator_physical_evidence_results(
+        manifest,
+        {item.locator: payload for item in artifacts},
+    )
 
 
 class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
@@ -110,7 +142,12 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
         evidence = physical_evidence(
             spec, values["operation"], quant_spec, descriptor
         )
-        authorized = replace(spec, physical_layout_evidence=(evidence,))
+        authorized = replace(
+            spec,
+            physical_layout_evidence_bundle=evidence_bundle(
+                spec, values["operation"], (evidence,)
+            ),
+        )
         active_plan, session = active_session(
             values, spec=authorized, plan=plan
         )
@@ -137,10 +174,15 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
         )
         for evidence in cases:
             with self.subTest(field=evidence.fingerprint):
-                with self.assertRaises(AttentionDispatchError):
+                with self.assertRaises((SchemaError, AttentionDispatchError)):
                     active_session(
                         values,
-                        spec=replace(spec, physical_layout_evidence=(evidence,)),
+                        spec=replace(
+                            spec,
+                            physical_layout_evidence_bundle=evidence_bundle(
+                                spec, values["operation"], (evidence,)
+                            ),
+                        ),
                         plan=plan,
                     )
         self.assertEqual(values["loader"].resolve_calls, 0)
@@ -161,7 +203,12 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
                 with self.assertRaises(AttentionDispatchError):
                     active_session(
                         values,
-                        spec=replace(spec, physical_layout_evidence=(evidence,)),
+                        spec=replace(
+                            spec,
+                            physical_layout_evidence_bundle=evidence_bundle(
+                                spec, values["operation"], (evidence,)
+                            ),
+                        ),
                         plan=plan,
                     )
         self.assertEqual(package_attention.calls, [])
@@ -172,14 +219,19 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
             spec, values["operation"], quant_spec, descriptor
         )
         foreign = replace(base, operation_id="foreign.operation")
-        with self.assertRaises(AttentionDispatchError):
+        with self.assertRaises((SchemaError, AttentionDispatchError)):
             active_session(
                 values,
-                spec=replace(spec, physical_layout_evidence=(foreign,)),
+                spec=replace(
+                    spec,
+                    physical_layout_evidence_bundle=evidence_bundle(
+                        spec, values["operation"], (foreign,)
+                    ),
+                ),
                 plan=plan,
             )
         with self.assertRaisesRegex(SchemaError, "evidence ids must be unique"):
-            replace(spec, physical_layout_evidence=(base, base))
+            evidence_bundle(spec, values["operation"], (base, base))
 
     def test_public_flashinfer_plan_run_surface_is_unchanged(self):
         for method in (BatchAttention.plan, BatchAttention.run):
