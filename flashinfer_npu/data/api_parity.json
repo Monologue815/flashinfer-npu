@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "upstream": {
+    "project": "flashinfer-ai/flashinfer",
+    "ref": "main snapshot 2026-08-05",
+    "url": "https://github.com/flashinfer-ai/flashinfer"
+  },
+  "inventory_status": "bootstrap",
+  "generated_at": "2026-08-05",
+  "entries": [
+    {
+      "upstream": "flashinfer.attention.BatchAttention",
+      "local": "flashinfer_npu.attention.BatchAttention",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.prefill.single_prefill_with_kv_cache",
+      "local": "flashinfer_npu.prefill.single_prefill_with_kv_cache",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper",
+      "local": "flashinfer_npu.prefill.BatchPrefillWithPagedKVCacheWrapper",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper",
+      "local": "flashinfer_npu.prefill.BatchPrefillWithRaggedKVCacheWrapper",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.decode.single_decode_with_kv_cache",
+      "local": "flashinfer_npu.decode.single_decode_with_kv_cache",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper",
+      "local": "flashinfer_npu.decode.BatchDecodeWithPagedKVCacheWrapper",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.page.append_paged_kv_cache",
+      "local": "flashinfer_npu.page.append_paged_kv_cache",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.cascade.merge_state",
+      "local": "flashinfer_npu.cascade.merge_state",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P1"
+    },
+    {
+      "upstream": "flashinfer.cascade.merge_state_in_place",
+      "local": "flashinfer_npu.cascade.merge_state_in_place",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P1"
+    },
+    {
+      "upstream": "flashinfer.quantization.packbits",
+      "local": "flashinfer_npu.quantization.packbits",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.quantization.segment_packbits",
+      "local": "flashinfer_npu.quantization.segment_packbits",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.norm.rmsnorm",
+      "local": "flashinfer_npu.norm.rmsnorm",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.norm.fused_add_rmsnorm",
+      "local": "flashinfer_npu.norm.fused_add_rmsnorm",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.norm.fused_add_rmsnorm_quant",
+      "local": "flashinfer_npu.norm.fused_add_rmsnorm_quant",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.activation.silu_and_mul",
+      "local": "flashinfer_npu.activation.silu_and_mul",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.rope.apply_rope",
+      "local": "flashinfer_npu.rope.apply_rope",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P0"
+    },
+    {
+      "upstream": "flashinfer.sampling.sampling_from_probs",
+      "local": "flashinfer_npu.sampling.sampling_from_probs",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P1"
+    },
+    {
+      "upstream": "flashinfer.sampling.top_k_sampling_from_probs",
+      "local": "flashinfer_npu.sampling.top_k_sampling_from_probs",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P1"
+    },
+    {
+      "upstream": "flashinfer.sampling.top_p_sampling_from_probs",
+      "local": "flashinfer_npu.sampling.top_p_sampling_from_probs",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P1"
+    },
+    {
+      "upstream": "flashinfer.sparse.BlockSparseAttentionWrapper",
+      "local": "flashinfer_npu.sparse.BlockSparseAttentionWrapper",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P2"
+    },
+    {
+      "upstream": "flashinfer.mla.BatchMLAPagedAttentionWrapper",
+      "local": "flashinfer_npu.mla.BatchMLAPagedAttentionWrapper",
+      "upstream_kind": "stable",
+      "semantic_status": "unassessed",
+      "implementation_status": "missing",
+      "priority": "P1"
+    }
+  ]
+}
+

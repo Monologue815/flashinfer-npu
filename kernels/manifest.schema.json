@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flashinfer-npu.local/schemas/kernel-manifest-v1.json",
+  "title": "FlashInfer-NPU kernel manifest",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "kernels"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "generated_at": {"type": "string"},
+    "kernels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kernel_id", "op", "backend"],
+        "properties": {
+          "kernel_id": {"type": "string", "minLength": 1},
+          "op": {"type": "string", "minLength": 1},
+          "backend": {
+            "enum": ["ascendc_aot", "ascendc_jit", "aclnn", "reference"]
+          },
+          "artifact": {"type": ["string", "null"]},
+          "priority": {"type": "integer"},
+          "op_schema_version": {"type": "integer", "minimum": 1},
+          "tiling_schema_version": {"type": "integer", "minimum": 1},
+          "constraints": {"type": "object"},
+          "workspace": {"type": "object"}
+          ,"capability_binding": {
+            "type": ["object", "null"],
+            "required": [
+              "schema_version",
+              "domain",
+              "profile_id",
+              "rule_id",
+              "profile_fingerprint"
+            ],
+            "properties": {
+              "schema_version": {"const": 1},
+              "domain": {"type": "string", "minLength": 1},
+              "profile_id": {"type": "string", "minLength": 1},
+              "rule_id": {"type": "string", "minLength": 1},
+              "profile_fingerprint": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

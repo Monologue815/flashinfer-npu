@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flashinfer-npu"
+version = "0.1.0.dev0"
+description = "FlashInfer-style inference kernel library for Ascend NPU"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.9"
+authors = [{name = "FlashInfer-NPU Contributors"}]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.scripts]
+flashinfer-npu = "flashinfer_npu.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["flashinfer_npu*"]
+
+[tool.setuptools.package-data]
+flashinfer_npu = ["data/*.json", "data/kernels/*.json"]
