@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 020，已将自动选择、package/capability authority、plan-time provider tensor
+> 状态：检查点 021，已将自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -578,3 +578,35 @@ float16/bfloat16 与 dense dtype 一致性要求；v3 文档允许的 page size 
 020 的 5 项增量测试验证 gate protocol、无 package import、确定性多原因报告、量化拒绝，
 以及 6 组接受/拒绝计划中 gate 与 factory 结果严格一致。全量 438 项 Host 测试通过；
 没有导入 NPU package、初始化设备或调用 Attention 算子。
+
+## 24. 检查点 021：evidence-bearing runtime authority resolver
+
+019 定义了 `AttentionOperatorRuntimeAuthorityResolver` protocol，但测试 authority 仍由
+手工伪造 receipt。021 增加 `AttentionEvidenceOperatorRuntimeAuthorityResolver`，直接组合
+项目已有的完整授权链：
+
+```text
+AttentionFrameworkPlan
+  -> capability profile + exact runtime environment
+  -> conformance evidence validation
+  -> bound KernelDescriptor
+  -> artifact + launch ABI + binary ABI provenance
+  -> AttentionDispatchReceipt
+  -> provider profile ownership binding
+  -> AttentionOperatorRuntimeAuthority
+```
+
+resolver 构造时固定 exact operation、profiles、descriptors、observed environment、backend
+policy、可选 tuning 顺序、numerics policy 与 evidence replay policy。构造阶段立即交叉校验
+profile/kernel binding，但不加载 artifact、import package 或访问设备。`authorize()` 只接受
+同一 operation fingerprint、可用且同 provider 的 package probe，以及 `npu[:index]` device。
+
+authority 新增 device identity；019 的组合器在 callable import 前和 package resolve 后都
+校验该 device、plan、probe 与 operation。环境、evidence、profile、kernel、artifact/ABI、
+backend policy 或 provider ownership 任一漂移都会阻止 callable import 或 runtime 发布。
+只有 `select_attention_dispatch()` 接受的 descriptor 才能被 tuning 选中。
+
+021 的 7 项增量测试使用既有 synthetic capability/evidence fixtures，验证完整 receipt 可再次
+revalidate、环境漂移、backend 排除、provider/operation/device 身份拒绝、tuned kernel gate
+和零 package import。全量 445 项 Host 测试通过；这些 synthetic evidence 不构成真实 NPU
+能力声明，默认 provider registry 仍为空。

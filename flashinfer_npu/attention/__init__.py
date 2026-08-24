@@ -389,6 +389,10 @@ from .operator_integration import (
     AttentionOperatorRuntimeAuthority,
     AttentionOperatorRuntimeAuthorityResolver,
 )
+from .operator_authority import (
+    ATTENTION_OPERATOR_AUTHORITY_VERSION,
+    AttentionEvidenceOperatorRuntimeAuthorityResolver,
+)
 from .operator_materialization import (
     ATTENTION_OPERATOR_MATERIALIZATION_VERSION,
     AttentionMaterializedOperatorPlanState,
@@ -461,6 +465,7 @@ __all__ = [
     "ATTENTION_OPERATOR_EXECUTION_VERSION",
     "ATTENTION_OPERATOR_PACKAGE_VERSION",
     "ATTENTION_OPERATOR_INTEGRATION_VERSION",
+    "ATTENTION_OPERATOR_AUTHORITY_VERSION",
     "ATTENTION_OPERATOR_MATERIALIZATION_VERSION",
     "ATTENTION_PROTOCOL_TRACE_SCHEMA_VERSION",
     "ATTENTION_MAX_TENSOR_RANK",
@@ -620,6 +625,7 @@ __all__ = [
     "AttentionOperatorPlanGate",
     "AttentionOperatorRuntimeAuthority",
     "AttentionOperatorRuntimeAuthorityResolver",
+    "AttentionEvidenceOperatorRuntimeAuthorityResolver",
     "AttentionMaterializedOperatorPlanState",
     "AttentionMaterializedOperatorTensor",
     "AttentionMaterializingPlanFactory",

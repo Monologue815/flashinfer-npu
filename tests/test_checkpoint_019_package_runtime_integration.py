@@ -154,6 +154,7 @@ class FakeAuthorityResolver:
         )
         return AttentionOperatorRuntimeAuthority(
             framework_plan_fingerprint=plan.fingerprint,
+            device=device,
             provider_probe_fingerprint=provider_probe.fingerprint,
             operation_id=operation.operation_id,
             operation_fingerprint=(

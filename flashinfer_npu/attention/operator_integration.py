@@ -63,6 +63,7 @@ class AttentionOperatorRuntimeAuthority:
     """Capability/evidence authority created before callable import."""
 
     framework_plan_fingerprint: str
+    device: str
     provider_probe_fingerprint: str
     operation_id: str
     operation_fingerprint: str
@@ -87,6 +88,9 @@ class AttentionOperatorRuntimeAuthority:
                 raise SchemaError("%s must be lowercase SHA-256" % name)
         if not str(self.operation_id):
             raise SchemaError("runtime authority operation_id must be non-empty")
+        if not str(self.device):
+            raise SchemaError("runtime authority device must be non-empty")
+        object.__setattr__(self, "device", str(self.device))
         if not isinstance(self.receipt, AttentionDispatchReceipt):
             raise TypeError("receipt must be AttentionDispatchReceipt")
         if not isinstance(self.selection, AttentionOperatorProviderSelection):
@@ -104,6 +108,7 @@ class AttentionOperatorRuntimeAuthority:
         return {
             "schema_version": self.schema_version,
             "framework_plan_fingerprint": self.framework_plan_fingerprint,
+            "device": self.device,
             "provider_probe_fingerprint": self.provider_probe_fingerprint,
             "operation_id": self.operation_id,
             "operation_fingerprint": self.operation_fingerprint,
@@ -231,12 +236,14 @@ class AttentionOperatorPackageRuntimeImplementation:
         authority: AttentionOperatorRuntimeAuthority,
         plan: AttentionFrameworkPlan,
         package: AttentionResolvedOperatorPackage,
+        device: str,
     ) -> None:
         if not isinstance(authority, AttentionOperatorRuntimeAuthority):
             raise TypeError("authority resolver returned an invalid authority")
         operation = self._package_resolver.operation
         if (
             authority.framework_plan_fingerprint != plan.fingerprint
+            or authority.device != str(device)
             or authority.provider_probe_fingerprint
             != package.provider_probe.fingerprint
             or authority.operation_id != operation.operation_id
@@ -264,6 +271,7 @@ class AttentionOperatorPackageRuntimeImplementation:
             raise TypeError("authority resolver returned an invalid authority")
         if (
             authority.framework_plan_fingerprint != plan.fingerprint
+            or authority.device != str(device)
             or authority.provider_probe_fingerprint != provider_probe.fingerprint
             or authority.operation_id != operation.operation_id
             or authority.operation_fingerprint != operation.fingerprint
@@ -274,7 +282,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         package = self._package_resolver.resolve(
             expected_provider_probe=provider_probe
         )
-        self._validate_authority(authority, plan, package)
+        self._validate_authority(authority, plan, package, str(device))
         factory = AttentionMaterializingPlanFactory(
             self._logical_factory, self._tensor_materializer, str(device)
         )

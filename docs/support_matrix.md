@@ -36,6 +36,7 @@ checks. Absence from the table means unverified, not implicitly supported.
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 426 Host tests through checkpoint 018: lazy distribution metadata gate, exact adapter-authorized package versions, catalog callable resolution/signature binding and unbound executor publication; fake loaders only except Python stdlib path resolution, no NPU package/runtime used |
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 433 Host tests through checkpoint 019: package metadata and capability authority before callable import, mandatory plan tensor materialization, final runtime binding, repeat run reuse and failed-replan atomicity; injected fakes only, no NPU package/runtime used |
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 438 Host tests through checkpoint 020: CANN v2 and flash-attention-npu v3 pure plan gates share exact admission rules with prepare factories, deterministic multi-reason rejection and gate/factory matrix consistency; no NPU package/runtime used |
+| 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 445 Host tests through checkpoint 021: evidence-bearing package authority composes exact environment, conformance evidence, kernel/artifact/launch+binary ABI provenance, provider ownership and strict NPU device identity; synthetic fixtures only, no NPU package/runtime used |
 
 ## Remote framework checks
 
@@ -45,6 +46,7 @@ checks. Absence from the table means unverified, not implicitly supported.
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 018 isolated wheel, 8/8 lazy package metadata/callable resolution tests with fake package loader and Python stdlib path only; no CANN environment load, NPU query, external Attention package import or operator call |
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 019 isolated wheel, 6/6 package-to-authority-to-materialization-to-bound-run transaction tests with injected fakes; no CANN environment load, NPU query, external Attention package import or operator call |
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 020 isolated wheel, 5/5 CANN v2 and flash-attention-npu v3 plan-gate/factory shared-rule tests; no CANN environment load, NPU query, external Attention package import or operator call |
+| 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 021 isolated wheel, 7/7 evidence authority, exact device/backend policy, environment drift, provider ownership and tuned-kernel admission tests with synthetic fixtures; no CANN environment load, NPU query, external Attention package import or operator call |
 
 Verified Host quantized KV storage contracts are `int8`, `uint8`,
 `int4_packed`, and `uint4_packed` with `physical_layout="logical"`. This is
