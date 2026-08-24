@@ -34,6 +34,7 @@ checks. Absence from the table means unverified, not implicitly supported.
 | 2026-08-21 | macOS arm64 | 3.9.6 | Pass | 359 Host tests: frozen 192-byte KV POD v2 and independent binary ABI v2, exact descriptor/catalog/profile/rule/environment/kernel/evidence/receipt native-layout binding, tamper and v1 compatibility gates; v2 packet/provider not connected, synthetic Host fixtures only, no converter/kernel/NPU runtime used |
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 418 Host tests through checkpoint 017: public BatchAttention provider runtime, deterministic implementation selection, plan-time fake tensor materialization, final-plan-bound injected callable execution and output/LSE normalization; no external operator package or NPU runtime used |
 | 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 426 Host tests through checkpoint 018: lazy distribution metadata gate, exact adapter-authorized package versions, catalog callable resolution/signature binding and unbound executor publication; fake loaders only except Python stdlib path resolution, no NPU package/runtime used |
+| 2026-08-24 | macOS arm64 | 3.9.6 | Pass | 433 Host tests through checkpoint 019: package metadata and capability authority before callable import, mandatory plan tensor materialization, final runtime binding, repeat run reuse and failed-replan atomicity; injected fakes only, no NPU package/runtime used |
 
 ## Remote framework checks
 
@@ -41,6 +42,7 @@ checks. Absence from the table means unverified, not implicitly supported.
 | --- | --- | --- | --- | --- |
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 017 isolated wheel, 5/5 guarded callable framework tests; no CANN environment load, NPU query, external operator import or Attention operator call |
 | 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 018 isolated wheel, 8/8 lazy package metadata/callable resolution tests with fake package loader and Python stdlib path only; no CANN environment load, NPU query, external Attention package import or operator call |
+| 2026-08-24 | Ubuntu 24.04 x86_64 | 3.10.8 | Pass | Checkpoint 019 isolated wheel, 6/6 package-to-authority-to-materialization-to-bound-run transaction tests with injected fakes; no CANN environment load, NPU query, external Attention package import or operator call |
 
 Verified Host quantized KV storage contracts are `int8`, `uint8`,
 `int4_packed`, and `uint4_packed` with `physical_layout="logical"`. This is

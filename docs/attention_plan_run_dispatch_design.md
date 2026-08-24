@@ -1,7 +1,7 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 018，已将可解释的自动选择、plan-time provider tensor 物化、受 runtime identity
-> 保护的 callable execution 与惰性外部 package resolution 收入公共 `BatchAttention` 生命周期，
+> 状态：检查点 019，已将自动选择、package/capability authority、plan-time provider tensor
+> 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
 
@@ -513,7 +513,44 @@ operation catalog 的 module path，并且从不调用 callable。实际 CANN �
 flash-attention-npu integration 后续必须显式提供 compatibility、tensor materializer、
 capability evidence 与 runtime implementation。
 
-018 的 8 项增量测试覆盖：构造零副作用、metadata-only explain、缺包、未授权版本、
-非 callable、签名漂移、成功产生未绑定 executor 以及显式 importlib path 解析。全量
-426 项测试通过；除 Python 标准库解析测试外全部使用 fake loader，没有导入任何 NPU
+018 的 9 项增量测试覆盖：构造零副作用、metadata-only explain、缺包、未授权版本、
+authority 后 metadata 漂移、非 callable、签名漂移、成功产生未绑定 executor 以及显式
+importlib path 解析。全量测试除 Python 标准库解析测试外全部使用 fake loader，没有导入任何 NPU
 package、初始化设备或调用 Attention 算子。
+
+## 22. 检查点 019：package runtime implementation 闭环
+
+019 将 018 的未绑定 package candidate 接入 015 的自动 implementation registry、016 的
+tensor materialization 与 017 的最终 plan binding。一个完整候选由以下注入组件组成：
+
+- `AttentionOperatorPlanGate`：纯 plan/API admission，只返回拒绝原因；
+- `AttentionOperatorPackageResolver`：distribution metadata 与 exact callable binding；
+- `AttentionOperatorRuntimeAuthorityResolver`：生成 capability/evidence-bearing dispatch receipt
+  与 provider selection；
+- logical plan factory/run adapter：provider 参数规划与 lowering；
+- tensor materializer：把 plan recipe 建成 provider tensor，但不调用 Attention；
+- injected callable executor：在最终 active plan 发布前接受 runtime binding。
+
+固定顺序为：
+
+```text
+plan gate + package metadata explain（无 import）
+  -> provider probe
+  -> capability/evidence authority（仍无 import）
+  -> 再次核验 package metadata 未漂移
+  -> resolve + inspect exact callable
+  -> provider prepare + tensor materialization
+  -> active runtime binding
+  -> 原子发布 framework plan / operator session / executor
+```
+
+`AttentionOperatorRuntimeAuthority` 同时绑定 framework plan、provider probe、operation
+fingerprint、dispatch receipt 与 provider selection。authority 错误或陈旧、包版本在授权后
+变化、callable 签名漂移、prepare/materialization 失败都会发生在公共状态提交之前。
+已经成功发布的旧 runtime 因此可以在失败重规划后继续 run。
+
+019 强制完整 package implementation 提供 tensor materializer，避免把
+`AttentionOperatorTensorPlan` 配方误传给真实 callable。它仍不提供任何默认 provider，
+也不创建真实 CANN/flash-attention-npu capability profile。6 项增量测试使用 fake package、
+authority、materializer 与 callable 验证两次 run 只物化一次、authority 先于 import、拒绝
+路径零执行副作用和失败重规划原子性；全量 433 项 Host 测试通过。

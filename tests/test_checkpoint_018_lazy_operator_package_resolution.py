@@ -118,6 +118,20 @@ class LazyOperatorPackageResolutionCheckpoint(unittest.TestCase):
         self.assertIn("not adapter-authorized", captured.exception.report.reasons[0])
         self.assertEqual(loader.resolve_calls, [])
 
+    def test_metadata_drift_after_authority_is_rejected_before_callable_resolution(self):
+        loader = FakePackageLoader(version="1.2.3")
+        package_resolver = resolver(loader)
+        authorized_probe = package_resolver.provider_probe()
+        loader.version = "1.2.4"
+
+        with self.assertRaisesRegex(
+            AttentionOperatorPackageResolutionError, "changed after authorization"
+        ) as captured:
+            package_resolver.resolve(expected_provider_probe=authorized_probe)
+        self.assertEqual(captured.exception.report.stage, "metadata")
+        self.assertFalse(captured.exception.report.callable_loaded)
+        self.assertEqual(loader.resolve_calls, [])
+
     def test_exact_callable_resolves_to_an_unbound_nonexecuted_executor(self):
         loader = FakePackageLoader()
         package_resolver = resolver(loader)

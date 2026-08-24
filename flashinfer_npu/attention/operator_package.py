@@ -348,7 +348,41 @@ class AttentionOperatorPackageResolver:
             reasons=reasons,
         )
 
-    def resolve(self) -> AttentionResolvedOperatorPackage:
+    def provider_probe(
+        self, report: AttentionOperatorPackageResolutionReport = None
+    ) -> AttentionOperatorProviderProbe:
+        """Build the exact metadata authority used before callable import."""
+
+        if report is None:
+            report = self.explain()
+        if not isinstance(report, AttentionOperatorPackageResolutionReport):
+            raise TypeError("report must be AttentionOperatorPackageResolutionReport")
+        if (
+            report.compatibility_fingerprint != self._compatibility.fingerprint
+            or report.loader_id != self._loader.loader_id
+            or report.provider_id != self._operation.provider_id
+            or report.operation_id != self._operation.operation_id
+            or report.package_name != self._operation.package_name
+            or report.stage != "metadata"
+        ):
+            raise SchemaError("package metadata report does not match resolver")
+        if not report.accepted or report.observed_package_version is None:
+            raise AttentionOperatorPackageResolutionError(
+                "Attention operator package metadata is not accepted", report
+            )
+        return AttentionOperatorProviderProbe(
+            provider_id=self._operation.provider_id,
+            adapter_version=self._compatibility.adapter_version,
+            available=True,
+            package_versions=(
+                (self._operation.package_name, report.observed_package_version),
+            ),
+        )
+
+    def resolve(
+        self,
+        expected_provider_probe: AttentionOperatorProviderProbe = None,
+    ) -> AttentionResolvedOperatorPackage:
         metadata_report = self.explain()
         if not metadata_report.accepted:
             raise AttentionOperatorPackageResolutionError(
@@ -356,6 +390,31 @@ class AttentionOperatorPackageResolver:
                 % "; ".join(metadata_report.reasons),
                 metadata_report,
             )
+        probe = self.provider_probe(metadata_report)
+        if expected_provider_probe is not None:
+            if not isinstance(
+                expected_provider_probe, AttentionOperatorProviderProbe
+            ):
+                raise TypeError(
+                    "expected_provider_probe must be "
+                    "AttentionOperatorProviderProbe"
+                )
+            if expected_provider_probe.fingerprint != probe.fingerprint:
+                report = self._report(
+                    observed_package_version=(
+                        metadata_report.observed_package_version
+                    ),
+                    stage="metadata",
+                    callable_loaded=False,
+                    callable_observation_fingerprint=None,
+                    reasons=(
+                        "package metadata changed after provider authorization",
+                    ),
+                )
+                raise AttentionOperatorPackageResolutionError(
+                    "Attention package metadata changed after authorization",
+                    report,
+                )
         callable_object = self._loader.resolve_callable(
             self._operation.callable_path
         )
@@ -391,12 +450,6 @@ class AttentionOperatorPackageResolver:
             api_version=self._operation.api_version,
             available=True,
             signature=signature,
-        )
-        probe = AttentionOperatorProviderProbe(
-            provider_id=self._operation.provider_id,
-            adapter_version=self._compatibility.adapter_version,
-            available=True,
-            package_versions=((self._operation.package_name, observation.package_version),),
         )
         callable_report = explain_attention_operator_callable(
             probe, self._operation, observation
