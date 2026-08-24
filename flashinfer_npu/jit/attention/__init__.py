@@ -35,6 +35,11 @@ from .execution import (
     AttentionJitExecutorBinder,
     AttentionJitExecutorBinding,
 )
+from .planning import (
+    ATTENTION_JIT_PLANNER_BINDING_VERSION,
+    AttentionJitPlannerBinder,
+    AttentionJitPlannerBinding,
+)
 
 __all__ = [
     "ATTENTION_JIT_ARTIFACT_BINDING_VERSION",
@@ -44,6 +49,7 @@ __all__ = [
     "ATTENTION_JIT_MODULE_SCHEMA_VERSION",
     "ATTENTION_JIT_LOADED_MODULE_BINDING_VERSION",
     "ATTENTION_JIT_PLAN_BINDING_VERSION",
+    "ATTENTION_JIT_PLANNER_BINDING_VERSION",
     "ATTENTION_JIT_VARIANT_SCHEMA_VERSION",
     "AttentionJitArtifactBinding",
     "AttentionJitArtifactResolver",
@@ -54,6 +60,8 @@ __all__ = [
     "AttentionJitModuleResolver",
     "AttentionJitPlanBinding",
     "AttentionJitPlanResolver",
+    "AttentionJitPlannerBinder",
+    "AttentionJitPlannerBinding",
     "AttentionJitVariant",
     "ConfiguredAttentionJitArtifactResolver",
     "ConfiguredAttentionJitModuleResolver",

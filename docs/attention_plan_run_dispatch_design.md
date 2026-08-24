@@ -258,6 +258,7 @@ canonical plan
   -> artifact-byte verification
   -> module loading
   -> exact entry-point resolution
+  -> module plan-factory binding
   -> callable/executor binding
   -> active-plan publication
 ```

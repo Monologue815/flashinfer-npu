@@ -18,6 +18,7 @@ from flashinfer_npu.jit.attention import (
     AttentionJitExecutorBinder,
     AttentionJitModuleResolver,
     AttentionJitPlanResolver,
+    AttentionJitPlannerBinder,
 )
 
 from .capability import (
@@ -70,7 +71,7 @@ from .operator_resolver import (
 from .operator_run import AttentionOperatorRunAdapter
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 5
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -101,6 +102,7 @@ class AttentionOperatorPackageRuntimeSpec:
     jit_plan_resolver: Optional[AttentionJitPlanResolver] = None
     jit_artifact_resolver: Optional[AttentionJitArtifactResolver] = None
     jit_module_resolver: Optional[AttentionJitModuleResolver] = None
+    jit_planner_binder: Optional[AttentionJitPlannerBinder] = None
     jit_executor_binder: Optional[AttentionJitExecutorBinder] = None
     backend: Union[str, Backend] = "auto"
     tuned_kernel_ids: Tuple[str, ...] = ()
@@ -215,6 +217,12 @@ class AttentionOperatorPackageRuntimeSpec:
         ):
             raise TypeError(
                 "jit_executor_binder must implement AttentionJitExecutorBinder"
+            )
+        if self.jit_planner_binder is not None and not isinstance(
+            self.jit_planner_binder, AttentionJitPlannerBinder
+        ):
+            raise TypeError(
+                "jit_planner_binder must implement AttentionJitPlannerBinder"
             )
         if not isinstance(self.numerics_policy, AttentionNumericsPolicy):
             raise TypeError("bootstrap numerics_policy must be AttentionNumericsPolicy")
@@ -336,6 +344,7 @@ def build_attention_operator_package_runtime(
         jit_plan_resolver=spec.jit_plan_resolver,
         jit_artifact_resolver=spec.jit_artifact_resolver,
         jit_module_resolver=spec.jit_module_resolver,
+        jit_planner_binder=spec.jit_planner_binder,
         jit_executor_binder=spec.jit_executor_binder,
     )
 

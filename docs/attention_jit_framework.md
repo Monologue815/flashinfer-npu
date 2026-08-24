@@ -134,10 +134,15 @@ declared by the operation:
 The framework treats loaded objects as opaque. Backend-specific handles must not
 escape into user code.
 
-## 9. Callable and executor binding
+## 9. Planner, callable and executor binding
 
-Resolved symbols are not executable merely because they exist. A backend binder
-must associate them with an authorized callable/executor contract that defines:
+Resolved symbols are not usable merely because they exist. For batch Attention,
+a planner binder associates the module's `plan` entry point with the provider
+plan factory. The resulting factory owns provider plan state while the public
+wrapper continues to own the planning transaction.
+
+An executor binder associates the same loaded module with an authorized
+callable/executor contract that defines:
 
 - accepted lowered argument schema;
 - workspace, stream and device ownership;
@@ -146,8 +151,8 @@ must associate them with an authorized callable/executor contract that defines:
 - asynchronous completion and error behavior;
 - lifetime and teardown rules.
 
-The binding identity participates in the active plan. `run()` invokes only the
-executor bound during the successful planning transaction.
+Both binding identities participate in the active plan. `run()` accepts only
+the planner state and executor bound during the successful planning transaction.
 
 No default production Ascend binder or executor is installed by the repository.
 
@@ -162,8 +167,9 @@ For a JIT-backed batch implementation, `plan()` performs this transaction:
 5. make the cache/build policy decision;
 6. obtain and verify artifact bytes;
 7. load the module and resolve exact symbols;
-8. bind an executor and create any provider plan;
-9. publish one immutable active plan.
+8. bind the module plan entry point to a provider plan factory;
+9. bind an executor and create provider plan state;
+10. publish one immutable active plan.
 
 If any stage fails, the wrapper publishes nothing and preserves its previous
 active plan.
@@ -209,7 +215,7 @@ Enabling a real JIT implementation requires all of the following:
 4. a bounded, locked and atomic artifact cache;
 5. an artifact reader and verifier;
 6. an Ascend module loader and exact symbol resolver;
-7. a callable/executor binder;
+7. a module planner binder and callable/executor binder;
 8. provider plan/run lowering;
 9. stream, completion, error and teardown integration;
 10. numerical and physical-layout evidence for the enabled capability.

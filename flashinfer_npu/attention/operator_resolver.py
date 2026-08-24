@@ -22,6 +22,7 @@ from flashinfer_npu.jit.attention import (
     AttentionJitExecutorBinding,
     AttentionJitLoadedModuleBinding,
     AttentionJitPlanBinding,
+    AttentionJitPlannerBinding,
 )
 from flashinfer_npu.runtime import Backend, DispatchError, SchemaError
 
@@ -47,7 +48,7 @@ from .planner import (
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 5
+ATTENTION_OPERATOR_RESOLVER_VERSION = 6
 
 _DEVICE_TYPE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -90,6 +91,9 @@ class AttentionResolvedOperatorRuntime:
         default=None, repr=False, compare=False
     )
     jit_module_binding: Optional[AttentionJitLoadedModuleBinding] = field(
+        default=None, repr=False, compare=False
+    )
+    jit_planner_binding: Optional[AttentionJitPlannerBinding] = field(
         default=None, repr=False, compare=False
     )
     jit_executor_binding: Optional[AttentionJitExecutorBinding] = field(
@@ -142,6 +146,17 @@ class AttentionResolvedOperatorRuntime:
                 self.jit_artifact_binding,
             )
             if not isinstance(
+                self.jit_planner_binding, AttentionJitPlannerBinding
+            ):
+                raise SchemaError(
+                    "ascendc_jit runtime requires an Attention JIT planner binding"
+                )
+            self.jit_planner_binding.validate(self.jit_module_binding)
+            if self.jit_planner_binding.factory is not self.factory:
+                raise SchemaError(
+                    "ascendc_jit runtime factory differs from its JIT planner binding"
+                )
+            if not isinstance(
                 self.jit_executor_binding, AttentionJitExecutorBinding
             ):
                 raise SchemaError(
@@ -159,6 +174,7 @@ class AttentionResolvedOperatorRuntime:
             self.jit_plan_binding is not None
             or self.jit_artifact_binding is not None
             or self.jit_module_binding is not None
+            or self.jit_planner_binding is not None
             or self.jit_executor_binding is not None
         ):
             raise SchemaError(
@@ -513,6 +529,7 @@ class AttentionOperatorBatchRuntime:
         self._jit_plan_binding = None
         self._jit_artifact_binding = None
         self._jit_module_binding = None
+        self._jit_planner_binding = None
         self._jit_executor_binding = None
         self._last_lowered_call = None
 
@@ -560,6 +577,12 @@ class AttentionOperatorBatchRuntime:
             raise AttentionStateError("Attention operator runtime has not been planned")
         return self._jit_executor_binding
 
+    @property
+    def jit_planner_binding(self):
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        return self._jit_planner_binding
+
     def plan(self, spec: AttentionPlanSpec, metadata: AttentionMetadata) -> None:
         """Resolve and prepare completely, then publish all wrapper state."""
 
@@ -591,6 +614,11 @@ class AttentionOperatorBatchRuntime:
                 else None
             ),
             (
+                resolved.jit_planner_binding.fingerprint
+                if resolved.jit_planner_binding is not None
+                else None
+            ),
+            (
                 resolved.jit_executor_binding.fingerprint
                 if resolved.jit_executor_binding is not None
                 else None
@@ -600,6 +628,7 @@ class AttentionOperatorBatchRuntime:
         candidate_jit_plan_binding = resolved.jit_plan_binding
         candidate_jit_artifact_binding = resolved.jit_artifact_binding
         candidate_jit_module_binding = resolved.jit_module_binding
+        candidate_jit_planner_binding = resolved.jit_planner_binding
         candidate_jit_executor_binding = resolved.jit_executor_binding
         if candidate_jit_plan_binding is not None and (
             candidate_operator_session.active_plan.jit_plan_binding_fingerprint
@@ -618,6 +647,17 @@ class AttentionOperatorBatchRuntime:
             != candidate_jit_module_binding.fingerprint
         ):
             raise SchemaError("active plan did not freeze the JIT module identity")
+        if candidate_jit_planner_binding is not None and (
+            candidate_operator_session.active_plan.jit_planner_binding_fingerprint
+            != candidate_jit_planner_binding.fingerprint
+        ):
+            raise SchemaError("active plan did not freeze the JIT planner identity")
+        if candidate_jit_planner_binding is not None:
+            candidate_jit_planner_binding.validate(candidate_jit_module_binding)
+            if candidate_jit_planner_binding.factory is not resolved.factory:
+                raise SchemaError(
+                    "resolved factory differs from its JIT planner binding"
+                )
         if candidate_jit_executor_binding is not None and (
             candidate_operator_session.active_plan.jit_executor_binding_fingerprint
             != candidate_jit_executor_binding.fingerprint
@@ -657,6 +697,7 @@ class AttentionOperatorBatchRuntime:
         self._jit_plan_binding = candidate_jit_plan_binding
         self._jit_artifact_binding = candidate_jit_artifact_binding
         self._jit_module_binding = candidate_jit_module_binding
+        self._jit_planner_binding = candidate_jit_planner_binding
         self._jit_executor_binding = candidate_jit_executor_binding
         self._last_lowered_call = None
 
@@ -715,6 +756,18 @@ class AttentionOperatorBatchRuntime:
                 self._jit_plan_binding,
                 self._jit_artifact_binding,
             )
+            if self._jit_planner_binding is None:
+                raise AttentionStateError(
+                    "Attention JIT planner binding is not initialized"
+                )
+            if (
+                session.active_plan.jit_planner_binding_fingerprint
+                != self._jit_planner_binding.fingerprint
+            ):
+                raise AttentionStateError(
+                    "Attention JIT planner active-plan identity is stale"
+                )
+            self._jit_planner_binding.validate(self._jit_module_binding)
             if self._jit_executor_binding is None:
                 raise AttentionStateError(
                     "Attention JIT executor binding is not initialized"
