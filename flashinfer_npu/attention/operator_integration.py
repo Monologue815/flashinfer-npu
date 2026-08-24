@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_checkable
 
 from flashinfer_npu.jit.attention import (
+    AttentionJitArtifactBinding,
+    AttentionJitArtifactResolver,
     AttentionJitPlanBinding,
     AttentionJitPlanResolver,
 )
@@ -42,7 +44,7 @@ from .operator_run import (
 from .planner import AttentionFrameworkPlan
 
 
-ATTENTION_OPERATOR_INTEGRATION_VERSION = 1
+ATTENTION_OPERATOR_INTEGRATION_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -174,6 +176,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         tensor_materializer: AttentionOperatorTensorMaterializer,
         run_adapter_factory: Optional[AttentionOperatorRunAdapterFactory] = None,
         jit_plan_resolver: Optional[AttentionJitPlanResolver] = None,
+        jit_artifact_resolver: Optional[AttentionJitArtifactResolver] = None,
     ) -> None:
         if not isinstance(priority, int) or isinstance(priority, bool):
             raise SchemaError("package runtime priority must be an integer")
@@ -214,6 +217,12 @@ class AttentionOperatorPackageRuntimeImplementation:
             raise TypeError(
                 "jit_plan_resolver must implement AttentionJitPlanResolver"
             )
+        if jit_artifact_resolver is not None and not isinstance(
+            jit_artifact_resolver, AttentionJitArtifactResolver
+        ):
+            raise TypeError(
+                "jit_artifact_resolver must implement AttentionJitArtifactResolver"
+            )
         operation = package_resolver.operation
         identities = (
             (plan_gate.provider_id, plan_gate.operation_id),
@@ -247,6 +256,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         self._tensor_materializer = tensor_materializer
         self._run_adapter_factory = run_adapter_factory
         self._jit_plan_resolver = jit_plan_resolver
+        self._jit_artifact_resolver = jit_artifact_resolver
 
     def rejection_reasons(
         self, plan: AttentionFrameworkPlan, device: str
@@ -311,10 +321,15 @@ class AttentionOperatorPackageRuntimeImplementation:
             raise SchemaError("pre-import package runtime authority is stale")
 
         jit_plan_binding = None
+        jit_artifact_binding = None
         if authority.receipt.backend == Backend.ASCENDC_JIT:
             if self._jit_plan_resolver is None:
                 raise AttentionOperatorIntegrationError(
                     "ascendc_jit runtime requires a configured JIT plan resolver"
+                )
+            if self._jit_artifact_resolver is None:
+                raise AttentionOperatorIntegrationError(
+                    "ascendc_jit runtime requires a configured JIT artifact resolver"
                 )
             jit_plan_binding = self._jit_plan_resolver.resolve(
                 plan, authority.receipt
@@ -328,6 +343,14 @@ class AttentionOperatorPackageRuntimeImplementation:
             # A cache miss cannot become an executable provider runtime until a
             # separately authorized builder has produced and verified an artifact.
             jit_plan_binding.require_ready()
+            jit_artifact_binding = self._jit_artifact_resolver.resolve(
+                jit_plan_binding
+            )
+            if not isinstance(jit_artifact_binding, AttentionJitArtifactBinding):
+                raise TypeError(
+                    "JIT artifact resolver returned an invalid binding"
+                )
+            jit_artifact_binding.validate_plan_binding(jit_plan_binding)
 
         package = self._package_resolver.resolve(
             expected_provider_probe=provider_probe
@@ -352,6 +375,7 @@ class AttentionOperatorPackageRuntimeImplementation:
             selection=authority.selection,
             callable_binding=package.callable_binding,
             jit_plan_binding=jit_plan_binding,
+            jit_artifact_binding=jit_artifact_binding,
         )
 
 

@@ -1,6 +1,6 @@
 # Attention JIT framework contract
 
-> Status: through checkpoint 031, Host framework only. No Ascend source generation,
+> Status: through checkpoint 032, Host framework only. No Ascend source generation,
 > compiler invocation, artifact loading, NPU runtime initialization, or
 > operator execution is implemented or claimed.
 
@@ -31,8 +31,11 @@ flashinfer_npu/jit/
 ├── core.py                 # JitSpec, JitSpecStatus, JitSpecRegistry
 ├── env.py                  # explicit toolchain target and compilation policy
 ├── cache.py                # verified cache identity and pure resolution
+├── artifacts.py            # injected byte reader and verification receipt
 └── attention/
     ├── __init__.py
+    ├── plan.py             # wrapper plan to exact cache-hit binding
+    ├── artifacts.py        # cache hit to byte-verification binding
     ├── modules.py          # selected plan -> AttentionJitModuleSpec
     ├── variants.py         # static Attention specialization identity
     └── utils.py            # stable generated-module naming
@@ -170,5 +173,34 @@ wrapper plan.  Replanning dynamic sequence lengths may reuse the same static
 JIT recipe, but produces a new exact active-plan binding.
 
 The framework still does not claim that a cache record's artifact has been
-loaded.  A later loader checkpoint must reverify its bytes and symbols before
-any real executor can be published.
+loaded.
+
+## 9. Byte-verified artifact binding
+
+Checkpoint 032 separates cache metadata from verified artifact bytes. A cache
+hit is necessary but no longer sufficient to publish an `ascendc_jit` runtime:
+
+1. `JitArtifactPayloadReader` is injected privately; the package installs no
+   default filesystem reader and the public Attention API receives no path or
+   artifact parameter;
+2. `ConfiguredJitArtifactVerifier` requires `bytes`, then uses the declared
+   `ArtifactRef` to check exact size and SHA-256;
+3. `JitArtifactVerification` binds the spec, cache record, artifact, verified
+   payload identity and named verifier without retaining executable bytes;
+4. `ConfiguredAttentionJitArtifactResolver` repeats the exact cache lookup and
+   rejects a disappeared or changed record before producing an
+   `AttentionJitArtifactBinding`;
+5. package integration orders authority, JIT recipe/cache resolution, artifact
+   byte verification and only then callable import;
+6. the artifact binding fingerprint is part of the v3 active plan and is
+   published atomically with the framework plan, provider plan and executor;
+7. `run()` validates the frozen plan/artifact chain without rereading the file.
+
+Missing verifier configuration, non-byte reader results, size/digest mismatch,
+cache drift and internal binding drift all fail before package execution. A
+failed replan preserves the previously verified plan and executor.
+
+This checkpoint still has no filesystem implementation, compiler, dynamic
+library loader, symbol resolver, NPU runtime initialization or kernel call. A
+future loader checkpoint must resolve and verify the required symbols against
+this byte-verified identity before any real JIT executor is authorized.

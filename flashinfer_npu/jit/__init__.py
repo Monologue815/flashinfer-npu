@@ -15,6 +15,14 @@ from .cache import (
     require_jit_cache_hit,
     resolve_jit_spec,
 )
+from .artifacts import (
+    JIT_ARTIFACT_VERIFICATION_VERSION,
+    ConfiguredJitArtifactVerifier,
+    JitArtifactPayloadReader,
+    JitArtifactVerification,
+    JitArtifactVerifier,
+    verify_jit_cache_record_payload,
+)
 from .core import (
     JIT_SPEC_SCHEMA_VERSION,
     JitSpec,
@@ -30,9 +38,14 @@ from .env import (
 )
 
 __all__ = [
+    "JIT_ARTIFACT_VERIFICATION_VERSION",
     "JIT_CACHE_SCHEMA_VERSION",
     "JIT_ENVIRONMENT_SCHEMA_VERSION",
     "JIT_SPEC_SCHEMA_VERSION",
+    "ConfiguredJitArtifactVerifier",
+    "JitArtifactPayloadReader",
+    "JitArtifactVerification",
+    "JitArtifactVerifier",
     "JitCacheIndex",
     "JitCacheRecord",
     "JitCompilationPolicy",
@@ -48,4 +61,5 @@ __all__ = [
     "jit_spec_registry",
     "require_jit_cache_hit",
     "resolve_jit_spec",
+    "verify_jit_cache_record_payload",
 ]

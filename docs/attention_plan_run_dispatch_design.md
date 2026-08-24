@@ -856,3 +856,26 @@ runtime publication。031 在不改变 constructor/plan/run 签名的前提下�
 AOT/JIT 互斥、package import 顺序、失败/成功 replan、run-time drift 和 32-way 并发幂等；本机全量
 539 项 Host 测试通过。测试只使用 synthetic cache record/fake executor，没有 compiler、loader、
 外部 package import、NPU runtime 或算子执行。
+
+## 35. 检查点 032：JIT cache artifact 字节验证与 active-plan 闭合
+
+031 的 `cache_hit` 只证明缓存索引中存在匹配的不可变记录，尚未证明记录指向的实际字节仍与
+声明一致。032 在不提供默认文件访问和动态加载能力的前提下增加一层独立验证：
+
+- `JitArtifactPayloadReader`/`JitArtifactVerifier` 均为私有注入协议；框架不猜测 cache root，也不
+  向用户暴露路径、artifact 或 loader 参数；
+- verifier 只接受 `bytes`，使用 `ArtifactRef.verify_bytes()` 复核 exact size 与 SHA-256，生成绑定
+  spec/cache record/artifact/payload/verifier 的不可变 receipt；
+- `ConfiguredAttentionJitArtifactResolver` 在验证前再次 lookup 同一个 spec，并要求 cache record
+  fingerprint 与 031 plan resolution 完全相同；
+- package runtime 顺序固定为 authority → JIT recipe/cache resolution → artifact byte verification →
+  callable import，任何缺失或漂移均在 import 前失败；
+- v3 `AttentionOperatorActivePlan` 同时冻结 JIT plan binding 与 artifact binding fingerprint；wrapper
+  在最终 commit point 一次性发布两者，失败 replan 保留旧 plan/artifact/executor；
+- `run()` 不重复读取文件，但会在 lowering/executor 前复核 artifact binding 与 plan/cache identity，
+  内部状态漂移 fail closed。
+
+11 项增量测试覆盖公共接口隔离、exact bytes receipt、size/digest、非 bytes reader、cache disappearance、
+缺失 resolver、pre-import corruption gate、plan/run 复用、失败 replan、run-time drift 与 active-plan
+fingerprint。全量 550 项 Host 测试通过。测试只使用内存 synthetic bytes；仍无 filesystem reader、
+compiler、dynamic loader、symbol resolution、外部 package import、NPU runtime 或算子执行。

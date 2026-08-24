@@ -120,8 +120,10 @@ documented in
 [`docs/attention_jit_framework.md`](docs/attention_jit_framework.md). It is
 Host-only and deliberately exposes no compiler or loader yet. An internally
 selected `ascendc_jit` route must now produce an exact cache-hit binding during
-wrapper `plan()`; that identity is frozen into the active plan and revalidated
-by `run()` before any provider executor may be called.
+wrapper `plan()`, then reverify the selected artifact bytes through an injected
+reader before package callable import. Both identities are frozen into the
+active plan and revalidated by `run()` before any provider executor may be
+called.
 Untrusted trace/corpus decoding limits are specified in
 [`docs/attention_json_envelope.md`](docs/attention_json_envelope.md).
 Independent quantization-drift and future backend-error budgets are specified
@@ -153,6 +155,6 @@ python3 -m flashinfer_npu attention-accuracy-corpus --pretty
 python3 -m flashinfer_npu attention-protocol-validate path/to/protocol.json
 ```
 
-The current Host-only suite contains 539 tests. It validates framework
+The current Host-only suite contains 550 tests. It validates framework
 contracts and injected fake callables; passing it is not evidence of NPU
 operator correctness or performance.

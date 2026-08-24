@@ -17,17 +17,27 @@ from .plan import (
     ConfiguredAttentionJitPlanResolver,
     resolve_attention_jit_plan,
 )
+from .artifacts import (
+    ATTENTION_JIT_ARTIFACT_BINDING_VERSION,
+    AttentionJitArtifactBinding,
+    AttentionJitArtifactResolver,
+    ConfiguredAttentionJitArtifactResolver,
+)
 
 __all__ = [
+    "ATTENTION_JIT_ARTIFACT_BINDING_VERSION",
     "ATTENTION_JIT_GENERATOR_ID",
     "ATTENTION_JIT_GENERATOR_VERSION",
     "ATTENTION_JIT_MODULE_SCHEMA_VERSION",
     "ATTENTION_JIT_PLAN_BINDING_VERSION",
     "ATTENTION_JIT_VARIANT_SCHEMA_VERSION",
+    "AttentionJitArtifactBinding",
+    "AttentionJitArtifactResolver",
     "AttentionJitModuleSpec",
     "AttentionJitPlanBinding",
     "AttentionJitPlanResolver",
     "AttentionJitVariant",
+    "ConfiguredAttentionJitArtifactResolver",
     "ConfiguredAttentionJitPlanResolver",
     "attention_jit_module_name",
     "gen_attention_jit_module_spec",
