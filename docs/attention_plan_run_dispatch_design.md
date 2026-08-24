@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 022，已将声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 023，已将原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -639,3 +639,23 @@ materializer 的情况下把已安装 package 误当成可运行能力。
 022 的 8 项增量测试验证空默认入口、零副作用构建、NPU 路由、metadata-only explain、完整
 evidence-before-import resolve、缺包短路、跨 provider 身份拒绝以及重复 operation/version/tuning
 声明拒绝。全量 453 项 Host 测试通过；未导入外部 Attention package 或使用 NPU runtime。
+
+## 26. 检查点 023：公共 wrapper 的原子 runtime registry 快照
+
+022 产生 immutable resolver registry，但公共 `BatchAttention` 构造时仍直接读取一个模块变量，
+没有正式约束集成更新与既有 wrapper 的隔离关系。023 增加 process-bootstrap 安装边界：
+
+- `attention_operator_runtime_registry_snapshot()` 在锁内捕获 registry 与单调 generation；
+- `install_attention_operator_runtime_resolvers()` 只接受空 registry 或唯一 `npu` 路由，并支持
+  `expected_generation` compare-and-swap，避免并发 bootstrap 静默覆盖；
+- 每个 NPU `BatchAttention` 在构造时捕获一个 snapshot，随后只使用该 immutable registry；
+- 后续安装或恢复只影响之后构造的 wrapper，已存在且已规划/未规划的 wrapper 都不换 authority；
+- snapshot/install 不执行 resolver、不 probe package、不访问设备。
+
+安装入口属于 library/provider integration control，不进入模型调用面。`BatchAttention` 构造签名
+仍只有 `kv_layout` 与 `device`；`plan()` 不暴露 provider，`run()` 不接收 plan。真实 package
+integration 将在进程初始化阶段安装已验证的 spec tree，模型使用者仍只调用同一个 wrapper。
+
+023 的 8 项增量测试验证默认快照、未来实例隔离、恢复隔离、stale generation 拒绝、仅 NPU
+路由、零 resolver/device side effect、snapshot schema 与公共签名。全量 461 项 Host 测试通过；
+默认 registry 仍为空，未导入或调用任何外部 Attention 实现。

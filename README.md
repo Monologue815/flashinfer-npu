@@ -42,6 +42,12 @@ resolver. The packaged declaration set is intentionally empty today: no real
 CANN or flash-attention-npu package is imported or called until a separately
 verified integration is installed.
 
+Provider integrations are installed atomically at process bootstrap. Each NPU
+`BatchAttention` instance captures one immutable resolver generation when it is
+constructed, so a later integration update cannot change an already-created
+wrapper's plan/run authority. This bootstrap control remains separate from the
+model-facing API.
+
 The authoritative design is in
 [`docs/architecture.md`](docs/architecture.md). The current repository is a
 Phase 0 host-side architecture skeleton; it does not yet contain runnable
@@ -126,6 +132,6 @@ python3 -m flashinfer_npu attention-accuracy-corpus --pretty
 python3 -m flashinfer_npu attention-protocol-validate path/to/protocol.json
 ```
 
-The current Host-only suite contains 453 tests. It validates framework
+The current Host-only suite contains 461 tests. It validates framework
 contracts and injected fake callables; passing it is not evidence of NPU
 operator correctness or performance.

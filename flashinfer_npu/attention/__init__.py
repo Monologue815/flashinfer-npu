@@ -1,6 +1,11 @@
 """Framework contracts for FlashInfer-compatible Attention on Ascend NPU."""
 
-from .holistic import BatchAttention
+from .holistic import (
+    AttentionOperatorRuntimeRegistrySnapshot,
+    BatchAttention,
+    attention_operator_runtime_registry_snapshot,
+    install_attention_operator_runtime_resolvers,
+)
 from .jit_protocol import (
     ATTENTION_SINGLE_JIT_TEMP_BYTES,
     ATTENTION_UPSTREAM_MASK_MODES,
@@ -490,6 +495,7 @@ __all__ = [
     "ATTENTION_RUN_OPTIONS_C_ABI",
     "ATTENTION_TENSOR_VIEW_C_ABI",
     "BatchAttention",
+    "AttentionOperatorRuntimeRegistrySnapshot",
     "CANN_ATTENTION_PROVIDER_ID",
     "CANN_V2_OPERATION_ID",
     "FLASH_ATTENTION_NPU_PROVIDER_ID",
@@ -721,6 +727,7 @@ __all__ = [
     "AttentionTensorViewPOD",
     "WorkspaceRequirementUnknownError",
     "attention_metadata_from_dict",
+    "attention_operator_runtime_registry_snapshot",
     "attention_protocol_evidence_fingerprint",
     "attention_protocol_fingerprint",
     "attention_trace_features",
@@ -756,6 +763,7 @@ __all__ = [
     "dtype_itemsize",
     "decode_attention_json",
     "infer_quant_scale_shape",
+    "install_attention_operator_runtime_resolvers",
     "infer_logical_quant_storage_shape",
     "infer_quant_storage_shape",
     "infer_quant_physical_shapes",
