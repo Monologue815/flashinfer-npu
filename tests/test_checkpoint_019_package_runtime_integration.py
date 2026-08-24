@@ -37,9 +37,20 @@ def package_attention(
     table=None,
     scale=1.0,
     return_softmax_lse=False,
+    key_scale=None,
+    value_scale=None,
 ):
     package_attention.calls.append(
-        (query, key, value, table, scale, return_softmax_lse)
+        (
+            query,
+            key,
+            value,
+            table,
+            scale,
+            return_softmax_lse,
+            key_scale,
+            value_scale,
+        )
     )
     return ("package-output:%s" % query, "package-lse:%s" % scale)
 
@@ -54,12 +65,22 @@ def fake_operation():
         package_name="checkpoint-019-package",
         callable_path="checkpoint_019_package.attention",
         api_version="v1",
-        candidate_modes=(AttentionMode.BATCH_MIXED_PAGED,),
+        candidate_modes=(
+            AttentionMode.BATCH_MIXED_PAGED,
+            AttentionMode.BATCH_DECODE_PAGED,
+        ),
         positional_arguments=("query", "key", "value"),
-        keyword_arguments=("table", "scale", "return_softmax_lse"),
+        keyword_arguments=(
+            "table",
+            "scale",
+            "return_softmax_lse",
+            "key_scale",
+            "value_scale",
+        ),
         return_names=("output", "softmax_lse"),
         paged_table_argument="table",
         lse_control_argument="return_softmax_lse",
+        quant_arguments=("key_scale", "value_scale"),
         source_url="https://example.com/checkpoint-019-attention-v1",
     )
 

@@ -162,6 +162,8 @@ INT8、lossy asymmetric UINT8、奇数维 packed INT4 和必须拒绝的 scale o
 3. physical layout descriptor/catalog、三组件 shape、conversion plan 与 KV POD/binary ABI v2 已冻结；仍需真实昇腾 descriptor、converter artifact，以及 v2 packet/provider 接线。
 4. capability profile v1 已冻结完整 QuantSpec predicate；仍需用真实 SoC/CANN tuple 生成 evidence。
 5. accuracy report 已进一步绑定 launch packet、成功 provider completion 与 lifecycle trace；仍需可信 runner attestation。
+6. package runtime bootstrap 已要求 capability `QuantSpec` 与 catalog quant arguments 完全闭合；
+   真实 CANN/flash-attention-npu binding 仍需逐参数语义与版本证据，不能由参数名称推断。
 
 FP8、NVFP4、MX、真实非逻辑 layout descriptor/converter、K/V 不同 `QuantSpec` 配置和
 量化 packed combined-KV allocation 仍是显式 gap。

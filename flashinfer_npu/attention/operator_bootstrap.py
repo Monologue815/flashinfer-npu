@@ -42,6 +42,11 @@ from .operator_package import (
     ImportlibAttentionOperatorPackageLoader,
 )
 from .operator_plan import AttentionOperatorPlanFactory
+from .operator_quantization import (
+    AttentionOperatorQuantizationBinding,
+    AttentionOperatorQuantizationPlanGate,
+    validate_attention_operator_quantization_bindings,
+)
 from .operator_resolver import (
     EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS,
     AttentionOperatorRuntimeImplementationRegistry,
@@ -68,6 +73,7 @@ class AttentionOperatorPackageRuntimeSpec:
     logical_factory: AttentionOperatorPlanFactory
     logical_run_adapter: AttentionOperatorRunAdapter
     tensor_materializer: AttentionOperatorTensorMaterializer
+    quantization_bindings: Tuple[AttentionOperatorQuantizationBinding, ...] = ()
     backend: Union[str, Backend] = "auto"
     tuned_kernel_ids: Tuple[str, ...] = ()
     numerics_policy: AttentionNumericsPolicy = DEFAULT_ATTENTION_NUMERICS_POLICY
@@ -120,6 +126,14 @@ class AttentionOperatorPackageRuntimeSpec:
                 "bootstrap tensor_materializer must implement "
                 "AttentionOperatorTensorMaterializer"
             )
+        quantization_bindings = tuple(self.quantization_bindings)
+        if any(
+            not isinstance(item, AttentionOperatorQuantizationBinding)
+            for item in quantization_bindings
+        ):
+            raise TypeError(
+                "bootstrap quantization_bindings must contain quantization bindings"
+            )
         if not isinstance(self.numerics_policy, AttentionNumericsPolicy):
             raise TypeError("bootstrap numerics_policy must be AttentionNumericsPolicy")
         if self.corpus is not None and not isinstance(
@@ -142,6 +156,9 @@ class AttentionOperatorPackageRuntimeSpec:
         object.__setattr__(self, "supported_package_versions", tuple(sorted(versions)))
         object.__setattr__(self, "profiles", profiles)
         object.__setattr__(self, "descriptors", descriptors)
+        object.__setattr__(
+            self, "quantization_bindings", quantization_bindings
+        )
         object.__setattr__(self, "tuned_kernel_ids", tuned_ids)
         object.__setattr__(self, "replay_evidence", bool(self.replay_evidence))
 
@@ -171,6 +188,12 @@ def build_attention_operator_package_runtime(
     operation = operation_catalog.get(spec.operation_id)
     if operation.provider_id != spec.provider_id:
         raise SchemaError("bootstrap operation and plan gate providers differ")
+    quantization_bindings = validate_attention_operator_quantization_bindings(
+        operation, spec.profiles, spec.quantization_bindings
+    )
+    plan_gate = AttentionOperatorQuantizationPlanGate(
+        spec.plan_gate, operation, quantization_bindings
+    )
     compatibility = AttentionOperatorPackageCompatibility(
         provider_id=operation.provider_id,
         operation_id=operation.operation_id,
@@ -195,7 +218,7 @@ def build_attention_operator_package_runtime(
     return AttentionOperatorPackageRuntimeImplementation(
         priority=spec.priority,
         package_resolver=package_resolver,
-        plan_gate=spec.plan_gate,
+        plan_gate=plan_gate,
         authority_resolver=authority_resolver,
         logical_factory=spec.logical_factory,
         logical_run_adapter=spec.logical_run_adapter,

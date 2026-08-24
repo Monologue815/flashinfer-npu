@@ -4,6 +4,8 @@ import unittest
 from flashinfer_npu.attention import (
     EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS,
     AttentionOperatorPackageRuntimeSpec,
+    AttentionOperatorQuantArgumentBinding,
+    AttentionOperatorQuantizationBinding,
     AttentionOperatorRuntimeResolutionError,
     AttentionOperatorRuntimeResolverRegistry,
     build_attention_operator_package_runtime,
@@ -33,6 +35,19 @@ def bootstrap_components(*, package_version="1.0.0", gate_reasons=()):
     gate = FakePlanGate(events, gate_reasons)
     profile = functional_profile()
     materializer = FakeTensorMaterializer(events)
+    quantization_binding = AttentionOperatorQuantizationBinding(
+        provider_id="cann",
+        operation_id=operation.operation_id,
+        quant_spec=profile.rules[0].quant_specs[0],
+        argument_bindings=(
+            AttentionOperatorQuantArgumentBinding(
+                "kv.key.scale", "key_scale"
+            ),
+            AttentionOperatorQuantArgumentBinding(
+                "kv.value.scale", "value_scale"
+            ),
+        ),
+    )
     spec = AttentionOperatorPackageRuntimeSpec(
         operation_id=operation.operation_id,
         priority=100,
@@ -45,6 +60,7 @@ def bootstrap_components(*, package_version="1.0.0", gate_reasons=()):
         logical_factory=FakeLogicalFactory(events),
         logical_run_adapter=FakeLogicalRunAdapter(),
         tensor_materializer=materializer,
+        quantization_bindings=(quantization_binding,),
     )
     return {
         "events": events,
@@ -159,6 +175,7 @@ class OperatorRuntimeBootstrapCheckpoint(unittest.TestCase):
             logical_factory=spec.logical_factory,
             logical_run_adapter=spec.logical_run_adapter,
             tensor_materializer=spec.tensor_materializer,
+            quantization_bindings=spec.quantization_bindings,
         )
 
         with self.assertRaisesRegex(SchemaError, "providers differ"):

@@ -48,6 +48,12 @@ constructed, so a later integration update cannot change an already-created
 wrapper's plan/run authority. This bootstrap control remains separate from the
 model-facing API.
 
+Quantized provider candidates have an additional admission boundary: every
+capability `QuantSpec` must map key/value scale and, when applicable,
+independent zero-point sources to exact quantization arguments in the selected
+catalog operation. Merely exposing quantization-named package parameters is
+not treated as runtime support.
+
 The authoritative design is in
 [`docs/architecture.md`](docs/architecture.md). The current repository is a
 Phase 0 host-side architecture skeleton; it does not yet contain runnable
@@ -132,6 +138,6 @@ python3 -m flashinfer_npu attention-accuracy-corpus --pretty
 python3 -m flashinfer_npu attention-protocol-validate path/to/protocol.json
 ```
 
-The current Host-only suite contains 461 tests. It validates framework
+The current Host-only suite contains 469 tests. It validates framework
 contracts and injected fake callables; passing it is not evidence of NPU
 operator correctness or performance.

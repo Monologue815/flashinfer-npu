@@ -405,6 +405,13 @@ from .operator_bootstrap import (
     build_attention_operator_runtime_resolvers,
     build_default_attention_operator_runtime_resolvers,
 )
+from .operator_quantization import (
+    ATTENTION_OPERATOR_QUANTIZATION_VERSION,
+    AttentionOperatorQuantArgumentBinding,
+    AttentionOperatorQuantizationBinding,
+    AttentionOperatorQuantizationPlanGate,
+    validate_attention_operator_quantization_bindings,
+)
 from .operator_materialization import (
     ATTENTION_OPERATOR_MATERIALIZATION_VERSION,
     AttentionMaterializedOperatorPlanState,
@@ -479,6 +486,7 @@ __all__ = [
     "ATTENTION_OPERATOR_INTEGRATION_VERSION",
     "ATTENTION_OPERATOR_AUTHORITY_VERSION",
     "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
+    "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "ATTENTION_OPERATOR_MATERIALIZATION_VERSION",
     "ATTENTION_PROTOCOL_TRACE_SCHEMA_VERSION",
     "ATTENTION_MAX_TENSOR_RANK",
@@ -641,6 +649,9 @@ __all__ = [
     "AttentionOperatorRuntimeAuthorityResolver",
     "AttentionEvidenceOperatorRuntimeAuthorityResolver",
     "AttentionOperatorPackageRuntimeSpec",
+    "AttentionOperatorQuantArgumentBinding",
+    "AttentionOperatorQuantizationBinding",
+    "AttentionOperatorQuantizationPlanGate",
     "AttentionMaterializedOperatorPlanState",
     "AttentionMaterializedOperatorTensor",
     "AttentionMaterializingPlanFactory",
@@ -783,6 +794,7 @@ __all__ = [
     "lower_attention_operator_run",
     "validate_attention_lowered_operator_call",
     "validate_attention_kernel_bindings",
+    "validate_attention_operator_quantization_bindings",
     "normalize_quant_axes",
     "plan_quant_layout_conversion",
     "normalize_attention_logits",

@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 023，已将原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 024，已将 exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -659,3 +659,30 @@ integration 将在进程初始化阶段安装已验证的 spec tree，模型使�
 023 的 8 项增量测试验证默认快照、未来实例隔离、恢复隔离、stale generation 拒绝、仅 NPU
 路由、零 resolver/device side effect、snapshot schema 与公共签名。全量 461 项 Host 测试通过；
 默认 registry 仍为空，未导入或调用任何外部 Attention 实现。
+
+## 27. 检查点 024：QuantSpec 到 provider API 参数的闭合绑定
+
+capability profile 能证明某个 backend/kernel 接受 exact `QuantSpec`，operation catalog 能证明
+某个 package API 暴露一组 `quant_arguments`，但两者此前没有语义连接。只凭参数名含有
+`quant`/`scale` 不能推导它消费的是 KV scale、输出 scale、query scale 还是其他格式。024 增加：
+
+- `AttentionOperatorQuantArgumentBinding`：把逻辑来源（K/V scale、K/V zero-point、可选
+  runtime K/V scale）映射到一个 catalog argument；
+- `AttentionOperatorQuantizationBinding`：绑定 exact `QuantSpec`、provider、operation、完整参数
+  source 集、runtime scale policy 与 quantized KV input contract；
+- `validate_attention_operator_quantization_bindings()`：要求 operation 候选 mode 涉及的所有
+  capability rule `QuantSpec` 与 API bindings 构成完全相同的集合；
+- `AttentionOperatorQuantizationPlanGate`：在 provider 自身 gate 之外再次按 exact QuantSpec
+  fingerprint admission，缺失或不同粒度/axis/group/zero-point/packing 的 plan 都拒绝。
+
+对称量化至少必须独立映射 K scale 与 V scale；非对称量化还必须独立映射 K zero-point 与
+V zero-point。runtime `k_scale`/`v_scale` 是反量化之外的公共运行时倍率，不能默认混同于 KV
+storage scale；只有 policy=`argument` 且存在专属 source binding 才能声明消费，否则维持 reject。
+
+bootstrap 构建时执行上述闭合验证，早于 distribution metadata probe、callable import、device
+访问与 operator execution。现有 CANN v2/flash-attention-npu v3 paged gate 仍明确拒绝量化；024
+没有为真实 package 声明任何 QuantSpec，只冻结未来启用量化 plan 之前必须满足的框架门禁。
+
+024 的 8 项增量测试验证 canonical binding、对称/非对称来源、runtime scale policy、capability/
+catalog exact-set、一处曾可构造的 synthetic 假支持拒绝、非 catalog/跨 operation/重复 binding、
+exact plan gate 与 base reason 保留。全量 469 项 Host 测试通过；没有导入或调用 NPU 算子。
