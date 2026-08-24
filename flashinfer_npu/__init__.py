@@ -44,6 +44,7 @@ from .prefill import (
     single_prefill_with_kv_cache_return_lse,
     single_prefill_with_kv_cache_with_jit_module,
 )
+from . import jit as jit
 
 __all__ = [
     "ArtifactFormat",
@@ -78,6 +79,7 @@ __all__ = [
     "WorkspaceFormula",
     "__version__",
     "build_plan",
+    "jit",
     "single_decode_with_kv_cache",
     "single_decode_with_kv_cache_return_lse",
     "single_decode_with_kv_cache_with_jit_module",

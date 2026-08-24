@@ -114,6 +114,11 @@ completion-event, and unload lifecycle are documented in
 The two single-request injected-JIT compatibility entries model upstream scratch,
 output/LSE allocation and argument ordering only; they do not compile or load an
 Ascend artifact and remain `framework` parity.
+The independent FlashInfer-style JIT framework package—immutable specs,
+registry, explicit environment, cache identity and Attention specialization—is
+documented in
+[`docs/attention_jit_framework.md`](docs/attention_jit_framework.md). It is
+Host-only and deliberately exposes no compiler or loader yet.
 Untrusted trace/corpus decoding limits are specified in
 [`docs/attention_json_envelope.md`](docs/attention_json_envelope.md).
 Independent quantization-drift and future backend-error budgets are specified
@@ -145,6 +150,6 @@ python3 -m flashinfer_npu attention-accuracy-corpus --pretty
 python3 -m flashinfer_npu attention-protocol-validate path/to/protocol.json
 ```
 
-The current Host-only suite contains 509 tests. It validates framework
+The current Host-only suite contains 527 tests. It validates framework
 contracts and injected fake callables; passing it is not evidence of NPU
 operator correctness or performance.

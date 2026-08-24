@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 029，已将 package evidence manifest、provider physical-layout conformance evidence、descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
+> 状态：检查点 030，已将独立 Attention JIT spec/registry/cache-decision 框架、package evidence manifest、provider physical-layout conformance evidence、descriptor binding、量化 KV tensor metadata validation、量化 KV run lowering、exact QuantSpec/API binding、原子 registry 快照、声明式 bootstrap、自动选择、evidence-bearing package authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -810,3 +810,25 @@ bootstrap 只接受 verified bundle，不接受裸 manifest 或未经摘要验�
 locator、payload set/size/digest、package/adapter/version/catalog drift、verified-bundle gate、完整
 authority+lowering 和公共接口隔离。全量 509 项 Host 测试通过；所有 manifest/result 都是
 synthetic bytes，未访问 NPU runtime 或执行算子。
+
+## 33. 检查点 030：Attention JIT framework package
+
+此前两个 `*_with_jit_module` API 只验证注入对象的 `run()` ABI，不能代表上游
+`flashinfer/jit` 的 spec、registry、environment、cache 和 operator-specific module generation
+分层。030 新增独立 `flashinfer_npu/jit` 包，并将范围限制为纯 Host recipe/decision：
+
+1. `JitSpec` 冻结 generator、SoC、完整 environment、specialization、kernel/source/ABI 输入、
+   compile option 与 entry point identity；recipe-only 与 source-materialized 状态不混淆；
+2. `JitSpecRegistry` 对同一 identity 幂等，对同名漂移 fail closed，并提供确定性 status/stats；
+3. `JitCacheRecord` 只接受 compiled file artifact，且必须精确绑定 spec、environment 与 SoC；
+4. `resolve_jit_spec()` 只产生 `cache_hit/build_required/unavailable` 决策，不访问文件系统；
+5. `AttentionJitVariant` 包含 dtype/head/layout/mask/window/soft-cap/reduction/profiler 和完整
+   QuantSpec identity；动态长度共享 recipe，但 module binding 仍冻结具体 plan/workload/receipt；
+6. 只有 automatic dispatch 已经选择 `ascendc_jit` 且 plan/environment receipt 全部匹配时，才可
+   生成 `AttentionJitModuleSpec`。
+
+030 不提供 `build_jit_specs()`、compiler、cache writer、loader 或 operator launch；也不导入
+torch-npu、CANN 或 flash-attention-npu。详细边界见
+`docs/attention_jit_framework.md`。增量测试覆盖结构、序列化、注册冲突、缓存漂移、策略决策、
+plan/environment/backend、动态 shape、量化 identity 与 isolated import。18 项增量测试与全量
+527 项 Host 测试通过；通过只表示框架合同成立。
