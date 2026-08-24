@@ -89,10 +89,11 @@ flowchart LR
 
 ## 5. 当前边界
 
-Host tests 已验证 schema round-trip、payload size/digest、package-root 与 symlink escape、
+artifact 合同要求 schema round-trip、payload size/digest、package-root 与 symlink escape、
 builtin/file 区分、logical/binary ABI mutation、POD byte layout、error ABI、backend/format
-mapping、Attention target/ABI gate、旧 manifest rejection、地址租约和 receipt mutation。
+mapping、Attention target/ABI gate、旧 manifest rejection、地址租约和 receipt mutation
+全部 fail-closed。
 
-Packaged kernel manifest v3 仍为 `kernels=[]`。因此这些测试只证明未来制品不能绕过
+Packaged kernel manifest v3 保持 `kernels=[]`。该 schema 只保证未来制品不能绕过
 provenance/ABI 合同，不证明任何 Ascend object、shared library、JIT compiler、aclnn symbol
 或设备 launcher 已存在或可运行。

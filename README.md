@@ -139,7 +139,7 @@ surface and current gaps are documented in
 
 ## Development checks
 
-The host-side tests have no third-party dependencies:
+The host-side checks have no third-party dependencies:
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -155,6 +155,6 @@ python3 -m flashinfer_npu attention-accuracy-corpus --pretty
 python3 -m flashinfer_npu attention-protocol-validate path/to/protocol.json
 ```
 
-The current Host-only suite contains 561 tests. It validates framework
-contracts and injected fake callables; passing it is not evidence of NPU
-operator correctness or performance.
+These commands validate framework contracts and injected substitutes. Host-side
+validation is not evidence of NPU operator correctness, availability or
+performance.

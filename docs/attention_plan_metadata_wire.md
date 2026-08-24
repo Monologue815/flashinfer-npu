@@ -105,7 +105,6 @@ section directory 固定 kind、element type、flags、payload-relative offset�
 `materialize_attention_plan_metadata()` 只接受当前 canonical binary ABI fingerprint。
 `validate_plan()` 重新物化完整 blob 并做 byte equality；只比较 plan id 或长度不被接受。
 
-当前测试覆盖六种 mode、dense/INT8/packed-INT4、packed/unpacked mask、空页请求、固定 blob
+wire 合同必须覆盖六种 mode、dense/INT8/packed-INT4、packed/unpacked mask、空页请求、固定 blob
 fingerprint、INT32 overflow、未知 enum/flag、截断、错 offset、非零 padding/reserved、decode
-limits 和 stale plan。它不证明 blob 已复制到 NPU 或任何 kernel 能消费该结构。
-
+limits 和 stale plan。该合同不证明 blob 已复制到 NPU 或任何 kernel 能消费该结构。

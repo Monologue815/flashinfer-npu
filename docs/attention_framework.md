@@ -1,6 +1,6 @@
 # FlashInfer-NPU Attention 框架对标设计
 
-> 状态：Framework validation v1.11  
+> 状态：Attention framework design v1.11
 > 日期：2026-08-21  
 > 当前阶段：纯 Host 验证，不依赖 NPU、CANN、PyTorch 或 torch_npu
 
@@ -59,7 +59,7 @@ flowchart TB
     S --> K["WorkloadSpec / plan fingerprint"]
 ```
 
-当前 `ReferenceTensor`、`ReferenceKVData` 和 `ReferenceAttentionExecutor` 是测试基础设施，
+当前 `ReferenceTensor`、`ReferenceKVData` 和 `ReferenceAttentionExecutor` 是参考语义基础设施，
 用于冻结 Attention 数学语义；它们不是最终 tensor frontend，也不会进入生产自动 dispatch。
 `AttentionExecutor` 是边界：同一个 plan/run 契约可以注入 Host reference、未来的
 PyTorch functional 实现或昇腾设备实现，而上层 metadata 不随 backend 改写。
@@ -168,9 +168,9 @@ kv_len_arr: [batch]，token lengths
 每个 `kv_len` 必须能够装入对应 page 数量，并且不能少于“前面所有满页 + 最后一页一个 token”。
 `qo_indptr` 允许零长度 segment：请求可以没有 query 但保留 KV，也可以同时没有 Q/KV；这种
 请求不产生 output/LSE 行。不同请求可共享物理 page，同一请求也可重复引用 page，逻辑 token
-顺序严格由 `kv_indices` 的 page-table 顺序决定。Host 属性测试已覆盖 mixed decode-like
+顺序严格由 `kv_indices` 的 page-table 顺序决定。mixed 语义合同包含 decode-like
 `q_len=1`、prefill `q_len>1`、全空 batch、GQA、NHD/HND、因果 bottom-right 对齐、共享/重复页和
-精确 INT8 去量化，并与逐请求 single oracle 或 dense 路径比较。
+精确 INT8 去量化；逐请求 single oracle 或 dense 路径定义其数值预期。
 
 ## 5. KV Cache layout
 
@@ -244,7 +244,7 @@ stateDiagram-v2
 
 ## 9. Host 数值参考语义
 
-当前零依赖 reference 已覆盖：
+零依赖 reference 定义以下语义：
 
 - single prefill、single decode；
 - paged/ragged batch prefill、paged batch decode、mixed `BatchAttention`；
@@ -288,7 +288,7 @@ q.shape[0] = batch_size * q_len_per_req
 | 量化 | `QuantSpec` + INT8/UINT8/INT4 indexed dequant oracle + 双层 accuracy budget | Torch quantized tensor adapter + candidate report | 量化 kernel correctness + 独立 backend budget |
 | 性能 | 不设性能目标 | 不设性能目标 | latency、bandwidth、workspace、回归门禁 |
 
-框架阶段的 exit gate 是：所有 P0 Attention 语义均有 schema test 和数值 oracle case，
+框架阶段的 exit gate 是：所有 P0 Attention 语义均有 schema 定义和数值 oracle case，
 未知语义必须列为显式 gap。它不要求 NPU 环境，也不以性能数据作为通过条件。
 
 ## 12. Parity 状态定义
@@ -301,39 +301,23 @@ q.shape[0] = batch_size * q_len_per_req
 | `functional` | 有可执行设备实现并通过 conformance |
 | `optimized` | 通过 correctness 与性能门禁 |
 
-`parity-report --require-complete` 只接受 `functional` 或 `optimized`，因此当前框架测试通过不会被误报为库已经可运行。
+`parity-report --require-complete` 只接受 `functional` 或 `optimized`，因此框架合同不会被误报为库已经可运行。
 
-## 13. 当前验证证据
+## 13. 当前实现边界
 
-运行：
+`reference` 状态可用于描述同名 single API、batch wrapper 的 constructor/plan/run、workspace
+reset、graph property、Host structural capture identity 与 lifecycle alias。`capture_kind="host_contract"`
+只表示结构合同，不表示已建立设备 graph。
 
-```bash
-python3 -m unittest discover -s tests -v
-python3 -m flashinfer_npu parity-report --scope attention
-```
+可选 Torch adapter 只把 tensor metadata 转成 framework contract，没有 functional executor；
+因此不表示 Torch frontend 或 NPU backend 已经可运行。packaged kernel manifest 和默认 runtime
+registry 均不启用 Attention NPU implementation。具体状态以
+[`support_matrix.md`](support_matrix.md) 和运行时 registry 为准。
 
-当前结果：
+## 14. 扩展顺序
 
-- 359 个 Host tests 全部通过；覆盖量化 KV、14-case numerical trace corpus、51/51 coverage、4-case paired accuracy corpus、量化/backend 双层误差预算、accuracy↔dispatch/profile/runtime/kernel/artifact post-dispatch binding、accuracy↔launch packet/provider completion/protocol execution binding、workspace lifecycle、TensorView/alias/stream、Torch 协议适配、数值特殊值、JSON envelope、metadata limits、capability↔kernel 双向绑定/evidence revalidation、dispatch receipt、artifact provenance、logical/binary launch ABI、C POD/error contract、六种 mode canonical metadata wire、auxiliary/run-options Host contract、TensorView/KV/aux POD 物化、Host/device memory-domain lease、完整 13 参数 v1 launch packet、execution identity v3 stream claim、provider probe/load/resolved-symbol evidence、同步/异步 error/event ownership、四态 submit-unknown recovery、单边 registry/event 漂移拒绝、runtime-generation teardown/quiescence、共享 registry 并发 gate、completion/release/teardown 交错、Host descriptor arena concurrency、32 MiB injected-JIT scratch/argument contract、三类 deprecated forward、mixed 空请求/共享页/重复页/single-oracle/INT8-dense、packed INT4/asymmetric UINT8/per-head scale/window/soft-cap property，以及量化 storage/scale/zero-point 的可逆 blocked/permuted physical descriptor、padding、catalog、conversion plan、KV POD v1 欠描述拒绝和独立 KV POD/binary ABI v2 native-layout evidence gate；同时包含 context-local protocol recorder/corpus/CLI 的 route/state/stream/owner 门禁。
-- Attention core inventory：34 个 symbol。
-- 32 个 `reference`，2 个 `framework`，0 个 `missing`。
-- 0 个 functional/optimized。
-- 0 个 runtime kernel descriptor。
-- 0 个 registered Attention backend capability profile。
-
-`reference` 状态覆盖同名 single API、batch wrapper 的 constructor/plan/run、workspace
-reset、graph property、Host structural capture identity 与 lifecycle alias。该记录明确使用
-`capture_kind="host_contract"`，不表示已建立设备 graph。可选 Torch adapter 只把 tensor metadata 转成
-framework contract，没有 functional executor；因此并不表示 Torch frontend 或 NPU backend
-已经可运行。
-
-测试覆盖 CSR、page length、KV capacity、NHD/HND、packed/separate cache、GQA、
-QK/VO 不同维度、LSE、custom mask、bottom-right causal、ALiBi、scale、soft cap、
-profiler、图模式、multi-token decode、mixed batch、量化 KV 和 plan fingerprint。
-
-## 14. 下一阶段顺序
-
-1. 在 built-in conformance workflow 中联合生成 numerical + protocol corpus，自动注入 case id/input fingerprint 绑定；不记录伪造 kernel 输出。
-2. 扩展 accuracy corpus 的 scale 极值、累加 dtype、shape/head mapping 预算矩阵，并为 execution binding 增加可信 runner attestation。
-3. 在安装真实 PyTorch 的独立环境完成 Torch CPU metadata acceptance，并实现 CPU functional executor 与同一 corpus 对拍；仍先不写 NPU kernel。
-4. 评审第一个真实昇腾 runtime tuple 的 capability profile 草案；远端验证严格限制在用户授权目录，且保持 `draft/protocol`。
+1. conformance workflow 联合生成 numerical + protocol corpus，并自动绑定 case id/input fingerprint；
+2. accuracy corpus 定义 scale 极值、累加 dtype、shape/head mapping 预算矩阵和可信 runner attestation；
+3. Torch frontend/functional executor 通过同一 framework plan 和 corpus 接入；
+4. 为一个固定 SoC/CANN/package tuple 建立 capability profile、operation catalog 和 provider adapter；
+5. 只有完整 authority、artifact/callable、layout、numerical 与 execution evidence 的组合才能升级为 `functional`。

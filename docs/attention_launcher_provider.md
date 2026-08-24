@@ -2,7 +2,7 @@
 
 > 状态：Host provider protocol v1  
 > 日期：2026-08-20  
-> 范围：可验证的 loader/launcher 生命周期；当前测试只使用 fake provider，不加载或执行 NPU artifact
+> 范围：可验证的 loader/launcher 生命周期；当前不提供或执行 NPU artifact
 
 ## 1. 目的
 
@@ -72,7 +72,7 @@ file/object 和 JIT source bytes。证据记录 loader instance/generation 和�
 - entry point、非零 symbol address 和 symbol generation。
 
 结果 `AttentionResolvedLauncher` 进入 session 前还会与 launch packet 的 receipt 重新比较。
-symbol address 只是 provider 给出的不透明解析结果；Host tests 不解引用该地址。
+symbol address 只是 provider 给出的不透明解析结果；框架层不得解引用该地址。
 
 ## 5. Symbol lifetime registry
 
@@ -172,9 +172,9 @@ query_completion(resolved, packet, event_id) -> AttentionProviderCompletionResul
 Provider 必须直接消费 packet 中冻结的 13 参数，不得重新从 Python objects 推导 shape、地址或
 workspace。它也不得把同步 C 返回码伪装成 completion result，或在 event 完成前释放内部 handle。
 
-## 10. 当前证据与未完成项
+## 10. Provider 合同与未完成项
 
-Fake-provider tests 已覆盖：
+provider 合同必须覆盖：
 
 - probe/load/resolved schema round-trip；
 - bytes digest/size 与 builtin contract 两条验证路径；
@@ -190,16 +190,16 @@ Fake-provider tests 已覆盖：
 - coordinator 共享三类 registry；8 路并发 prepare 同一冲突 packet 时仅一个 session 获准。
 - 单边 registry 推进且 event 漂移时恢复拒绝；匹配 teardown 证据可安全收口。
 - 阻塞 completion query 与普通 release/teardown 的确定性交错；session lock 防止提前或双重释放。
-- 独立 `AttentionProtocolTrace` v1 已通过 context-local recorder 自动挂接 provider session，直接绑定
+- 独立 `AttentionProtocolTrace` v1 由 context-local recorder 挂接 provider session，直接绑定
   packet、submit/recovery/completion 与 teardown evidence；未完成 unknown/submitted session 不可发布
   corpus，并拒绝 stream/resource-owner 漂移。
 
-这些测试没有证明任何共享库、Ascend C object、aclnn builtin 或 CANN launcher 存在。正式 provider
+这些框架合同不证明任何共享库、Ascend C object、aclnn builtin 或 CANN launcher 存在。正式 provider
 接入仍需要真实 runtime tuple、artifact bytes、symbol lookup、backend submission-query、真实
 runtime teardown issuer、fork 策略、event query 和异步错误注入证据。
 
 成功 provider lifecycle 可以由
 [`AttentionAccuracyExecutionBinding`](attention_accuracy.md) 与 passing accuracy result 连接。
 该 binding 要求 packet/launcher/probe/submit/completion/event/stream/protocol trace 身份一致，
-但 `result_origin` 仍只是 runner 声明；没有可信 attestation 时不能把 Host synthetic binding
+但 `result_origin` 仍只是 runner 声明；没有可信 attestation 时不能把 synthetic binding
 当作真实设备 correctness evidence。

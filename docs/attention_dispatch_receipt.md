@@ -87,9 +87,9 @@ aclrt/aclnn、不创建 stream event，也不产生 `device_graph` capture。Hos
 `AttentionLaunchLeaseContract`，可把 receipt/execution identity 指纹绑定到具体地址、allocator
 generation、stream 和 completion event 状态机；真实 adapter 仍必须从运行时取得并证明这些值。
 
-## 6. 当前证据与诚实状态
+## 6. Receipt 合同与诚实状态
 
-Host mutation tests 已覆盖：
+receipt 合同必须覆盖：
 
 - receipt round-trip 和稳定 fingerprint；
 - environment/backend/evidence rejection；
@@ -99,7 +99,8 @@ Host mutation tests 已覆盖：
 - float/int workspace formula、capacity、TensorView 和 alignment 绑定；
 - receipt 到非 reference execution identity 的完整构造。
 
-所有 functional profile 和 kernel 均为测试内 synthetic fixture。Packaged manifests 继续是 `profiles=[]` 和 `kernels=[]`，因此当前仍没有任何可 dispatch 的 Ascend Attention backend。
+synthetic functional profile 和 kernel 只能作为 framework fixture。Packaged manifests 保持
+`profiles=[]` 和 `kernels=[]` 时，不存在任何可 dispatch 的 Ascend Attention backend。
 
 Artifact/ABI 细节见
 [`attention_kernel_artifact.md`](attention_kernel_artifact.md) 和

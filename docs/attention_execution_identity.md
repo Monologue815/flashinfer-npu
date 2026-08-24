@@ -87,9 +87,9 @@ stateDiagram-v2
 
 非 graph wrapper 永远不发布 capture record。`capture_kind="device_graph"` 只允许绑定非 reference kernel identity；当前仓库没有任何代码能够产生这种记录。
 
-## 5. 当前证据与后续门禁
+## 5. Identity 合同与后续门禁
 
-Host 测试已覆盖：
+identity 合同必须覆盖：
 
 - identity/capture JSON-like dict round-trip 与稳定 fingerprint；
 - 每个 fingerprint 维度的 mutation rejection；

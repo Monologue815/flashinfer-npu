@@ -1,6 +1,6 @@
 # FlashInfer-NPU Attention Frontend Contract
 
-> 状态：Single + Batch wrapper Host validation v0.6  
+> 状态：Single + Batch wrapper contract v0.6
 > 上游基线：`flashinfer-ai/flashinfer` main，2026-08-05 快照  
 > 当前限制：只设计与 Host conformance，不依赖 PyTorch、torch_npu、CANN 或 NPU
 
@@ -202,9 +202,9 @@ contiguous/cast/layout transform。
 公共 symbol 从 `framework` 升级为 `reference` 前必须全部满足：
 
 - `inspect.signature` 与冻结的上游 snapshot 一致；
-- 默认值、位置参数/keyword-only 行为和 deprecated alias 有测试；
+- 默认值、位置参数/keyword-only 行为和 deprecated alias 与冻结合同一致；
 - NHD/HND、packed/separate KV 输入能生成相同内部 metadata；
-- custom mask 优先级、little-endian packed mask、RoPE、ALiBi、LSE 数值测试通过；
+- custom mask 优先级、little-endian packed mask、RoPE、ALiBi、LSE 满足数值合同；
 - `return_lse`、用户提供 `out/lse` 和异常路径一致；
 - CUDA-only 参数不被静默忽略；
 - reference backend 必须显式选择，不参与生产 `auto` dispatch。

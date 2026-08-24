@@ -2,7 +2,7 @@
 
 > 状态：Protocol-conformant adapter v1  
 > 日期：2026-08-13  
-> 验证边界：协议假对象测试已通过；当前环境未安装 PyTorch/torch_npu，尚未声明真实运行时支持
+> 验证边界：只定义 metadata 协议；尚未声明真实 PyTorch/torch_npu 运行时支持
 
 ## 1. 定位
 
@@ -79,16 +79,16 @@ current-stream resolver；通用 adapter 不猜测 CUDA 或 NPU default stream�
    的机制；
 4. 异步错误归属与 workspace completion event。
 
-## 6. 当前验证证据与下一道门禁
+## 6. Metadata 合同与运行时门禁
 
-协议假对象测试验证了 metadata-only 行为：lazy dependency failure、stride/offset/capacity、
+metadata-only 合同包括 lazy dependency failure、stride/offset/capacity、
 opaque storage alias、非连续 view、storage bounds、CPU/accelerator stream 边界、dense/packed
 KV、显式 INT8 KV、writable output 与非法 alias。
 
-这些测试刻意不冒充真实 Torch 测试。进入 `torch_npu functional` 前必须依次通过：
+该协议不能代替真实 Torch 运行时证据。进入 `torch_npu functional` 前必须依次完成：
 
 1. 官方支持版本的真实 Torch CPU tensor metadata acceptance；
 2. Torch CPU functional executor 对同一 Attention corpus 与 Host oracle 数值对拍；
 3. 固定 PyTorch/torch_npu/CANN/driver/firmware/SoC tuple；
-4. 真实 NPU view、stream、allocator lifetime 与错误路径测试；
+4. 真实 NPU view、stream、allocator lifetime 与错误路径验证；
 5. parity 状态从 `reference` 升为 `functional`，而不是只因 adapter 存在而升级。

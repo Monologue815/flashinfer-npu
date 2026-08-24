@@ -1,250 +1,218 @@
-# Attention JIT framework contract
+# Attention JIT framework
 
-> Status: through checkpoint 033, Host framework only. No Ascend source generation,
-> compiler invocation, default dynamic loader, NPU runtime initialization, or
-> operator execution is implemented or claimed.
+This document defines the JIT boundary for Attention implementations. The design
+follows FlashInfer's central ownership rule: JIT specialization and loading are
+library internals; callers continue to use the normal Attention functions and
+batch `plan()` / `run()` wrappers.
 
-## 1. Why this package exists
+## 1. Goals
 
-FlashInfer keeps JIT specifications, registry, environment, cache/build policy,
-and operator-specific module generation under `flashinfer/jit`.  Keeping only
-the injected `jit_module.run()` compatibility ABI inside
-`flashinfer_npu/attention` does not reproduce that architecture.  The
-`flashinfer_npu/jit` package closes the source-layout and responsibility gap
-while preserving the current non-executing development boundary.
+The JIT framework exists to support Ascend-specific implementations whose exact
+executable depends on Attention semantics, quantization, runtime environment and
+device characteristics. It must:
 
-The two layers have different jobs:
+- create deterministic specialization identities;
+- separate policy decisions from compilation and loading side effects;
+- verify cache artifacts before they become executable;
+- bind loaded modules and symbols to the active Attention plan;
+- allow injected CANN/Ascend C implementations without changing public APIs;
+- remain importable and explainable on a Host-only machine.
 
-- `flashinfer_npu/attention/jit_protocol.py` validates the public injected
-  single-request call ABI used by FlashInfer-compatible frontends;
-- `flashinfer_npu/jit` describes how an internally selected JIT implementation
-  is identified, registered, found in cache, or declared to require a future
-  authorized builder.
+It is not a user-facing kernel compiler API.
 
-Neither layer currently proves a compiled Ascend implementation.
+## 2. Package structure
 
-## 2. Package boundary
+The `flashinfer_npu.jit` package is divided by responsibility:
 
-```text
-flashinfer_npu/jit/
-├── __init__.py
-├── core.py                 # JitSpec, JitSpecStatus, JitSpecRegistry
-├── env.py                  # explicit toolchain target and compilation policy
-├── cache.py                # verified cache identity and pure resolution
-├── artifacts.py            # injected byte reader and verification receipt
-├── loading.py              # injected module loader and exact symbol receipt
-└── attention/
-    ├── __init__.py
-    ├── plan.py             # wrapper plan to exact cache-hit binding
-    ├── artifacts.py        # cache hit to byte-verification binding
-    ├── loading.py          # verified artifact to loaded-module binding
-    ├── modules.py          # selected plan -> AttentionJitModuleSpec
-    ├── variants.py         # static Attention specialization identity
-    └── utils.py            # stable generated-module naming
-```
+| Area | Responsibility |
+|---|---|
+| `core` | Canonical JIT specification, identity and policy contracts |
+| `env` | Runtime, compiler, ABI and device environment identity |
+| `cache` | Cache records and side-effect-free cache decisions |
+| `artifacts` | Artifact metadata and verified-byte receipts |
+| `loading` | Module loader and exact symbol-resolution contracts |
+| `attention` | Attention specialization, registry and wrapper integration |
 
-There is intentionally no compiler, subprocess runner, file cache writer,
-default dynamic loader, or NPU launcher. Consequently the package does not yet
-expose an upstream-style `build_jit_specs()` implementation. Checkpoint 033
-adds only a loader protocol supplied by an authorized integration.
+Concrete compilers, filesystem caches and NPU loaders are dependencies injected
+behind these contracts. They are not activated by importing the package.
 
-## 3. Wrapper-owned selection flow
+## 3. Specialization identity
 
-The model-facing contract remains unchanged:
+An Attention specialization includes every static choice that may alter code or
+ABI, for example:
 
-```text
-user plan()
-  -> framework Attention plan
-  -> evidence-bearing automatic backend selection
-  -> selected backend == ascendc_jit
-  -> generate immutable JIT module spec
-  -> exact cache lookup
-     -> cache_hit: future loader may consume the verified artifact
-     -> build_required: future authorized build provider is needed
-     -> unavailable: policy forbids satisfying the cache miss
-user run()
-  -> consumes only the wrapper-owned active plan
-```
+- single/batch and prefill/decode mode;
+- paged/ragged storage mode;
+- query, KV and output dtypes;
+- logical and provider physical KV layout;
+- head dimension, page size and grouping constraints;
+- causal/window/custom-mask mode;
+- RoPE, ALiBi and soft-cap mode;
+- quantized storage, packing, scales and zero-point rules;
+- requested entry-point family and ABI version.
 
-Users do not pass `JitSpec`, cache records, provider handles, or a plan token to
-`run()`.  CANN and flash-attention-npu adapters remain internal candidate
-providers selected by the same wrapper-owned planning path.
+Dynamic lengths and tensor addresses remain run-time values unless a provider
+explicitly proves they are specialization parameters.
 
-## 4. `JitSpec` identity
+Canonical serialization produces a stable specialization fingerprint. Unknown
+fields, ambiguous defaults and non-canonical encodings are rejected rather than
+silently normalized.
 
-A v1 `JitSpec` hashes all declared build inputs that may change generated code:
+## 4. Environment identity
 
-- domain, generator id/version, target SoC and exact JIT environment;
-- Attention specialization fingerprint;
-- selected kernel recipe, source artifact, logical launch ABI and binary ABI
-  fingerprints;
-- optional canonical Ascend C source artifact identities;
-- ordered compile options and exported entry-point names.
+The same specialization can produce incompatible binaries in different
+environments. The JIT environment therefore contributes:
 
-The spec may be recipe-only before source generation.  `source_materialized`
-distinguishes that state without treating absence of sources as a compiled or
-cache-ready module.  A same-name/same-fingerprint registry publication is
-idempotent; a same-name/different-fingerprint publication fails closed.
+- provider/backend identity;
+- package and compiler versions;
+- target SoC/architecture;
+- ABI and framework versions;
+- compile flags that affect generated code;
+- relevant runtime generation and device features.
 
-## 5. Environment and cache identity
+The complete JIT identity is derived from both specialization and environment.
+A cache entry created under a different environment cannot be reused by name
+alone.
 
-`JitEnvironment` is provided explicitly by a trusted runtime adapter.  Importing
-the package never probes the machine.  Its identity covers target SoC/revision,
-CANN, compiler id/version, Torch/torch-npu ABI, Python ABI, build type and
-feature set.
+## 5. `JitSpec` and registry
 
-A `JitCacheRecord` must bind all of the following exactly:
+`JitSpec` is an immutable internal build/load description. It contains canonical
+identity, required sources or build inputs, required entry points and artifact
+expectations. Attention implementations register a factory that derives one or
+more specs from the selected framework plan.
 
-- spec name and full spec fingerprint;
-- JIT environment fingerprint;
-- target SoC;
-- compiled file artifact identity;
-- producer and build-metadata fingerprints.
+Registry lookup is deterministic and side-effect free. Registration conflicts,
+identity drift or multiple incompatible factories for the same key are errors.
 
-Builtin aclnn symbols, JIT source identities, mismatched environments and stale
-specs cannot be reported as compiled cache hits.
+The registry is not exposed through public Attention signatures. The wrapper
+selects the factory after normal provider admission.
 
-Resolution is a pure decision:
+## 6. Policy and cache decisions
 
-| Cache | Policy | Result |
-|---|---|---|
-| exact verified record | any | `cache_hit` |
-| miss | `enabled` | `build_required` |
-| miss | `cache_only` or `disabled` | `unavailable` |
+Policy evaluation separates “what should happen” from “perform the operation.”
+The result is one of these conceptual states:
 
-`build_required` is not execution.  It is evidence that a later checkpoint
-must supply an authorized builder before the plan can become runnable.
+- `cache_hit`: an exact candidate record exists and may proceed to byte
+  verification;
+- `build_required`: policy permits construction but no valid artifact exists;
+- `unavailable`: neither a usable artifact nor an authorized builder exists;
+- `rejected`: policy or identity rules prohibit this route.
 
-## 6. Attention specialization
+A cache hit is metadata only. It does not prove that artifact bytes still exist
+or match their recorded identity. `build_required` likewise does not mean a
+compiler has been invoked.
 
-`AttentionJitVariant` derives static generation choices from
-`AttentionPlanSpec`: mode, Q/KV/output dtype, head counts and dimensions,
-NHD/HND layout, position encoding, mask kind, sliding-window fields,
-multi-token decode width, soft-cap enablement, reduction/profiler switches and
-the complete quantization fingerprint.
+## 7. Artifact verification
 
-Dynamic sequence lengths do not change the reusable recipe.  The enclosing
-`AttentionJitModuleSpec` separately binds the exact framework plan, workload
-and dispatch receipt, so runtime metadata cannot be substituted after
-planning.
+An artifact record identifies expected path/key, size, digest, format and ABI.
+Before module loading, an injected reader returns the artifact bytes and the
+framework verifies:
 
-Only a receipt whose selected backend is `ascendc_jit` may generate this spec.
-An AOT, aclnn or reference selection is rejected rather than silently routed
-through JIT.
+- the record belongs to the active JIT identity;
+- bytes are present and within configured bounds;
+- actual size equals the recorded size;
+- SHA-256 equals the recorded digest;
+- artifact format and ABI match the requested operation.
 
-## 7. Checkpoint evidence and non-claims
+Successful verification produces an immutable receipt. Loading APIs accept the
+receipt, not an unverified cache path.
 
-Checkpoint 030 tests canonical serialization, environment sensitivity, source
-identity, conflict-safe registration, cache drift, all compilation policies,
-plan/environment/backend binding, dynamic-shape recipe reuse, quantization
-identity and isolated imports.  They also assert that no compiler or loader API
-is present.
+A future filesystem implementation must additionally provide bounded paths,
+locking, temporary-file isolation and atomic publication.
 
-This evidence proves only the Host framework contract.  It does not prove:
+## 8. Module and symbol loading
 
-- an Ascend C source template or generated source;
-- CMake/Ninja or compiler integration;
-- a real on-disk cache, file lock or atomic artifact publication;
-- symbol loading or an NPU launch;
-- numerical correctness or performance of any JIT kernel.
+An injected loader converts a verified artifact into an opaque module object and
+stable module token. The resolver then requires the exact entry-point set
+declared by the operation:
 
-Those capabilities must be introduced and verified as separate checkpoints.
+- single-request operations require their single run symbol;
+- reusable batch operations require the declared plan and run symbols;
+- missing or unexpected symbols are rejected;
+- loader, module and symbol identities are recorded in the receipt.
 
-## 8. Wrapper-owned active-plan binding
+The framework treats loaded objects as opaque. Backend-specific handles must not
+escape into user code.
 
-Checkpoint 031 connects the pure decision layer to the existing automatic
-provider runtime without changing `BatchAttention` constructor, `plan()` or
-`run()`:
+## 9. Callable and executor binding
 
-1. capability/evidence dispatch first selects an exact backend and receipt;
-2. only an `ascendc_jit` receipt invokes the private `AttentionJitPlanResolver`;
-3. the resolver generates the recipe, registers it and performs the exact cache
-   lookup before the provider callable is imported;
-4. only `cache_hit` may form an `AttentionResolvedOperatorRuntime`;
-5. the JIT binding fingerprint becomes part of
-   `AttentionOperatorActivePlan.fingerprint` and therefore also of operation,
-   callable/runtime and lowered-call authorization;
-6. framework plan, provider plan, executor and JIT binding are published only
-   at the existing final atomic commit point;
-7. `run()` revalidates the active-plan/JIT identity before lowering or calling
-   the provider executor.
+Resolved symbols are not executable merely because they exist. A backend binder
+must associate them with an authorized callable/executor contract that defines:
 
-A cache-only miss, a future-build decision with no authorized builder, a
-missing JIT resolver, a stale environment/receipt, or an AOT/JIT route mix-up
-fails before package callable import and cannot replace a previously working
-wrapper plan.  Replanning dynamic sequence lengths may reuse the same static
-JIT recipe, but produces a new exact active-plan binding.
+- accepted lowered argument schema;
+- workspace, stream and device ownership;
+- provider plan creation where required;
+- output and LSE conventions;
+- asynchronous completion and error behavior;
+- lifetime and teardown rules.
 
-The framework still does not claim that a cache record's artifact has been
-loaded.
+The binding identity participates in the active plan. `run()` invokes only the
+executor bound during the successful planning transaction.
 
-## 9. Byte-verified artifact binding
+No default production Ascend binder or executor is installed by the repository.
 
-Checkpoint 032 separates cache metadata from verified artifact bytes. A cache
-hit is necessary but no longer sufficient to publish an `ascendc_jit` runtime:
+## 10. Wrapper integration
 
-1. `JitArtifactPayloadReader` is injected privately; the package installs no
-   default filesystem reader and the public Attention API receives no path or
-   artifact parameter;
-2. `ConfiguredJitArtifactVerifier` requires `bytes`, then uses the declared
-   `ArtifactRef` to check exact size and SHA-256;
-3. `JitArtifactVerification` binds the spec, cache record, artifact, verified
-   payload identity and named verifier without retaining executable bytes;
-4. `ConfiguredAttentionJitArtifactResolver` repeats the exact cache lookup and
-   rejects a disappeared or changed record before producing an
-   `AttentionJitArtifactBinding`;
-5. package integration orders authority, JIT recipe/cache resolution, artifact
-   byte verification and only then callable import;
-6. the artifact binding fingerprint is part of the v3 active plan and is
-   published atomically with the framework plan, provider plan and executor;
-7. `run()` validates the frozen plan/artifact chain without rereading the file.
+For a JIT-backed batch implementation, `plan()` performs this transaction:
 
-Missing verifier configuration, non-byte reader results, size/digest mismatch,
-cache drift and internal binding drift all fail before package execution. A
-failed replan preserves the previously verified plan and executor.
+1. build the canonical Attention plan;
+2. select and authorize a provider candidate;
+3. derive the Attention specialization and environment;
+4. resolve an exact `JitSpec`;
+5. make the cache/build policy decision;
+6. obtain and verify artifact bytes;
+7. load the module and resolve exact symbols;
+8. bind an executor and create any provider plan;
+9. publish one immutable active plan.
 
-Checkpoint 032 itself has no filesystem implementation, compiler, dynamic
-library loader, symbol resolver, NPU runtime initialization or kernel call.
-Checkpoint 033 adds the next identity layer below; it still does not install a
-concrete loader or authorize a real JIT executor.
+If any stage fails, the wrapper publishes nothing and preserves its previous
+active plan.
 
-## 10. Loaded module and exact symbol binding
+`run()` validates input compatibility, lowers canonical tensors and metadata to
+the bound schema, verifies active-plan/executor identity and invokes the bound
+executor. It does not rebuild, reload or reselect an implementation implicitly.
 
-The upstream architecture was rechecked against official
-`flashinfer-ai/flashinfer` commit `bf6a0471c0b3387c3707c1f97b8c89cf5b5660ce`.
-Its `JitSpec` owns `try_load()`, `build()`, `load()` and `build_and_load()`;
-operator modules commonly cache `load_*`/`get_*` helpers and return the loaded
-module used by the wrapper. Checkpoint 033 preserves that responsibility chain
-without bringing CUDA implementation details into the Ascend project.
+## 11. Relationship to CANN and flash-attention-npu
 
-The Ascend Host framework now defines:
+Prebuilt package operators normally use the package-callable path rather than
+the JIT artifact path. They still share the same provider admission, active-plan
+and execution rules.
 
-- `JitModuleLoader`, an injected integration protocol with an exact loader
-  id/version;
-- `JitModuleLoadReceipt`, binding spec, cache record, byte-verification receipt,
-  compiled artifact, load generation and the exact resolved-symbol set;
-- `JitLoadedModule`, retaining the opaque loader-owned module internally while
-  excluding it from deterministic fingerprints;
-- `AttentionJitLoadedModuleBinding`, closing the loaded receipt against the
-  wrapper-owned plan and artifact bindings;
-- `ConfiguredAttentionJitModuleResolver`, which repeats the cache identity gate,
-  invokes the injected loader and rejects missing/extra symbols or loader
-  identity drift.
+A package may expose its own JIT or compilation mechanism. An adapter may use it
+only if it can produce the same framework receipts: complete specialization and
+environment identity, verified artifact/module identity, exact symbols and an
+authorized executor. Package-specific build objects remain internal.
 
-Single-request module recipes require exactly `run`; batch prefill, decode and
-mixed recipes require exactly `plan` and `run`, matching the FlashInfer module
-lifecycle exposed behind its wrappers. Package resolution order is now:
+## 12. Upstream FlashInfer alignment
 
-```text
-authority -> JIT recipe/cache -> artifact bytes -> module/symbols
-          -> package callable -> provider plan -> atomic wrapper publication
-```
+NVIDIA FlashInfer keeps JIT construction and loading behind internal `JitSpec`
+and cached loader helpers while public Attention wrappers retain their ordinary
+call signatures. This design preserves that user experience while replacing
+CUDA-specific compilation, module and stream details with explicit Ascend
+provider contracts.
 
-The loaded-module fingerprint is part of the v4 active plan. Failed loading or
-replanning cannot replace a working module/executor, and `run()` revalidates the
-plan/artifact/module chain without reloading it.
+Alignment is behavioral rather than a copy of CUDA internals:
 
-This still does not mean a real Ascend module can run: there is no installed
-filesystem reader, `dlopen`/CANN loader, compiler, symbol-call adapter, device
-initialization or NPU kernel. The opaque module in tests is a synthetic Python
-object and the exported symbols are non-callable tokens.
+- public APIs express Attention semantics;
+- the library selects and owns implementation state;
+- batch wrappers own planning and reusable execution state;
+- specialization and caching remain internal;
+- backend-specific code is reached through implementation registries/loaders.
+
+## 13. Required components for production use
+
+Enabling a real JIT implementation requires all of the following:
+
+1. an Attention specialization factory for a narrowly defined capability set;
+2. a versioned Ascend environment probe;
+3. an authorized source generator or external build provider;
+4. a bounded, locked and atomic artifact cache;
+5. an artifact reader and verifier;
+6. an Ascend module loader and exact symbol resolver;
+7. a callable/executor binder;
+8. provider plan/run lowering;
+9. stream, completion, error and teardown integration;
+10. numerical and physical-layout evidence for the enabled capability.
+
+Until these components are installed, the JIT package represents framework
+contracts only and must fail closed for NPU execution.

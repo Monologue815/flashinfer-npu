@@ -155,7 +155,7 @@ facade 仍由相同 reference tensor 构造器和 plan validator覆盖，后续�
 
 ## 9. Torch/torch_npu adapter 门禁
 
-当前 `TorchTensorViewAdapter` 已通过协议假对象测试；实现、验证真实 runtime adapter 前仍必须逐项验证：
+`TorchTensorViewAdapter` 当前只定义协议适配边界；实现真实 runtime adapter 前仍必须逐项验证：
 
 1. `tensor.shape/stride()/storage_offset()/element_size()` 映射无单位错误。
 2. storage byte capacity 来自可靠 runtime API，而不是 `numel * itemsize` 猜测。
@@ -164,7 +164,7 @@ facade 仍由相同 reference tensor 构造器和 plan validator覆盖，后续�
 5. `requires_grad`、autograd view、conjugate/negative bit 等推理不支持状态明确拒绝。
 6. output `out` 的 writable、resize、alias 和 lifetime 规则冻结。
 7. quantized storage/scale/zero device、stride 和 layout 全部独立检查。
-8. current stream、device guard、异步错误和 record-stream lifetime 有测试。
+8. current stream、device guard、异步错误和 record-stream lifetime 具有可复核证据。
 9. `.contiguous()`、dtype cast、layout transform 均为显式 operation，不在 adapter 内隐藏。
 10. CPU Host oracle 与 Torch CPU functional executor 对同一 corpus 结果一致后，才进入 torch_npu functional。
 

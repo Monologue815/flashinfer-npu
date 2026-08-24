@@ -126,9 +126,9 @@ Q/KV/aux/run-options/out/metadata/stream 不可为零。LSE 可以为零；两�
 Packet 的 dict round-trip 包含完整 identity、receipt、device leases、Host leases、Host content hex、
 stream binding 和 arguments。解码限制单个/总 Host content 为 128 MiB，防止未受限构造。
 
-## 7. 当前证据与未完成项
+## 7. 合同要求与未完成项
 
-Host tests 已覆盖：
+launch packet 合同必须覆盖：
 
 - 完整 13 参数 packet round-trip 与稳定 fingerprint；
 - quantized KV descriptor/component ownership；
@@ -139,7 +139,7 @@ Host tests 已覆盖：
 - stream runtime generation 与 Host allocation generation 对 packet identity 的影响。
 - coordinated stream-id/lease/handle drift 仍被 execution identity v3 拒绝。
 
-这些地址均为 Host 测试中的合成地址，没有解引用，也没有执行 artifact。首个真实 backend 前仍需：
+框架层地址只是不透明标识，不得据此声称 artifact 已执行。首个真实 backend 前仍需：
 
 1. torch_npu/ACL adapter 提供真实 tensor、allocator、stream 和 event 证据；
 2. 明确每类 launcher 是否同步复制 Host descriptor；

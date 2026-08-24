@@ -126,7 +126,7 @@ profile/descriptor/environment/corpus validator。以下情况不能创建 bindi
 
 binding 的 `validate()` 会从所有原始 authority 重建记录并逐字段比较，不能只检查保存的
 SHA-256。当前 SHA-256 是一致性标识，不是签名；`runner` 也是声明字段，不构成可信执行
-证明。Host 测试使用 synthetic profile/kernel/result 仅验证拒绝逻辑，绝不登记为 packaged
+证明。synthetic profile/kernel/result 只能用于框架拒绝逻辑，绝不登记为 packaged
 capability 或真实 Ascend evidence。
 
 ## 7. Accuracy ↔ provider execution 绑定
@@ -148,8 +148,8 @@ completion event。protocol trace 必须以 packet 为 subject、使用同一 st
 
 `result_origin` 固定为 `runner_declared_post_completion`。当前框架只能证明 runner 声称
 candidate 是 completion 后读取的结果，并能证明所有结构身份一致；它无法仅靠 SHA-256
-证明 runner 没有伪造 tensor 内容。Host 测试中的 provider、地址、artifact 和输出仍全部是
-synthetic contract fixture，不构成 Ascend 测量。
+证明 runner 没有伪造 tensor 内容。synthetic provider、地址、artifact 和输出只属于
+contract fixture，不构成 Ascend 测量。
 
 验证时需要分别重放两层：
 
@@ -166,7 +166,7 @@ synthetic contract fixture，不构成 Ascend 测量。
 
 1. 用同一 quantized trace 生成 candidate，不能重新量化或修改 runtime scale；
 2. backend 只消费 backend budget，不能借用 quantization budget；
-3. execution binding 已覆盖 provider completion 和 launch packet；仍需可信 runner attestation；
+3. execution binding 必须同时绑定 provider completion 和 launch packet，并提供可信 runner attestation；
 4. 分格式、shape、head mapping 和累加 dtype 制定有证据的预算，不使用全局万能阈值；
 5. 性能门禁必须在 correctness 通过后独立执行。
 

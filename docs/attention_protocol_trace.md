@@ -99,8 +99,8 @@ stateDiagram-v2
 ```
 
 此 route 对应两个 single-request injected-JIT frontend 的同步调用协议。它禁止
-`submitted`、`submit_unknown`、`failed_async` 等 provider 状态。当前 fake module 测试能证明
-buffer/参数 ABI 和该状态图，不能证明编译、artifact digest、symbol resolution 或真实 stream launch。
+`submitted`、`submit_unknown`、`failed_async` 等 provider 状态。该合同只描述
+buffer/参数 ABI 和状态图，不证明编译、artifact digest、symbol resolution 或真实 stream launch。
 
 ## 6. Provider 状态图
 
@@ -130,9 +130,9 @@ stateDiagram-v2
 先产生 `runtime_quiesced`，才允许释放仍可能被设备持有的资源。这与
 `AttentionLaunchSession` 的 device lease、Host descriptor 和 resolved-symbol registry 规则一致。
 
-## 7. 当前证据和后续接线
+## 7. 协议覆盖范围和后续接线
 
-Host tests 当前覆盖：
+协议记录器必须表达：
 
 - injected JIT 成功/异常自动采集与 canonical fingerprint；
 - provider packet/session evidence 自动采集，覆盖 unknown recovery、completion 和 runtime-quiesced；
@@ -142,7 +142,7 @@ Host tests 当前覆盖：
 - 未完成 recorder 禁止发布 corpus，protocol corpus/binding uniqueness 与 bounded strict JSON round-trip；
 - `attention-protocol-validate` trace/corpus CLI。
 
-当前 recorder 已接入 Host injected-JIT facade 和 fake-provider `AttentionLaunchSession`。它还没有接触
+当前 recorder 的框架接线包括 injected-JIT facade 和 provider `AttentionLaunchSession`。它还没有接触
 真实 compiler、artifact loader、CANN event 或 NPU stream；provider 自动证据是否能覆盖真实 runtime
-异常面，必须在未来被授权的独立环境中重新验证。下一步是在 built-in conformance workflow 中自动
-把 numerical case id/input fingerprint 注入对应 protocol case，而不是由测试手工填入绑定。
+异常面，必须在未来被授权的独立环境中验证。后续 conformance workflow 应自动
+把 numerical case id/input fingerprint 注入对应 protocol case，而不是由调用者手工填入绑定。

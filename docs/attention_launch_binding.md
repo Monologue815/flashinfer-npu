@@ -110,12 +110,12 @@ component-table Host lease 独立于 TensorView device lease，因为它描述 C
 descriptor 数组 allocation。完整 13 参数 ownership 汇总见
 [`attention_launch_packet.md`](attention_launch_packet.md)。
 
-## 7. 当前证据边界
+## 7. 合同边界
 
-Host 测试覆盖 role/shape/dtype/access/plan rejection、run-options 64-byte round-trip、reserved 与
+物化合同必须覆盖 role/shape/dtype/access/plan rejection、run-options 64-byte round-trip、reserved 与
 trailing entry rejection、dense KV/empty aux/non-empty aux 物化、component lease 容量、地址 role
 缺失、辅助 output alias、storage lease exact binding、capture scalar mutation，以及 KV POD v2 的
 字段偏移/fingerprint、native-layout evidence、round-trip/tamper 和 v1 compatibility。
 
-这些测试没有解析真实 `torch.Tensor.data_ptr()`，没有调用 allocator、aclrt stream/event、CANN、
+框架物化层不解析真实 `torch.Tensor.data_ptr()`，不调用 allocator、aclrt stream/event、CANN、
 Ascend C 或 NPU。首个设备 adapter 必须提供真实地址与 generation 证据后才能复用此物化层。

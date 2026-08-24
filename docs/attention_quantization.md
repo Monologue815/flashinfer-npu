@@ -133,13 +133,13 @@ run 必须同时匹配：
 量化 plan 收到普通 K/V，或普通 plan 收到量化 K/V，必须失败。即使 storage dtype
 同为 `int8`，granularity、axis、group size、zero-point 或 packing order 不同也必须失败。
 
-## 8. 当前验证与后续门禁
+## 8. 验证门禁
 
-Host tests 已覆盖 INT8/UINT8、对称/非对称、per-tensor/per-token/group、INT4 两种
+量化合同要求覆盖 INT8/UINT8、对称/非对称、per-tensor/per-token/group、INT4 两种
 nibble order、奇数 padding、独立 K/V scale，以及 single、ragged、paged 和 mixed
-Attention 端到端消费。mixed 属性测试进一步覆盖 NHD/HND、GQA、共享/重复 page、packed
-INT4、asymmetric UINT8 channel scale、per-head runtime K/V scale、sliding window 与
-plan/runtime soft-cap，并逐元素对比显式解量化后的 dense oracle。
+Attention 消费。mixed 语义还必须覆盖 NHD/HND、GQA、共享/重复 page、packed INT4、
+asymmetric UINT8 channel scale、per-head runtime K/V scale、sliding window 与
+plan/runtime soft-cap，并以显式解量化后的 dense oracle 定义逐元素预期。
 
 Corpus v4 明确包含 paged INT4 multi-request/shared-page、groupwise paged
 decode/GQA/QK-VO 不同维度，以及以下两个 mixed 联合门禁：
@@ -151,8 +151,8 @@ decode/GQA/QK-VO 不同维度，以及以下两个 mixed 联合门禁：
 `BatchAttention.plan` public signature 当前没有对应参数，因此框架不扩写该公开接口。
 window 组合只在内部 plan/reference contract 中验证，避免产生伪 upstream parity。
 
-量化准确度 v1 已通过 paired dense/quantized trace 将量化误差与未来 backend 执行误差
-分开，详见 [`attention_accuracy.md`](attention_accuracy.md)。内置 accuracy corpus 覆盖精确
+量化准确度 v1 使用 paired dense/quantized trace 区分量化误差与未来 backend 执行误差，
+详见 [`attention_accuracy.md`](attention_accuracy.md)。内置 accuracy corpus 定义精确
 INT8、lossy asymmetric UINT8、奇数维 packed INT4 和必须拒绝的 scale overflow。
 
 进入 Torch/NPU 层前仍需补齐：
@@ -161,7 +161,7 @@ INT8、lossy asymmetric UINT8、奇数维 packed INT4 和必须拒绝的 scale o
 2. Torch metadata wrapper 已有协议级验证；真实 Torch/torch_npu 的 stride/device/stream 与 allocator lifetime acceptance。
 3. physical layout descriptor/catalog、三组件 shape、conversion plan 与 KV POD/binary ABI v2 已冻结；仍需真实昇腾 descriptor、converter artifact，以及 v2 packet/provider 接线。
 4. capability profile v1 已冻结完整 QuantSpec predicate；仍需用真实 SoC/CANN tuple 生成 evidence。
-5. accuracy report 已进一步绑定 launch packet、成功 provider completion 与 lifecycle trace；仍需可信 runner attestation。
+5. accuracy report 必须绑定 launch packet、成功 provider completion、lifecycle trace 与可信 runner attestation。
 6. package runtime bootstrap 已要求 capability `QuantSpec` 与 catalog quant arguments 完全闭合；
    真实 CANN/flash-attention-npu binding 仍需逐参数语义与版本证据，不能由参数名称推断。
 7. 通用 provider quantized-KV input 与非执行 run lowering 已冻结 storage/scale/zero-point/

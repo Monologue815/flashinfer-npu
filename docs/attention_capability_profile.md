@@ -90,8 +90,8 @@ granularity、axis、group size、zero-point、packing order 或 physical layout
 
 | 状态 | 含义 | 可用于生产 dispatch |
 | --- | --- | --- |
-| `draft` | schema/design 声明，未完成 protocol 测试 | 否 |
-| `protocol` | metadata/adapter 协议测试 | 否 |
+| `draft` | 仅 schema/design 声明 | 否 |
+| `protocol` | 已建立 metadata/adapter 协议证据 | 否 |
 | `functional` | 固定环境完成数值 conformance | 是，仍非性能声明 |
 | `optimized` | functional 加性能门禁 | 是 |
 
@@ -104,7 +104,7 @@ granularity、axis、group size、zero-point、packing order 或 physical layout
 - runner 名称和不可变 result digest。
 
 `validate_evidence()` 重新确认 case 存在、coverage 计数一致，并要求 evidence subset 覆盖
-profile 中每条 rule。result digest 当前是外部测试记录的 identity；未来签名/制品 provenance
+profile 中每条 rule。result digest 是外部验证记录的 identity；未来签名/制品 provenance
 应在发布安全设计中扩展，不能把普通 SHA-256 当作真实性证明。
 
 packaged manifest loader 对所有 `functional/optimized` profile 自动使用内置 corpus v4 与
@@ -120,8 +120,8 @@ packaged [`attention_capabilities.json`](../flashinfer_npu/data/attention_capabi
 python3 -m flashinfer_npu attention-capabilities
 ```
 
-当前输出 `No Attention backend capability profiles are registered.`。Host oracle、protocol
-fake、corpus 通过或 schema test 均不会自动生成 functional profile；只有在用户选定并验证
+当 manifest 为空时，命令输出 `No Attention backend capability profiles are registered.`。Host oracle、protocol
+substitute、corpus 或 schema 均不会自动生成 functional profile；只有在用户选定并验证
 真实 SoC/CANN/torch_npu tuple 后，才允许把经过审核的 profile 加入 manifest。
 
 ## 6. 注册真实 profile 的门禁

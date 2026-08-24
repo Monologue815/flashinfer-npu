@@ -11,7 +11,7 @@ permutation、block/tile、padding、scale/zero-point 排布和 alignment 必须
 成为显式对象，不能隐藏在 shape、stride、裸 dtype 字符串或 adapter 的 `.contiguous()` 中。
 
 v1 不登记任何真实 Ascend ND/NZ/分形布局，也不声称知道某个 CANN 版本的内部格式。
-测试只使用 `synthetic.*` descriptor 验证框架能力。真实 layout 必须来自固定 runtime tuple 和
+`synthetic.*` descriptor 只用于表达框架合同。真实 layout 必须来自固定 runtime tuple 和
 官方/实测证据后单独注册。
 
 ## 2. 三层 shape
