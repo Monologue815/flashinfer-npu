@@ -1,6 +1,6 @@
 # Attention Plan/Run 与后端选择设计
 
-> 状态：检查点 019，已将自动选择、package/capability authority、plan-time provider tensor
+> 状态：检查点 020，已将自动选择、package/capability authority、plan-time provider tensor
 > 物化与受 runtime identity 保护的 callable execution 收入公共 `BatchAttention` 生命周期，
 > 并实现 CANN v2 与 flash-attention-npu v3 的纯框架分页 lowering；尚未导入或调用 CANN、torch_npu、
 > flash-attention-npu 或任何 NPU 算子。
@@ -554,3 +554,27 @@ fingerprint、dispatch receipt 与 provider selection。authority 错误或陈�
 也不创建真实 CANN/flash-attention-npu capability profile。6 项增量测试使用 fake package、
 authority、materializer 与 callable 验证两次 run 只物化一次、authority 先于 import、拒绝
 路径零执行副作用和失败重规划原子性；全量 433 项 Host 测试通过。
+
+## 23. 检查点 020：provider plan gate 与 factory 单一规则源
+
+019 要求每个 package implementation 提供纯 `AttentionOperatorPlanGate`，但 CANN v2 与
+flash-attention-npu v3 的实际支持条件此前只存在于 factory `prepare()`。如果 integration
+另写一份 gate，自动选择与 prepare 很容易随版本演进产生漂移。
+
+020 将两个 binding 的 plan admission 提取为无副作用解释函数：
+
+- `explain_cann_v2_paged_plan()`；
+- `explain_flash_attention_npu_v3_paged_plan()`。
+
+对应的 `CannV2PagedPlanGate` 与 `FlashAttentionNpuV3PagedPlanGate` 直接返回完整原因集合；
+两个 factory 在 authority 校验后调用同一个解释函数，并以首个原因失败。因此 gate 用于
+auto-selection 时可以展示全部不匹配维度，prepare 又不会出现另一套隐藏条件。
+
+CANN gate 覆盖 paged mode、position/custom mask、soft cap、profiler、未验证 quant、正序列
+长度、HND、float16/bfloat16、dtype 一致性、128/192 head dimension、GQA ratio、window、
+128–512 page size 和 batch 上限。flash-attention-npu v3 gate 复用共同规则，并增加 NHD、
+float16/bfloat16 与 dense dtype 一致性要求；v3 文档允许的 page size 不被擅自收窄。
+
+020 的 5 项增量测试验证 gate protocol、无 package import、确定性多原因报告、量化拒绝，
+以及 6 组接受/拒绝计划中 gate 与 factory 结果严格一致。全量 438 项 Host 测试通过；
+没有导入 NPU package、初始化设备或调用 Attention 算子。

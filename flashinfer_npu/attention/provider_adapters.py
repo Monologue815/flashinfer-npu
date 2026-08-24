@@ -274,32 +274,115 @@ def _paged_metadata(
     raise SchemaError("provider adapter requires paged Attention metadata")
 
 
-def _validate_common_paged_plan(plan: AttentionFrameworkPlan) -> None:
+def _common_paged_plan_rejection_reasons(
+    plan: AttentionFrameworkPlan,
+) -> Tuple[str, ...]:
     if not isinstance(plan, AttentionFrameworkPlan):
         raise TypeError("plan must be AttentionFrameworkPlan")
+    reasons = []
     if plan.spec.mode not in {
         AttentionMode.BATCH_PREFILL_PAGED,
         AttentionMode.BATCH_DECODE_PAGED,
         AttentionMode.BATCH_MIXED_PAGED,
     }:
-        raise SchemaError("provider adapter supports paged prefill/decode/mixed only")
+        reasons.append("provider adapter supports paged prefill/decode/mixed only")
     if plan.spec.pos_encoding_mode != PosEncodingMode.NONE:
-        raise SchemaError("provider adapter does not support positional encoding")
+        reasons.append("provider adapter does not support positional encoding")
     if plan.spec.custom_mask is not None:
-        raise SchemaError("provider adapter does not support a custom FlashInfer mask")
+        reasons.append("provider adapter does not support a custom FlashInfer mask")
     if float(plan.spec.logits_soft_cap or 0.0) != 0.0:
-        raise SchemaError("provider adapter does not support logits soft cap")
+        reasons.append("provider adapter does not support logits soft cap")
     if plan.spec.use_profiler:
-        raise SchemaError("provider adapter does not support profiler buffers")
+        reasons.append("provider adapter does not support profiler buffers")
     if plan.spec.kv_quant_spec is not None:
-        raise SchemaError(
+        reasons.append(
             "provider operation has no verified paged KV quantization binding"
         )
-    query_lengths, kv_lengths, _, _, _ = _paged_metadata(plan)
+    try:
+        query_lengths, kv_lengths, _, _, _ = _paged_metadata(plan)
+    except SchemaError as error:
+        reasons.append(str(error))
+        return tuple(dict.fromkeys(reasons))
     if not query_lengths or any(item <= 0 for item in query_lengths):
-        raise SchemaError("provider adapter requires positive query lengths")
+        reasons.append("provider adapter requires positive query lengths")
     if not kv_lengths or any(item <= 0 for item in kv_lengths):
-        raise SchemaError("provider adapter requires positive KV lengths")
+        reasons.append("provider adapter requires positive KV lengths")
+    return tuple(dict.fromkeys(reasons))
+
+
+def explain_cann_v2_paged_plan(
+    plan: AttentionFrameworkPlan,
+) -> Tuple[str, ...]:
+    """Pure CANN v2 plan admission shared by auto-selection and prepare."""
+
+    reasons = list(_common_paged_plan_rejection_reasons(plan))
+    spec = plan.spec
+    if spec.kv_layout != KVLayout.HND:
+        reasons.append("CANN v2 paged lowering requires HND KV cache")
+    if spec.q_dtype not in {"float16", "bfloat16"}:
+        reasons.append("CANN v2 TND query requires float16 or bfloat16")
+    if spec.kv_dtype != spec.q_dtype or spec.o_dtype != spec.q_dtype:
+        reasons.append("CANN v2 dense TND lowering requires matching dtypes")
+    if spec.head_dim_qk not in {128, 192} or spec.head_dim_vo not in {128, 192}:
+        reasons.append("CANN v2 TND lowering requires documented head dimensions")
+    if spec.num_qo_heads // spec.num_kv_heads > 64:
+        reasons.append("CANN v2 GQA ratio cannot exceed 64")
+    if spec.window_left != -1 or spec.window_right != 0:
+        reasons.append("CANN v2 adapter has no verified sliding-window binding")
+    try:
+        query_lengths, _, _, _, page_size = _paged_metadata(plan)
+    except SchemaError:
+        query_lengths = ()
+        page_size = 0
+    if page_size and (
+        page_size < 128 or page_size > 512 or page_size % 128
+    ):
+        reasons.append(
+            "CANN v2 PageAttention block size must be 128..512 by 128"
+        )
+    if len(query_lengths) > 4096:
+        reasons.append("CANN v2 TND batch size cannot exceed 4096")
+    return tuple(dict.fromkeys(reasons))
+
+
+def explain_flash_attention_npu_v3_paged_plan(
+    plan: AttentionFrameworkPlan,
+) -> Tuple[str, ...]:
+    """Pure flash-attention-npu v3 admission shared by selection/prepare."""
+
+    reasons = list(_common_paged_plan_rejection_reasons(plan))
+    spec = plan.spec
+    if spec.kv_layout != KVLayout.NHD:
+        reasons.append(
+            "flash-attention-npu v3 paged lowering requires NHD KV cache"
+        )
+    if spec.q_dtype not in {"float16", "bfloat16"}:
+        reasons.append("flash-attention-npu v3 requires float16 or bfloat16")
+    if spec.kv_dtype != spec.q_dtype or spec.o_dtype != spec.q_dtype:
+        reasons.append(
+            "flash-attention-npu v3 lowering requires matching dense dtypes"
+        )
+    return tuple(dict.fromkeys(reasons))
+
+
+class CannV2PagedPlanGate:
+    """Side-effect-free auto-selection gate for the documented CANN API."""
+
+    provider_id = "cann"
+    operation_id = CANN_V2_OPERATION_ID
+
+    def rejection_reasons(self, plan, device):
+        return explain_cann_v2_paged_plan(plan)
+
+
+class FlashAttentionNpuV3PagedPlanGate:
+    """Side-effect-free auto-selection gate for flash-attention-npu v3."""
+
+    provider_id = "flash_attention_npu"
+    operation_id = FLASH_ATTENTION_NPU_V3_KVCACHE_OPERATION_ID
+
+    def rejection_reasons(self, plan, device):
+        return explain_flash_attention_npu_v3_paged_plan(plan)
 
 
 def _validate_prepare_authority(
@@ -387,27 +470,11 @@ class CannV2PagedPlanFactory:
 
     def prepare(self, plan, receipt, selection):
         _validate_prepare_authority(self.provider_id, plan, receipt, selection)
-        _validate_common_paged_plan(plan)
+        reasons = explain_cann_v2_paged_plan(plan)
+        if reasons:
+            raise SchemaError(reasons[0])
         spec = plan.spec
-        if spec.kv_layout != KVLayout.HND:
-            raise SchemaError("CANN v2 paged lowering requires HND KV cache")
-        if spec.q_dtype not in {"float16", "bfloat16"}:
-            raise SchemaError("CANN v2 TND query requires float16 or bfloat16")
-        if spec.kv_dtype != spec.q_dtype or spec.o_dtype != spec.q_dtype:
-            raise SchemaError("CANN v2 dense TND lowering requires matching dtypes")
-        if spec.head_dim_qk not in {128, 192} or spec.head_dim_vo not in {128, 192}:
-            raise SchemaError("CANN v2 TND lowering requires documented head dimensions")
-        if spec.num_qo_heads // spec.num_kv_heads > 64:
-            raise SchemaError("CANN v2 GQA ratio cannot exceed 64")
-        if spec.window_left != -1 or spec.window_right != 0:
-            raise SchemaError("CANN v2 adapter has no verified sliding-window binding")
         query_lengths, kv_lengths, indptr, indices, page_size = _paged_metadata(plan)
-        if page_size < 128 or page_size > 512 or page_size % 128:
-            raise SchemaError(
-                "CANN v2 PageAttention block size must be 128..512 by 128"
-            )
-        if len(query_lengths) > 4096:
-            raise SchemaError("CANN v2 TND batch size cannot exceed 4096")
         causal_mask = None
         sparse_mode = 0
         if spec.effective_causal:
@@ -540,16 +607,10 @@ class FlashAttentionNpuV3PagedPlanFactory:
 
     def prepare(self, plan, receipt, selection):
         _validate_prepare_authority(self.provider_id, plan, receipt, selection)
-        _validate_common_paged_plan(plan)
+        reasons = explain_flash_attention_npu_v3_paged_plan(plan)
+        if reasons:
+            raise SchemaError(reasons[0])
         spec = plan.spec
-        if spec.kv_layout != KVLayout.NHD:
-            raise SchemaError("flash-attention-npu v3 paged lowering requires NHD KV cache")
-        if spec.q_dtype not in {"float16", "bfloat16"}:
-            raise SchemaError("flash-attention-npu v3 requires float16 or bfloat16")
-        if spec.kv_dtype != spec.q_dtype or spec.o_dtype != spec.q_dtype:
-            raise SchemaError(
-                "flash-attention-npu v3 lowering requires matching dense dtypes"
-            )
         query_lengths, kv_lengths, indptr, indices, _ = _paged_metadata(plan)
         if spec.window_left == -1:
             window_size = (-1, -1)
@@ -645,10 +706,14 @@ __all__ = [
     "AttentionDensePageTablePlan",
     "AttentionOperatorTensorPlan",
     "CannV2PagedPlanFactory",
+    "CannV2PagedPlanGate",
     "CannV2PagedPlanState",
     "CannV2PagedRunAdapter",
     "FlashAttentionNpuV3PagedPlanFactory",
+    "FlashAttentionNpuV3PagedPlanGate",
     "FlashAttentionNpuV3PagedPlanState",
     "FlashAttentionNpuV3PagedRunAdapter",
     "build_attention_dense_page_table",
+    "explain_cann_v2_paged_plan",
+    "explain_flash_attention_npu_v3_paged_plan",
 ]
