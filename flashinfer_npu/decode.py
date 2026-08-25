@@ -9,6 +9,7 @@ from .runtime import SchemaError
 
 from .attention.batch import HostBatchReferenceWrapper, validate_graph_buffer
 from .attention.frontend import (
+    adapt_framework_single_qkv,
     adapt_paged_kv_data,
     adapt_single_qkv,
     canonicalize_kv_dtype,
@@ -20,7 +21,7 @@ from .attention.frontend import (
     reference_index_values,
 )
 from .attention.planner import AttentionFrameworkSession
-from .attention.reference import ReferenceAttentionExecutor
+from .attention.reference import ReferenceAttentionExecutor, ReferenceTensor
 from .attention.jit_protocol import (
     freeze_jit_buffer,
     make_single_jit_buffers,
@@ -48,7 +49,77 @@ def single_decode_with_kv_cache(
     rope_theta=None,
     return_lse=False,
 ):
-    """Execute single-request decode for explicit ``ReferenceTensor`` inputs."""
+    """Execute single-request decode through reference or automatic provider."""
+
+    if not isinstance(q, ReferenceTensor):
+        adapted_provider = adapt_framework_single_qkv(
+            q,
+            k,
+            v,
+            mode=AttentionMode.SINGLE_DECODE,
+            kv_layout=kv_layout,
+        )
+        if use_tensor_cores:
+            raise NotImplementedError(
+                "provider single-decode matrix-core preference is not bound"
+            )
+        if q_scale is not None or k_scale is not None or v_scale is not None:
+            raise NotImplementedError(
+                "provider single-decode Q/K/V scale binding is not implemented"
+            )
+        spec = AttentionPlanSpec(
+            mode=AttentionMode.SINGLE_DECODE,
+            num_qo_heads=adapted_provider.num_qo_heads,
+            num_kv_heads=adapted_provider.num_kv_heads,
+            head_dim_qk=adapted_provider.head_dim_qk,
+            head_dim_vo=adapted_provider.head_dim_vo,
+            kv_layout=adapted_provider.layout,
+            pos_encoding_mode=parse_pos_encoding_mode(pos_encoding_mode),
+            q_dtype=adapted_provider.q_dtype,
+            kv_dtype=adapted_provider.kv_dtype,
+            o_dtype=adapted_provider.q_dtype,
+            sm_scale=(
+                1.0 / math.sqrt(adapted_provider.head_dim_qk)
+                if sm_scale is None
+                else finite_scalar(sm_scale, "sm_scale")
+            ),
+            logits_soft_cap=(
+                0.0
+                if logits_soft_cap is None
+                else finite_scalar(logits_soft_cap, "logits_soft_cap")
+            ),
+            window_left=window_left,
+            rope_scale=rope_scale,
+            rope_theta=rope_theta,
+        )
+        from .attention.holistic import (
+            attention_operator_runtime_registry_snapshot,
+        )
+        from .attention.operator_resolver import AttentionOperatorRuntime
+
+        snapshot = attention_operator_runtime_registry_snapshot()
+        runtime = AttentionOperatorRuntime(
+            adapted_provider.device,
+            snapshot.registry,
+            snapshot.operation_catalog,
+            mode=AttentionMode.SINGLE_DECODE,
+        )
+        runtime.plan(spec, adapted_provider.metadata)
+        result = runtime.run(
+            q,
+            (k, v),
+            return_lse=bool(return_lse),
+            logits_soft_cap=spec.logits_soft_cap,
+        )
+        if return_lse:
+            if not isinstance(result, tuple) or len(result) != 2:
+                raise SchemaError(
+                    "provider did not return the requested output and LSE pair"
+                )
+            return result
+        if isinstance(result, tuple) and len(result) == 2:
+            return result[0]
+        return result
 
     # ReferenceTensor inputs are themselves an explicit reference-backend opt-in.
     adapted = adapt_single_qkv(

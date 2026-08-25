@@ -74,6 +74,7 @@ def fake_operation():
         api_version="v1",
         candidate_modes=(
             AttentionMode.SINGLE_PREFILL,
+            AttentionMode.SINGLE_DECODE,
             AttentionMode.BATCH_MIXED_PAGED,
             AttentionMode.BATCH_PREFILL_PAGED,
             AttentionMode.BATCH_PREFILL_RAGGED,
