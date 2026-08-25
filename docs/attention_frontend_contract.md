@@ -159,6 +159,12 @@ batch wrapper 接通路由；尚未实现完整 lowering 的 mode 必须在 regi
 拒绝 `backend="auto"`。因此每个可用的 provider 路径都必须同时具备 canonical plan、
 provider selection、active plan 和 run lowering，不能暴露半连接状态。
 
+三类 batch wrapper 保留 FlashInfer 的
+`reset_workspace_buffer(float_workspace_buffer, int_workspace_buffer)` 生命周期。当前
+package-managed provider 不把这些 buffer 传给外部 API，因此同 NPU device reset 只更新
+resource binding generation 并保留 active plan；caller-managed provider 必须先具备异步
+completion/lease 绑定，不能复用这条规则。
+
 当前 Host facade 中，single prefill 必须显式传入 `backend="reference"`；默认
 `auto` 会失败，防止参考执行器进入生产路径。single decode 的上游签名没有 backend
 参数，因此传入 `ReferenceTensor` 本身就是显式 opt-in。`use_tensor_cores` 只表达算法

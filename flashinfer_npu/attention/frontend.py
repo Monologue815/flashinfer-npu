@@ -165,6 +165,30 @@ def validate_workspace_buffer(value, name: str, device: Optional[str] = None):
     return tensor
 
 
+def validate_framework_workspace_buffer(
+    value, name: str, device: Optional[str] = None
+):
+    """Validate reference or tensor-like workspace without importing torch."""
+
+    if isinstance(value, ReferenceTensor):
+        return validate_workspace_buffer(value, name, device=device)
+    shape = getattr(value, "shape", None)
+    try:
+        shape = tuple(int(dim) for dim in shape)
+    except (TypeError, ValueError) as error:
+        raise SchemaError("%s must expose a rank-1 shape" % name) from error
+    if len(shape) != 1 or shape[0] < 0:
+        raise SchemaError("%s must be rank 1" % name)
+    if canonicalize_dtype_name(getattr(value, "dtype", "")) != "uint8":
+        raise SchemaError("%s dtype must be uint8" % name)
+    actual_device = str(getattr(value, "device", ""))
+    if not actual_device:
+        raise SchemaError("%s must expose a device" % name)
+    if device is not None and actual_device != str(device):
+        raise SchemaError("workspace buffers must be on the same device")
+    return value
+
+
 def adapt_batch_custom_mask(
     custom_mask: MaskInput,
     packed_custom_mask: MaskInput,

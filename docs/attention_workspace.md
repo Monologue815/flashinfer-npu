@@ -56,9 +56,12 @@ stateDiagram-v2
 - plan 后或 graph resource 已绑定后不能改变 device。
 - float/int buffer 不能 alias。
 - run 校验 capacity、query device 和 active plan generation。
-- Host reference 同步执行，因此 reset 后可以立即复用 plan。非 reference 提交使用
-  `AttentionLaunchLeaseContract`/`AttentionLeaseRegistry` 的 acquired→submitted→completed 状态，
-  在拥有该提交的 completion event 到达前禁止释放或覆盖 workspace。
+- Host reference 同步执行，因此 reset 后可以立即复用 plan。
+- `package_managed` provider 的 wrapper workspace 不会传给外部 operation；同 device reset
+  可以保留 active plan，只更新 binding generation、capacity 和 runtime workspace identity。
+- `caller_managed` provider 提交必须使用 `AttentionLaunchLeaseContract`/
+  `AttentionLeaseRegistry` 的 acquired→submitted→completed 状态；在拥有该提交的 completion
+  event 到达前禁止释放、覆盖或重绑 workspace。
 - graph-enabled wrapper 已发布 structural capture record 后，reset 会改变 workspace resource
   fingerprint；下一次 run 明确拒绝旧 record。调用者须 re-plan 后再建立新 record。
 
@@ -90,6 +93,11 @@ workspace 参数，因此绑定为 `package_managed + returned`。wrapper worksp
 零并绑定到 plan generation；query device、capacity 和 generation 仍在每次 `run()` 前校验。
 当前 operation 也没有 caller-owned `out/lse` mutable argument，所以对应 public 参数必须在
 package invocation 前失败，不能假定返回 tensor 可以安全复制或复用为调用者 buffer。
+
+`reset_workspace_buffer(float, int)` 同时更新 wrapper 与私有 operator runtime 的 immutable
+workspace contract。reset 前后 device 必须等于 runtime device，两个 buffer 不能 alias，且
+都必须是 rank-1 `uint8` tensor-like object。已计划的 package-managed 路径保持同一 plan
+generation；未来 caller-managed 路径在 lease/completion binding 接通前拒绝 reset。
 
 ## 6. Graph metadata 与 scratch 分离
 

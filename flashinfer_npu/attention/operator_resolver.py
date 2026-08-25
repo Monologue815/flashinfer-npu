@@ -569,6 +569,24 @@ class AttentionOperatorRuntime:
             )
         return self._workspace_contract
 
+    def rebind_workspace_contract(self, workspace_contract) -> None:
+        """Publish a same-device package-managed workspace replacement."""
+
+        if not self.is_planned:
+            raise AttentionStateError(
+                "Attention operator runtime must be planned before workspace rebind"
+            )
+        resource = self.resource_binding
+        if resource.workspace_ownership != "package_managed":
+            raise NotImplementedError(
+                "caller-managed provider workspace rebind requires lease binding"
+            )
+        candidate = resource.bind_workspace_contract(
+            workspace_contract,
+            plan_generation=self.plan_state.generation,
+        )
+        self._workspace_contract = candidate
+
     @property
     def jit_plan_binding(self):
         if not self.is_planned:

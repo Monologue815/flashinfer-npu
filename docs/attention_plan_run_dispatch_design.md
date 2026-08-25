@@ -338,6 +338,10 @@ documented package APIs expose returned output/LSE values and no wrapper
 workspace argument. Their caller workspace requirement is therefore zero while
 package-internal scratch remains outside this contract. Public `out` or `lse`
 buffers are rejected unless an exact mutable-argument binding exists.
+Package-managed workspace replacement may retain the active plan because the
+buffers are not submitted to the operation; wrapper and runtime publish the new
+binding generation together. Caller-managed replacement requires an explicit
+completion/lease binding and otherwise fails closed.
 
 ## 14. Failure and replanning rules
 

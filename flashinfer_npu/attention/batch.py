@@ -7,10 +7,10 @@ from typing import Optional, Sequence
 from flashinfer_npu.runtime import DispatchError, SchemaError
 
 from .frontend import (
-    canonicalize_dtype_name,
     finalize_reference_result,
     require_reference_backend,
     require_reference_tensor,
+    validate_framework_workspace_buffer,
     validate_workspace_buffer,
 )
 from .operator_resolver import AttentionOperatorRuntime
@@ -96,20 +96,11 @@ class HostBatchReferenceWrapper:
                 raise NotImplementedError(
                     "provider graph resources are not bound to public batch wrappers"
                 )
-            shape = getattr(float_workspace_buffer, "shape", None)
-            try:
-                shape = tuple(int(dim) for dim in shape)
-            except (TypeError, ValueError) as error:
-                raise SchemaError(
-                    "float_workspace_buffer must expose a rank-1 shape"
-                ) from error
-            if len(shape) != 1 or shape[0] < 0:
-                raise SchemaError("float_workspace_buffer must be rank 1")
-            if canonicalize_dtype_name(
-                getattr(float_workspace_buffer, "dtype", "")
-            ) != "uint8":
-                raise SchemaError("float_workspace_buffer dtype must be uint8")
-            device = str(getattr(float_workspace_buffer, "device", ""))
+            float_workspace_buffer = validate_framework_workspace_buffer(
+                float_workspace_buffer, "float_workspace_buffer"
+            )
+            shape = tuple(int(dim) for dim in float_workspace_buffer.shape)
+            device = str(float_workspace_buffer.device)
             if device.split(":", 1)[0] != "npu":
                 raise DispatchError(
                     "backend='auto' batch wrappers require an npu[:index] workspace"
@@ -246,9 +237,29 @@ class HostBatchReferenceWrapper:
         self, float_workspace_buffer, int_workspace_buffer
     ) -> None:
         if self._operator_runtime is not None:
-            raise NotImplementedError(
-                "provider workspace rebinding is not implemented"
+            float_buffer = validate_framework_workspace_buffer(
+                float_workspace_buffer, "float_workspace_buffer"
             )
+            int_buffer = validate_framework_workspace_buffer(
+                int_workspace_buffer,
+                "int_workspace_buffer",
+                device=str(float_buffer.device),
+            )
+            if float_buffer is int_buffer:
+                raise SchemaError("float and int workspace buffers cannot alias")
+            contract = self._workspace_contract.rebind(
+                device=str(float_buffer.device),
+                float_capacity_bytes=int(float_buffer.shape[0]),
+                int_capacity_bytes=int(int_buffer.shape[0]),
+                allow_device_change=False,
+            )
+            if self._operator_runtime.is_planned:
+                self._operator_runtime.rebind_workspace_contract(contract)
+                contract = self._operator_runtime.workspace_contract
+            self._float_workspace_buffer = float_buffer
+            self._int_workspace_buffer = int_buffer
+            self._workspace_contract = contract
+            return
         float_buffer = validate_workspace_buffer(
             float_workspace_buffer, "float_workspace_buffer"
         )
