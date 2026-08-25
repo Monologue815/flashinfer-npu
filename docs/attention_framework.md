@@ -105,17 +105,23 @@ Artifact verification、resolved symbol、provider error/event 与 unload 生命
 
 | FlashInfer API | 当前框架模型 | 状态 |
 | --- | --- | --- |
-| `attention.BatchAttention` | `AttentionMode.BATCH_MIXED_PAGED` | Public Host reference validated |
-| `single_prefill_with_kv_cache` | `SINGLE_PREFILL` + `SingleAttentionMetadata` | Public Host reference validated |
-| `single_decode_with_kv_cache` | `SINGLE_DECODE` + `SingleAttentionMetadata` | Public Host reference validated |
-| `BatchPrefillWithPagedKVCacheWrapper` | `BATCH_PREFILL_PAGED` + `PagedPrefillMetadata` | Public Host reference validated |
-| `BatchPrefillWithRaggedKVCacheWrapper` | `BATCH_PREFILL_RAGGED` + `RaggedKVMetadata` | Public Host reference validated |
-| `BatchDecodeWithPagedKVCacheWrapper` | `BATCH_DECODE_PAGED` + `PagedKVMetadata` | Public Host reference validated |
+| `attention.BatchAttention` | `AttentionMode.BATCH_MIXED_PAGED` | Public facade + Host reference |
+| `single_prefill_with_kv_cache` | `SINGLE_PREFILL` + `SingleAttentionMetadata` | Public facade + Host reference |
+| `single_decode_with_kv_cache` | `SINGLE_DECODE` + `SingleAttentionMetadata` | Public facade + Host reference |
+| `BatchPrefillWithPagedKVCacheWrapper` | `BATCH_PREFILL_PAGED` + `PagedPrefillMetadata` | Public facade + Host reference |
+| `BatchPrefillWithRaggedKVCacheWrapper` | `BATCH_PREFILL_RAGGED` + `RaggedKVMetadata` | Public facade + Host reference |
+| `BatchDecodeWithPagedKVCacheWrapper` | `BATCH_DECODE_PAGED` + `PagedKVMetadata` | Public facade + Host reference |
 | `workspace_size()` | Backend-explicit workspace query | paged prefill/decode Host facade 返回真实 `(0,0)`；Ascend requirement 仍为 unknown |
 | `run()` | `AttentionFrameworkPlan.validate_run()` + 内部 reference executor | single 与三类 batch wrapper 均有同名 Host facade |
 
-`AttentionFrameworkSession` 是内部框架验证状态机。当前两个 single API、三个 batch
-wrapper 与 mixed `BatchAttention` 均通过同名 public Host facade 暴露。
+`AttentionFrameworkSession` 是内部 plan 生命周期状态机。两个 single API、三个 batch
+wrapper 与 mixed `BatchAttention` 均由同名 public Host facade 暴露。
+
+每个非 reference batch wrapper 必须拥有一个按 `AttentionMode` 绑定的
+`AttentionOperatorRuntime`。mode 在 wrapper 构造时冻结；与该 mode 不匹配的 plan 必须在
+任何 package probe、callable import 或 provider prepare 之前失败。holistic
+`BatchAttention` 使用固定为 `BATCH_MIXED_PAGED` 的兼容 runtime，其他 wrapper 复用同一
+自动选择、原子发布和 run lowering 生命周期。
 
 ## 4. Metadata 契约
 

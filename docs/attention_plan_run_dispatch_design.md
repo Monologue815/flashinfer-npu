@@ -102,6 +102,12 @@ Each boundary has one owner:
 
 This prevents backend-specific objects from leaking into the public API.
 
+Each batch wrapper owns a mode-bound internal runtime. The mode is frozen when
+the wrapper is constructed, so a paged-prefill wrapper cannot accidentally
+publish a decode or mixed-batch plan. Mode validation precedes package probing,
+callable loading and provider planning. The holistic `BatchAttention` runtime
+is the `BATCH_MIXED_PAGED` specialization of this shared runtime contract.
+
 ## 4. Canonical framework plan
 
 `plan()` first converts public arguments into an immutable, backend-neutral

@@ -48,7 +48,7 @@ from .planner import (
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 6
+ATTENTION_OPERATOR_RESOLVER_VERSION = 7
 
 _DEVICE_TYPE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -495,14 +495,16 @@ EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS = (
 )
 
 
-class AttentionOperatorBatchRuntime:
-    """Transactional provider runtime owned by one public BatchAttention."""
+class AttentionOperatorRuntime:
+    """Transactional provider runtime bound to exactly one wrapper mode."""
 
     def __init__(
         self,
         device: str,
         resolver_registry: AttentionOperatorRuntimeResolverRegistry,
         operation_catalog: AttentionOperatorOperationCatalog = None,
+        *,
+        mode: AttentionMode,
     ) -> None:
         if not str(device):
             raise SchemaError("Attention operator device must be non-empty")
@@ -518,12 +520,13 @@ class AttentionOperatorBatchRuntime:
             raise TypeError(
                 "operation_catalog must be AttentionOperatorOperationCatalog"
             )
+        if not isinstance(mode, AttentionMode):
+            raise TypeError("mode must be AttentionMode")
         self.device = str(device)
+        self.mode = mode
         self._resolver_registry = resolver_registry
         self._operation_catalog = operation_catalog
-        self._framework_session = AttentionFrameworkSession(
-            AttentionMode.BATCH_MIXED_PAGED
-        )
+        self._framework_session = AttentionFrameworkSession(mode)
         self._operator_session = None
         self._executor = None
         self._jit_plan_binding = None
@@ -799,11 +802,29 @@ class AttentionOperatorBatchRuntime:
         return result
 
 
+class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
+    """Compatibility runtime for the holistic public ``BatchAttention``."""
+
+    def __init__(
+        self,
+        device: str,
+        resolver_registry: AttentionOperatorRuntimeResolverRegistry,
+        operation_catalog: AttentionOperatorOperationCatalog = None,
+    ) -> None:
+        super().__init__(
+            device,
+            resolver_registry,
+            operation_catalog,
+            mode=AttentionMode.BATCH_MIXED_PAGED,
+        )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_RESOLVER_VERSION",
     "EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS",
     "AttentionLoweredOperatorExecutor",
     "AttentionOperatorBatchRuntime",
+    "AttentionOperatorRuntime",
     "AttentionOperatorRuntimeImplementation",
     "AttentionOperatorRuntimeImplementationCandidate",
     "AttentionOperatorRuntimeImplementationRegistry",
