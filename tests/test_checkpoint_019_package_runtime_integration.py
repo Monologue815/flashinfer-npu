@@ -73,6 +73,7 @@ def fake_operation():
         callable_path="checkpoint_019_package.attention",
         api_version="v1",
         candidate_modes=(
+            AttentionMode.SINGLE_PREFILL,
             AttentionMode.BATCH_MIXED_PAGED,
             AttentionMode.BATCH_PREFILL_PAGED,
             AttentionMode.BATCH_PREFILL_RAGGED,

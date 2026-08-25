@@ -111,7 +111,7 @@ Artifact verification、resolved symbol、provider error/event 与 unload 生命
 | FlashInfer API | 当前框架模型 | 状态 |
 | --- | --- | --- |
 | `attention.BatchAttention` | `AttentionMode.BATCH_MIXED_PAGED` | Public facade + Host reference |
-| `single_prefill_with_kv_cache` | `SINGLE_PREFILL` + `SingleAttentionMetadata` | Public facade + Host reference |
+| `single_prefill_with_kv_cache` | `SINGLE_PREFILL` + `SingleAttentionMetadata` | Public facade + Host reference + ephemeral mode-bound provider runtime |
 | `single_decode_with_kv_cache` | `SINGLE_DECODE` + `SingleAttentionMetadata` | Public facade + Host reference |
 | `BatchPrefillWithPagedKVCacheWrapper` | `BATCH_PREFILL_PAGED` + `PagedPrefillMetadata` | Public facade + Host reference + mode-bound provider runtime |
 | `BatchPrefillWithRaggedKVCacheWrapper` | `BATCH_PREFILL_RAGGED` + `RaggedKVMetadata` | Public facade + Host reference + mode-bound provider runtime |
@@ -132,6 +132,11 @@ wrapper 与 mixed `BatchAttention` 均由同名 public Host facade 暴露。
 `plan()`/`run()` lowering 的 wrapper 才能显式开启该路径；任何尚未接通的 mode 都必须
 在 registry resolution 和 package loading 之前失败，不能形成只有 plan 或只有 run
 一侧可用的半连接状态。
+
+Single prefill 是 functional API，不要求用户持有 wrapper。NPU tensor-like 输入会在一次函数
+调用内完成 registry snapshot、canonical plan、provider selection 和 run；该临时 runtime
+不会泄漏到返回值或后续调用。ReferenceTensor 仍要求显式 `backend="reference"`，避免
+`auto` 静默进入标量 oracle。
 
 ## 4. Metadata 契约
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import warnings
 
-from .runtime import SchemaError
+from .runtime import DispatchError, SchemaError
 
 from .attention.frontend import (
     adapt_batch_custom_mask,
@@ -14,7 +14,9 @@ from .attention.frontend import (
     adapt_paged_kv_data,
     adapt_ragged_kv_data,
     adapt_single_custom_mask,
+    adapt_framework_single_qkv,
     adapt_single_qkv,
+    canonicalize_dtype_name,
     finite_scalar,
     framework_index_values,
     multiply_scale,
@@ -30,7 +32,7 @@ from .attention.batch import (
     validate_graph_buffer,
 )
 from .attention.planner import AttentionFrameworkSession
-from .attention.reference import ReferenceAttentionExecutor
+from .attention.reference import ReferenceAttentionExecutor, ReferenceTensor
 from .attention.jit_protocol import (
     freeze_jit_buffer,
     make_single_jit_buffers,
@@ -73,7 +75,98 @@ def single_prefill_with_kv_cache(
     k_scale=None,
     v_scale=None,
 ):
-    """Execute single-request prefill using the explicit Host reference backend."""
+    """Execute single-request prefill through reference or automatic provider."""
+
+    if backend != "reference" and not isinstance(q, ReferenceTensor):
+        if backend != "auto":
+            raise DispatchError(
+                "provider single prefill currently requires backend='auto'"
+            )
+        adapted_provider = adapt_framework_single_qkv(
+            q,
+            k,
+            v,
+            mode=AttentionMode.SINGLE_PREFILL,
+            kv_layout=kv_layout,
+        )
+        if scale_q is not None or scale_k is not None or scale_v is not None:
+            raise NotImplementedError(
+                "provider legacy per-head scale binding is not implemented"
+            )
+        if k_scale is not None or v_scale is not None:
+            raise NotImplementedError(
+                "provider single-prefill KV scale binding is not implemented"
+            )
+        if custom_mask is not None or packed_custom_mask is not None:
+            raise NotImplementedError(
+                "provider single-prefill custom-mask binding is not implemented"
+            )
+        if use_fp16_qk_reduction:
+            raise NotImplementedError(
+                "provider single-prefill FP16 QK reduction is not bound"
+            )
+        if kv_cache_sf is not None:
+            raise NotImplementedError(
+                "provider single-prefill NVFP4 scale-factor binding is not implemented"
+            )
+        spec = AttentionPlanSpec(
+            mode=AttentionMode.SINGLE_PREFILL,
+            num_qo_heads=adapted_provider.num_qo_heads,
+            num_kv_heads=adapted_provider.num_kv_heads,
+            head_dim_qk=adapted_provider.head_dim_qk,
+            head_dim_vo=adapted_provider.head_dim_vo,
+            kv_layout=adapted_provider.layout,
+            causal=bool(causal),
+            pos_encoding_mode=parse_pos_encoding_mode(pos_encoding_mode),
+            q_dtype=adapted_provider.q_dtype,
+            kv_dtype=adapted_provider.kv_dtype,
+            o_dtype=(
+                adapted_provider.q_dtype
+                if o_dtype is None
+                else canonicalize_dtype_name(o_dtype)
+            ),
+            sm_scale=(
+                1.0 / math.sqrt(adapted_provider.head_dim_qk)
+                if sm_scale is None
+                else finite_scalar(sm_scale, "sm_scale")
+            ),
+            logits_soft_cap=(
+                0.0
+                if logits_soft_cap is None
+                else finite_scalar(logits_soft_cap, "logits_soft_cap")
+            ),
+            window_left=window_left,
+            rope_scale=rope_scale,
+            rope_theta=rope_theta,
+        )
+        from .attention.holistic import (
+            attention_operator_runtime_registry_snapshot,
+        )
+        from .attention.operator_resolver import AttentionOperatorRuntime
+
+        snapshot = attention_operator_runtime_registry_snapshot()
+        runtime = AttentionOperatorRuntime(
+            adapted_provider.device,
+            snapshot.registry,
+            snapshot.operation_catalog,
+            mode=AttentionMode.SINGLE_PREFILL,
+        )
+        runtime.plan(spec, adapted_provider.metadata)
+        result = runtime.run(
+            q,
+            (k, v),
+            return_lse=bool(return_lse),
+            logits_soft_cap=spec.logits_soft_cap,
+        )
+        if return_lse:
+            if not isinstance(result, tuple) or len(result) != 2:
+                raise SchemaError(
+                    "provider did not return the requested output and LSE pair"
+                )
+            return result
+        if isinstance(result, tuple) and len(result) == 2:
+            return result[0]
+        return result
 
     require_reference_backend(backend)
     if kv_cache_sf is not None:

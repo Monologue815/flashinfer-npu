@@ -43,7 +43,7 @@ flowchart LR
 
 | 上游符号 | 本地模块 | 当前内部模型 | Frontend 交付条件 |
 | --- | --- | --- | --- |
-| `single_prefill_with_kv_cache` | `flashinfer_npu.prefill` | `SINGLE_PREFILL` | Public facade + Host oracle；Torch/NPU provider 待接入 |
+| `single_prefill_with_kv_cache` | `flashinfer_npu.prefill` | `SINGLE_PREFILL` | Public facade + Host oracle + ephemeral mode-bound provider runtime |
 | `single_decode_with_kv_cache` | `flashinfer_npu.decode` | `SINGLE_DECODE` | Public facade + Host oracle；Torch/NPU provider 待接入 |
 | `BatchPrefillWithPagedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_PAGED` | Public facade + Host oracle + mode-bound provider runtime；Ascend workspace formula 由 provider 声明 |
 | `BatchPrefillWithRaggedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_RAGGED` | Public facade + Host oracle + mode-bound provider runtime；backend-specific scoring 能力由 provider 声明 |
@@ -166,7 +166,9 @@ resource binding generation 并保留 active plan；caller-managed provider 必�
 completion/lease 绑定，不能复用这条规则。
 
 当前 Host facade 中，single prefill 必须显式传入 `backend="reference"`；默认
-`auto` 会失败，防止参考执行器进入生产路径。single decode 的上游签名没有 backend
+`auto` 不会选择参考执行器。对于 NPU tensor-like Q/K/V，默认 `auto` 在函数内部冻结一次
+registry/catalog snapshot，创建 `SINGLE_PREFILL` plan 并执行一次；provider 与 plan 对象均不
+进入 public 参数或返回值。single decode 的上游签名没有 backend
 参数，因此传入 `ReferenceTensor` 本身就是显式 opt-in。`use_tensor_cores` 只表达算法
 偏好，在标量 oracle 中不改变数学结果，也不宣称 Host 具有对应硬件能力。
 

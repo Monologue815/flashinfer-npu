@@ -108,6 +108,13 @@ publish a decode or mixed-batch plan. Mode validation precedes package probing,
 callable loading and provider planning. The holistic `BatchAttention` runtime
 is the `BATCH_MIXED_PAGED` specialization of this shared runtime contract.
 
+The functional `single_prefill_with_kv_cache` API has no reusable public
+wrapper in FlashInfer. For NPU tensor-like inputs it therefore creates one
+ephemeral `SINGLE_PREFILL` runtime per call, snapshots the registry/catalog,
+builds a canonical single-request plan, executes it once and discards the
+private runtime. The function signature exposes no provider, module or plan
+handle. Explicit `backend="reference"` continues to select only the Host oracle.
+
 For paged/ragged prefill and paged decode, `backend="reference"` selects only
 the explicit Host oracle. `backend="auto"` requires an NPU workspace and
 snapshots the installed runtime registry together with its versioned operation

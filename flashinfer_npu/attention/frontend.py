@@ -50,6 +50,97 @@ class SingleQKVAdapterResult:
     head_dim_vo: int
 
 
+@dataclass(frozen=True)
+class FrameworkSingleQKVPlanInput:
+    """Canonical plan facts read from tensor-like single-request inputs."""
+
+    metadata: SingleAttentionMetadata
+    layout: KVLayout
+    num_qo_heads: int
+    num_kv_heads: int
+    head_dim_qk: int
+    head_dim_vo: int
+    q_dtype: str
+    kv_dtype: str
+    device: str
+
+
+def _framework_tensor_facts(value, name: str):
+    shape = getattr(value, "shape", None)
+    try:
+        shape = tuple(int(dim) for dim in shape)
+    except (TypeError, ValueError) as error:
+        raise SchemaError("%s must expose an integer shape" % name) from error
+    if any(dim < 0 for dim in shape):
+        raise SchemaError("%s shape dimensions cannot be negative" % name)
+    dtype = canonicalize_dtype_name(getattr(value, "dtype", ""))
+    device = str(getattr(value, "device", ""))
+    if not device:
+        raise SchemaError("%s must expose a device" % name)
+    return shape, dtype, device
+
+
+def adapt_framework_single_qkv(
+    q,
+    k,
+    v,
+    *,
+    mode: AttentionMode,
+    kv_layout: str,
+) -> FrameworkSingleQKVPlanInput:
+    """Build single-request plan facts without importing a tensor framework."""
+
+    if mode not in (AttentionMode.SINGLE_PREFILL, AttentionMode.SINGLE_DECODE):
+        raise SchemaError("framework single-QKV adapter requires a single mode")
+    layout = parse_kv_layout(kv_layout)
+    q_shape, q_dtype, q_device = _framework_tensor_facts(q, "q")
+    k_shape, k_dtype, k_device = _framework_tensor_facts(k, "k")
+    v_shape, v_dtype, v_device = _framework_tensor_facts(v, "v")
+    expected_q_rank = 2 if mode == AttentionMode.SINGLE_DECODE else 3
+    if len(q_shape) != expected_q_rank:
+        raise SchemaError("%s q must be rank %d" % (mode.value, expected_q_rank))
+    if len(k_shape) != 3 or len(v_shape) != 3:
+        raise SchemaError("single-request k and v must be rank 3")
+    if q_device != k_device or q_device != v_device:
+        raise SchemaError("q, k, and v must be on the same device")
+    if q_device.split(":", 1)[0] != "npu":
+        raise DispatchError("provider single Attention requires npu[:index] tensors")
+    if k_dtype != v_dtype:
+        raise SchemaError("k and v must have the same dtype")
+    if mode == AttentionMode.SINGLE_DECODE:
+        qo_len = 1
+        num_qo_heads, head_dim_qk = q_shape
+    else:
+        qo_len, num_qo_heads, head_dim_qk = q_shape
+    if layout == KVLayout.NHD:
+        kv_len, num_kv_heads, k_head_dim = k_shape
+        v_kv_len, v_num_heads, head_dim_vo = v_shape
+    else:
+        num_kv_heads, kv_len, k_head_dim = k_shape
+        v_num_heads, v_kv_len, head_dim_vo = v_shape
+    if k_head_dim != head_dim_qk:
+        raise SchemaError("q and k head dimensions must match")
+    if v_kv_len != kv_len:
+        raise SchemaError("k and v sequence lengths must match")
+    if v_num_heads != num_kv_heads:
+        raise SchemaError("k and v head counts must match")
+    if num_kv_heads == 0 or num_qo_heads % num_kv_heads != 0:
+        raise SchemaError("num_kv_heads must divide num_qo_heads")
+    if mode == AttentionMode.SINGLE_DECODE and head_dim_vo != head_dim_qk:
+        raise SchemaError("single decode requires equal q/k and v head dimensions")
+    return FrameworkSingleQKVPlanInput(
+        metadata=SingleAttentionMetadata(qo_len=qo_len, kv_len=kv_len),
+        layout=layout,
+        num_qo_heads=num_qo_heads,
+        num_kv_heads=num_kv_heads,
+        head_dim_qk=head_dim_qk,
+        head_dim_vo=head_dim_vo,
+        q_dtype=q_dtype,
+        kv_dtype=k_dtype,
+        device=q_device,
+    )
+
+
 def require_reference_backend(backend: str) -> None:
     if backend == "auto":
         raise DispatchError(
