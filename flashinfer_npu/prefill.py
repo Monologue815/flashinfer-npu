@@ -1,4 +1,4 @@
-"""FlashInfer-compatible prefill facade backed by the Host reference oracle."""
+"""FlashInfer-compatible prefill facades with reference/provider routing."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from .attention.frontend import (
     adapt_single_custom_mask,
     adapt_single_qkv,
     finite_scalar,
+    framework_index_values,
     multiply_scale,
     optional_finite_scalar,
     parse_kv_layout,
@@ -282,7 +283,7 @@ def _require_prefill_forward_matches_plan(
 
 
 class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
-    """FlashInfer-compatible paged prefill lifecycle on the Host oracle."""
+    """FlashInfer-compatible paged prefill lifecycle owned by one wrapper."""
 
     def __init__(
         self,
@@ -302,6 +303,15 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         layout = parse_kv_layout(kv_layout)
         if jit_args is not None or jit_kwargs is not None:
             raise NotImplementedError("custom JIT modules are not implemented")
+        if (
+            backend == "auto"
+            and str(getattr(float_workspace_buffer, "device", "")).split(":", 1)[0]
+            == "npu"
+            and use_cuda_graph
+        ):
+            raise NotImplementedError(
+                "provider graph resources are not bound to paged prefill"
+            )
         fixed_batch_size = None
         graph_buffers = ()
         if use_cuda_graph:
@@ -416,6 +426,11 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
     ):
         """Return Host-reference workspace bytes without mutating this plan."""
 
+        if self._operator_runtime is not None:
+            raise NotImplementedError(
+                "provider workspace_size requires a package size-query binding"
+            )
+
         probe = BatchPrefillWithPagedKVCacheWrapper(
             self._float_workspace_buffer,
             kv_layout=self._kv_layout.value,
@@ -496,7 +511,17 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         fixed_split_size=None,
         disable_split_kv=False,
     ):
-        del non_blocking, fixed_split_size, disable_split_kv
+        del non_blocking
+        if self._operator_runtime is not None:
+            if fixed_split_size is not None or disable_split_kv:
+                raise NotImplementedError(
+                    "provider split-K planning controls are not bound"
+                )
+            if use_fp16_qk_reduction:
+                raise NotImplementedError(
+                    "provider FP16 QK reduction is not bound"
+                )
+        del fixed_split_size, disable_split_kv
         require_no_host_plan_extensions(
             prefix_len_ptr=prefix_len_ptr,
             token_pos_in_items_ptr=token_pos_in_items_ptr,
@@ -508,14 +533,19 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             max_token_per_sequence=max_token_per_sequence,
             max_sequence_kv=max_sequence_kv,
         )
-        qo_values = reference_index_values(qo_indptr, "qo_indptr")
-        page_indptr = reference_index_values(
+        index_reader = (
+            framework_index_values
+            if self._operator_runtime is not None
+            else reference_index_values
+        )
+        qo_values = index_reader(qo_indptr, "qo_indptr")
+        page_indptr = index_reader(
             paged_kv_indptr, "paged_kv_indptr"
         )
-        page_indices = reference_index_values(
+        page_indices = index_reader(
             paged_kv_indices, "paged_kv_indices"
         )
-        last_page = reference_index_values(
+        last_page = index_reader(
             paged_kv_last_page_len, "paged_kv_last_page_len"
         )
         paged = PagedKVMetadata(page_indptr, page_indices, last_page, page_size)
@@ -531,12 +561,19 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 metadata.qo_lengths, metadata.paged_kv.sequence_lengths
             )
         )
-        mask_spec, mask_data = adapt_batch_custom_mask(
-            custom_mask,
-            packed_custom_mask,
-            segment_sizes=segment_sizes,
-            device=self._float_workspace_buffer.device,
-        )
+        if self._operator_runtime is not None:
+            if custom_mask is not None or packed_custom_mask is not None:
+                raise NotImplementedError(
+                    "provider custom-mask plan binding is not implemented"
+                )
+            mask_spec, mask_data = None, None
+        else:
+            mask_spec, mask_data = adapt_batch_custom_mask(
+                custom_mask,
+                packed_custom_mask,
+                segment_sizes=segment_sizes,
+                device=self._float_workspace_buffer.device,
+            )
         if (
             mask_spec is not None
             and self.is_graph_enabled
@@ -643,6 +680,57 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         uses_spcompress=None,
     ):
         plan = self.plan_state
+        if self._operator_runtime is not None:
+            if args:
+                raise NotImplementedError(
+                    "provider custom JIT run arguments are not implemented"
+                )
+            if q_scale is not None:
+                raise NotImplementedError(
+                    "provider query-scale run binding is not implemented"
+                )
+            if enable_pdl not in (None, False):
+                raise NotImplementedError(
+                    "enable_pdl has no authorized Ascend provider binding"
+                )
+            if window_left is not None and window_left != plan.spec.window_left:
+                raise SchemaError("run window_left must match the planned value")
+            if sinks is not None:
+                raise NotImplementedError(
+                    "provider attention-sink run binding is not implemented"
+                )
+            if skip_softmax_threshold_scale_factor is not None:
+                raise NotImplementedError(
+                    "provider skip-softmax run binding is not implemented"
+                )
+            if use_fp16_softmax not in (None, False):
+                raise NotImplementedError(
+                    "provider FP16-softmax run binding is not implemented"
+                )
+            if uses_spcompress not in (None, False):
+                raise NotImplementedError(
+                    "provider SP-compression run binding is not implemented"
+                )
+            result = self._operator_runtime.run(
+                q,
+                paged_kv_cache,
+                out=out,
+                lse=lse,
+                k_scale=k_scale,
+                v_scale=v_scale,
+                logits_soft_cap=0.0,
+                profiler_buffer=None,
+                kv_cache_sf=kv_cache_sf,
+            )
+            if return_lse:
+                if not isinstance(result, tuple) or len(result) != 2:
+                    raise SchemaError(
+                        "provider did not return the requested output and LSE pair"
+                    )
+                return result
+            if isinstance(result, tuple) and len(result) == 2:
+                return result[0]
+            return result
         kv_data = adapt_paged_kv_data(
             paged_kv_cache,
             page_size=plan.metadata.paged_kv.page_size,

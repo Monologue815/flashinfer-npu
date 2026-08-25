@@ -1,17 +1,19 @@
-"""Shared Host lifecycle for FlashInfer-compatible batch Attention wrappers."""
+"""Shared lifecycle for FlashInfer-compatible batch Attention facades."""
 
 from __future__ import annotations
 
 from typing import Optional, Sequence
 
-from flashinfer_npu.runtime import SchemaError
+from flashinfer_npu.runtime import DispatchError, SchemaError
 
 from .frontend import (
+    canonicalize_dtype_name,
     finalize_reference_result,
     require_reference_backend,
     require_reference_tensor,
     validate_workspace_buffer,
 )
+from .operator_resolver import AttentionOperatorRuntime
 from .planner import AttentionFrameworkPlan, AttentionFrameworkSession
 from .reference import (
     ReferenceAttentionExecutor,
@@ -64,7 +66,7 @@ _GRAPH_BUFFER_COUNTS = {
 
 
 class HostBatchReferenceWrapper:
-    """Backend-neutral batch wrapper plumbing used by the public facades."""
+    """Reference lifecycle plus private provider routing for public facades."""
 
     def _init_host_wrapper(
         self,
@@ -76,6 +78,62 @@ class HostBatchReferenceWrapper:
         fixed_batch_size: Optional[int],
         graph_buffers: Sequence[ReferenceTensor] = (),
     ) -> None:
+        self._operator_runtime = None
+        if backend != "reference":
+            if isinstance(float_workspace_buffer, ReferenceTensor):
+                require_reference_backend(backend)
+            if backend != "auto":
+                raise DispatchError(
+                    "non-reference batch wrappers currently require backend='auto'"
+                )
+            if graph_enabled:
+                raise NotImplementedError(
+                    "provider graph resources are not bound to public batch wrappers"
+                )
+            shape = getattr(float_workspace_buffer, "shape", None)
+            try:
+                shape = tuple(int(dim) for dim in shape)
+            except (TypeError, ValueError) as error:
+                raise SchemaError(
+                    "float_workspace_buffer must expose a rank-1 shape"
+                ) from error
+            if len(shape) != 1 or shape[0] < 0:
+                raise SchemaError("float_workspace_buffer must be rank 1")
+            if canonicalize_dtype_name(
+                getattr(float_workspace_buffer, "dtype", "")
+            ) != "uint8":
+                raise SchemaError("float_workspace_buffer dtype must be uint8")
+            device = str(getattr(float_workspace_buffer, "device", ""))
+            if device.split(":", 1)[0] != "npu":
+                raise DispatchError(
+                    "backend='auto' batch wrappers require an npu[:index] workspace"
+                )
+            # Imported lazily to avoid making the public facade own registry state.
+            from .holistic import attention_operator_runtime_registry_snapshot
+
+            snapshot = attention_operator_runtime_registry_snapshot()
+            self._operator_runtime_registry_snapshot = snapshot
+            self._operator_runtime = AttentionOperatorRuntime(
+                device,
+                snapshot.registry,
+                snapshot.operation_catalog,
+                mode=mode,
+            )
+            self._float_workspace_buffer = float_workspace_buffer
+            self._int_workspace_buffer = None
+            self._session = None
+            self._executor = None
+            self._custom_mask_data = None
+            self._capture_record = None
+            self._capture_generation = 0
+            self._graph_resources = AttentionGraphResourceContract.disabled(mode)
+            self._workspace_contract = AttentionWorkspaceContract(
+                backend="auto",
+                device=device,
+                float_capacity_bytes=shape[0],
+                int_capacity_bytes=0,
+            )
+            return
         require_reference_backend(backend)
         self._float_workspace_buffer = validate_workspace_buffer(
             float_workspace_buffer, "float_workspace_buffer"
@@ -122,10 +180,14 @@ class HostBatchReferenceWrapper:
 
     @property
     def plan_state(self) -> AttentionFrameworkPlan:
+        if self._operator_runtime is not None:
+            return self._operator_runtime.plan_state
         return self._session.plan_state
 
     @property
     def is_graph_enabled(self) -> bool:
+        if self._operator_runtime is not None:
+            return False
         return self._session.graph_enabled
 
     @property
@@ -154,6 +216,14 @@ class HostBatchReferenceWrapper:
         metadata: AttentionMetadata,
         custom_mask_data,
     ) -> None:
+        if self._operator_runtime is not None:
+            if custom_mask_data is not None or spec.custom_mask is not None:
+                raise NotImplementedError(
+                    "provider custom-mask plan binding is not implemented"
+                )
+            self._operator_runtime.plan(spec, metadata)
+            self._capture_record = None
+            return
         plan = self._session.plan(spec, metadata)
         self._workspace_contract = self._workspace_contract.bind_plan(
             plan.generation
@@ -164,6 +234,10 @@ class HostBatchReferenceWrapper:
     def reset_workspace_buffer(
         self, float_workspace_buffer, int_workspace_buffer
     ) -> None:
+        if self._operator_runtime is not None:
+            raise NotImplementedError(
+                "provider workspace rebinding is not implemented"
+            )
         float_buffer = validate_workspace_buffer(
             float_workspace_buffer, "float_workspace_buffer"
         )

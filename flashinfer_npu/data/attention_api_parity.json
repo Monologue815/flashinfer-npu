@@ -60,7 +60,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Public Host wrapper with explicit backend='reference'; graph resources and plan/run lifecycle are executable."
+      "notes": "The public wrapper keeps backend='reference' as an explicit Host oracle and routes backend='auto' with an NPU workspace through a private, mode-bound provider runtime. No provider is enabled by default; unbound provider options fail before package invocation."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.workspace_size",

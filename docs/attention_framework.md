@@ -108,7 +108,7 @@ Artifact verification、resolved symbol、provider error/event 与 unload 生命
 | `attention.BatchAttention` | `AttentionMode.BATCH_MIXED_PAGED` | Public facade + Host reference |
 | `single_prefill_with_kv_cache` | `SINGLE_PREFILL` + `SingleAttentionMetadata` | Public facade + Host reference |
 | `single_decode_with_kv_cache` | `SINGLE_DECODE` + `SingleAttentionMetadata` | Public facade + Host reference |
-| `BatchPrefillWithPagedKVCacheWrapper` | `BATCH_PREFILL_PAGED` + `PagedPrefillMetadata` | Public facade + Host reference |
+| `BatchPrefillWithPagedKVCacheWrapper` | `BATCH_PREFILL_PAGED` + `PagedPrefillMetadata` | Public facade + Host reference + mode-bound provider runtime |
 | `BatchPrefillWithRaggedKVCacheWrapper` | `BATCH_PREFILL_RAGGED` + `RaggedKVMetadata` | Public facade + Host reference |
 | `BatchDecodeWithPagedKVCacheWrapper` | `BATCH_DECODE_PAGED` + `PagedKVMetadata` | Public facade + Host reference |
 | `workspace_size()` | Backend-explicit workspace query | paged prefill/decode Host facade 返回真实 `(0,0)`；Ascend requirement 仍为 unknown |

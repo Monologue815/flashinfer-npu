@@ -24,6 +24,10 @@ from .operator_resolver import (
     AttentionOperatorBatchRuntime,
     AttentionOperatorRuntimeResolverRegistry,
 )
+from .operation_catalog import (
+    AttentionOperatorOperationCatalog,
+    load_packaged_attention_operator_catalog,
+)
 from .operator_bootstrap import build_default_attention_operator_runtime_resolvers
 from .reference import ReferenceAttentionExecutor, ReferenceTensor
 from .schema import AttentionMode, AttentionPlanSpec, MixedPagedKVMetadata
@@ -34,6 +38,7 @@ from .tensor_contract import validate_reference_attention_views
 # Package integrations replace this immutable registry at bootstrap.  Keeping
 # it module-private avoids adding provider controls to the public constructor.
 _operator_runtime_resolvers = build_default_attention_operator_runtime_resolvers()
+_operator_runtime_operation_catalog = load_packaged_attention_operator_catalog()
 _operator_runtime_resolvers_generation = 0
 _operator_runtime_resolvers_lock = RLock()
 
@@ -47,6 +52,9 @@ class AttentionOperatorRuntimeRegistrySnapshot:
     registry: AttentionOperatorRuntimeResolverRegistry = field(
         repr=False, compare=False
     )
+    operation_catalog: AttentionOperatorOperationCatalog = field(
+        default=None, repr=False, compare=False
+    )
 
     def __post_init__(self):
         if not isinstance(self.generation, int) or isinstance(self.generation, bool):
@@ -56,6 +64,14 @@ class AttentionOperatorRuntimeRegistrySnapshot:
         if not isinstance(self.registry, AttentionOperatorRuntimeResolverRegistry):
             raise TypeError(
                 "registry must be AttentionOperatorRuntimeResolverRegistry"
+            )
+        catalog = self.operation_catalog
+        if catalog is None:
+            catalog = load_packaged_attention_operator_catalog()
+            object.__setattr__(self, "operation_catalog", catalog)
+        if not isinstance(catalog, AttentionOperatorOperationCatalog):
+            raise TypeError(
+                "operation_catalog must be AttentionOperatorOperationCatalog"
             )
         device_types = tuple(str(item) for item in self.device_types)
         actual_types = tuple(item[0] for item in self.registry.resolvers)
@@ -70,17 +86,20 @@ def attention_operator_runtime_registry_snapshot(
 
     with _operator_runtime_resolvers_lock:
         registry = _operator_runtime_resolvers
+        operation_catalog = _operator_runtime_operation_catalog
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
         generation=generation,
         device_types=tuple(item[0] for item in registry.resolvers),
         registry=registry,
+        operation_catalog=operation_catalog,
     )
 
 
 def install_attention_operator_runtime_resolvers(
     registry: AttentionOperatorRuntimeResolverRegistry,
     *,
+    operation_catalog: AttentionOperatorOperationCatalog = None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     """Atomically install integrations for wrappers constructed afterwards.
@@ -91,6 +110,12 @@ def install_attention_operator_runtime_resolvers(
 
     if not isinstance(registry, AttentionOperatorRuntimeResolverRegistry):
         raise TypeError("registry must be AttentionOperatorRuntimeResolverRegistry")
+    if operation_catalog is None:
+        operation_catalog = load_packaged_attention_operator_catalog()
+    if not isinstance(operation_catalog, AttentionOperatorOperationCatalog):
+        raise TypeError(
+            "operation_catalog must be AttentionOperatorOperationCatalog"
+        )
     device_types = tuple(item[0] for item in registry.resolvers)
     if any(item != "npu" for item in device_types):
         raise SchemaError("public Attention runtime registry may only route npu")
@@ -101,6 +126,7 @@ def install_attention_operator_runtime_resolvers(
     ):
         raise SchemaError("expected Attention runtime generation must be non-negative")
     global _operator_runtime_resolvers
+    global _operator_runtime_operation_catalog
     global _operator_runtime_resolvers_generation
     with _operator_runtime_resolvers_lock:
         if (
@@ -109,12 +135,14 @@ def install_attention_operator_runtime_resolvers(
         ):
             raise SchemaError("Attention runtime registry generation changed")
         _operator_runtime_resolvers = registry
+        _operator_runtime_operation_catalog = operation_catalog
         _operator_runtime_resolvers_generation += 1
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
         generation=generation,
         device_types=device_types,
         registry=registry,
+        operation_catalog=operation_catalog,
     )
 
 
@@ -144,7 +172,9 @@ class BatchAttention:
                 attention_operator_runtime_registry_snapshot()
             )
             self._operator_runtime = AttentionOperatorBatchRuntime(
-                self.device, self._operator_runtime_registry_snapshot.registry
+                self.device,
+                self._operator_runtime_registry_snapshot.registry,
+                self._operator_runtime_registry_snapshot.operation_catalog,
             )
             return
         # Logical placeholders only; Host scalar execution needs no workspace.

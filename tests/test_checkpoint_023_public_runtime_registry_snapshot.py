@@ -36,9 +36,14 @@ class PublicRuntimeRegistrySnapshotCheckpoint(unittest.TestCase):
 
     def tearDown(self):
         current = attention_operator_runtime_registry_snapshot()
-        if current.registry is not self.original.registry:
+        if (
+            current.registry is not self.original.registry
+            or current.operation_catalog is not self.original.operation_catalog
+        ):
             install_attention_operator_runtime_resolvers(
-                self.original.registry, expected_generation=current.generation
+                self.original.registry,
+                operation_catalog=self.original.operation_catalog,
+                expected_generation=current.generation,
             )
 
     def test_snapshot_is_side_effect_free_and_matches_default_registry(self):
@@ -48,6 +53,7 @@ class PublicRuntimeRegistrySnapshotCheckpoint(unittest.TestCase):
 
         self.assertEqual(snapshot.device_types, ())
         self.assertIs(snapshot.registry, EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS)
+        self.assertGreater(len(snapshot.operation_catalog.operations), 0)
         self.assertGreaterEqual(snapshot.generation, 0)
         imported_after = set(sys.modules).difference(imported_before)
         self.assertNotIn("torch_npu", imported_after)
@@ -115,6 +121,21 @@ class PublicRuntimeRegistrySnapshotCheckpoint(unittest.TestCase):
         self.assertEqual(current.generation, installed.generation)
         self.assertIs(current.registry, registry)
 
+    def test_registry_and_operation_catalog_are_one_atomic_snapshot(self):
+        registry, _ = npu_registry()
+        catalog = self.original.operation_catalog
+
+        installed = install_attention_operator_runtime_resolvers(
+            registry,
+            operation_catalog=catalog,
+            expected_generation=self.original.generation,
+        )
+        observed = attention_operator_runtime_registry_snapshot()
+
+        self.assertIs(installed.operation_catalog, catalog)
+        self.assertIs(observed.operation_catalog, catalog)
+        self.assertIs(observed.registry, registry)
+
     def test_install_rejects_non_npu_routes_and_invalid_generation(self):
         cpu_registry = AttentionOperatorRuntimeResolverRegistry(
             (("cpu", FakeAutoResolver()),)
@@ -123,6 +144,11 @@ class PublicRuntimeRegistrySnapshotCheckpoint(unittest.TestCase):
             install_attention_operator_runtime_resolvers(cpu_registry)
         with self.assertRaisesRegex(TypeError, "must be Attention"):
             install_attention_operator_runtime_resolvers(object())
+        with self.assertRaisesRegex(TypeError, "operation_catalog"):
+            install_attention_operator_runtime_resolvers(
+                EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS,
+                operation_catalog=object(),
+            )
         for generation in (-1, True, "0"):
             with self.subTest(generation=generation):
                 with self.assertRaisesRegex(SchemaError, "non-negative"):

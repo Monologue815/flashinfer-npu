@@ -142,6 +142,11 @@ Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
 本地 backend 候选预计为 `auto`、`ascendc`、`aclnn`、`reference`；正式名称在
 backend ABI 评审后冻结。
 
+Paged prefill 的 `backend="auto"` 路径由 NPU workspace 确定设备，并在 wrapper 构造时
+冻结 runtime registry snapshot。`plan()` 只提交 canonical plan/metadata，provider、package
+callable、JIT module、plan factory 与 executor 均由 wrapper 私有持有；`run()` 不接受这些
+内部对象。尚无精确 provider lowering 的 public 选项必须在调用外部 package 前失败。
+
 当前 Host facade 中，single prefill 必须显式传入 `backend="reference"`；默认
 `auto` 会失败，防止参考执行器进入生产路径。single decode 的上游签名没有 backend
 参数，因此传入 `ReferenceTensor` 本身就是显式 opt-in。`use_tensor_cores` 只表达算法
