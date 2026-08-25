@@ -70,8 +70,18 @@ class BatchFrontendSignatureTests(unittest.TestCase):
                 "v_scale", "out", "lse", "return_lse", "enable_pdl",
                 "window_left", "sinks", "kv_cache_sf",
                 "skip_softmax_threshold_scale_factor",
+                "use_fp16_softmax", "uses_spcompress",
             ],
         )
+        run_signature = inspect.signature(
+            BatchPrefillWithPagedKVCacheWrapper.run
+        )
+        for name in ("use_fp16_softmax", "uses_spcompress"):
+            self.assertIsNone(run_signature.parameters[name].default)
+            self.assertEqual(
+                run_signature.parameters[name].kind,
+                inspect.Parameter.KEYWORD_ONLY,
+            )
 
     def test_ragged_and_decode_signatures_track_upstream_shape(self):
         self.assertEqual(
@@ -284,6 +294,19 @@ class PagedPrefillFrontendTests(unittest.TestCase):
             wrapper.run(q, kv, enable_pdl=True)
         with self.assertRaisesRegex(NotImplementedError, "NVFP4"):
             wrapper.run(q, kv, kv_cache_sf=tensor([1.0]))
+        self.assertEqual(
+            wrapper.run(
+                q,
+                kv,
+                use_fp16_softmax=False,
+                uses_spcompress=False,
+            ).data,
+            (1.0,),
+        )
+        with self.assertRaisesRegex(NotImplementedError, "FP16 softmax"):
+            wrapper.run(q, kv, use_fp16_softmax=True)
+        with self.assertRaisesRegex(NotImplementedError, "SP-compressed"):
+            wrapper.run(q, kv, uses_spcompress=True)
 
     def test_deprecated_forward_executes_matching_plan_and_rejects_drift(self):
         wrapper = BatchPrefillWithPagedKVCacheWrapper(

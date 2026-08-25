@@ -202,6 +202,8 @@ class HostBatchReferenceWrapper:
         sinks,
         kv_cache_sf,
         skip_softmax_threshold_scale_factor,
+        use_fp16_softmax=None,
+        uses_spcompress=None,
     ):
         if args:
             raise NotImplementedError(
@@ -215,6 +217,12 @@ class HostBatchReferenceWrapper:
             raise NotImplementedError("NVFP4 kv_cache_sf is not implemented")
         if skip_softmax_threshold_scale_factor is not None:
             raise NotImplementedError("skip-softmax sparsity is not implemented")
+        if use_fp16_softmax not in (None, False):
+            raise NotImplementedError(
+                "FP16 softmax is not implemented by the Host oracle"
+            )
+        if uses_spcompress not in (None, False):
+            raise NotImplementedError("SP-compressed attention is not implemented")
         query = require_reference_tensor(q, "q")
         self._workspace_contract.validate_run(
             device=query.device,

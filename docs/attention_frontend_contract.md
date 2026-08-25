@@ -1,8 +1,8 @@
 # FlashInfer-NPU Attention Frontend Contract
 
-> 状态：Single + Batch wrapper contract v0.6
-> 上游基线：`flashinfer-ai/flashinfer` main，2026-08-05 快照  
-> 当前限制：只设计与 Host conformance，不依赖 PyTorch、torch_npu、CANN 或 NPU
+> 状态：Single + Batch wrapper contract v0.7
+> 上游基线：`flashinfer-ai/flashinfer` main，2026-08-25 接口快照
+> 当前限制：框架接口与 Host reference 范围；不依赖 PyTorch、torch_npu、CANN 或 NPU
 
 ## 1. 目标
 
@@ -43,12 +43,12 @@ flowchart LR
 
 | 上游符号 | 本地模块 | 当前内部模型 | Frontend 交付条件 |
 | --- | --- | --- | --- |
-| `single_prefill_with_kv_cache` | `flashinfer_npu.prefill` | `SINGLE_PREFILL` | **Host reference 已验证**；Torch/NPU 未实现 |
-| `single_decode_with_kv_cache` | `flashinfer_npu.decode` | `SINGLE_DECODE` | **Host reference 已验证**；Torch/NPU 未实现 |
-| `BatchPrefillWithPagedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_PAGED` | **Host reference 已验证**；Host `workspace_size=(0,0)`，Ascend formula 未知 |
-| `BatchPrefillWithRaggedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_RAGGED` | **Host reference 已验证**；扩展 scoring 参数未实现 |
-| `BatchDecodeWithPagedKVCacheWrapper` | `flashinfer_npu.decode` | `BATCH_DECODE_PAGED` | **Host reference 已验证**；含 multi-token decode |
-| `attention.BatchAttention` | `flashinfer_npu.attention` | `BATCH_MIXED_PAGED` | **Host reference 已验证**；固定返回 output + LSE |
+| `single_prefill_with_kv_cache` | `flashinfer_npu.prefill` | `SINGLE_PREFILL` | Public facade + Host oracle；Torch/NPU provider 待接入 |
+| `single_decode_with_kv_cache` | `flashinfer_npu.decode` | `SINGLE_DECODE` | Public facade + Host oracle；Torch/NPU provider 待接入 |
+| `BatchPrefillWithPagedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_PAGED` | Public facade + Host oracle；Host workspace 为零，Ascend formula 由 provider 声明 |
+| `BatchPrefillWithRaggedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_RAGGED` | Public facade + Host oracle；backend-specific scoring 能力由 provider 声明 |
+| `BatchDecodeWithPagedKVCacheWrapper` | `flashinfer_npu.decode` | `BATCH_DECODE_PAGED` | Public facade + Host oracle；接口覆盖 multi-token decode |
+| `attention.BatchAttention` | `flashinfer_npu.attention` | `BATCH_MIXED_PAGED` | Public facade + Host oracle；返回约定固定为 output + LSE |
 
 Deprecated `begin_forward/forward/end_forward` 在 P3 提供兼容 alias，不驱动内部设计。
 
@@ -109,9 +109,10 @@ num_qo_heads, num_kv_heads, head_dim, page_size`，并在 plan 中固定
 `q_len_per_req`、window、position encoding 和 dtype。
 
 当前上游还包含 multi-item scoring、attention sinks、backend-specific split-k、PDL、
-NVFP4 scale-factor tensor、skip-softmax sparsity 等参数。本地 public signature 已保留
-对应入口；Host oracle 无法等价执行的路径会显式抛出 `NotImplementedError`，不得用
-无效参数吞掉。Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
+NVFP4 scale-factor tensor、skip-softmax sparsity、FP16 softmax 与 SP-compression 等参数。
+本地 public signature 保留对应入口；Host oracle 无法等价执行的路径会显式抛出
+`NotImplementedError`，不得吞掉无效参数。`None`/`False` 只表示未启用相应能力。
+Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
 并验证 `q_len_per_req` 的冻结语义。
 
 ## 5. 参数归属
@@ -197,7 +198,7 @@ storage bounds、alignment、alias identity 和 current stream；详见
 [`attention_tensor_contract.md`](attention_tensor_contract.md)。Adapter 不允许静默
 contiguous/cast/layout transform。
 
-## 8. Frontend conformance gate
+## 8. Frontend 接受条件
 
 公共 symbol 从 `framework` 升级为 `reference` 前必须全部满足：
 
@@ -209,10 +210,12 @@ contiguous/cast/layout transform。
 - CUDA-only 参数不被静默忽略；
 - reference backend 必须显式选择，不参与生产 `auto` dispatch。
 
-当前两个 single API、两个 injected-JIT 入口、三个 batch wrapper 与 mixed `BatchAttention` 已具备同名
-public Host facade，并通过
-签名、默认 backend、NHD/HND、packed/separate KV、GQA、mask、scale、caller-owned
-out/LSE、deprecated `forward`、图模式、mixed request 和 multi-token decode conformance。
-workspace size Ascend workspace formula、真实 JIT compiler/provider、`kv_cache_sf`/NVFP4、FP8/MX、
-attention sinks、Torch functional backend 和 NPU kernel 均未实现。Torch metadata adapter
-已经存在，但只构造 framework tensor/run contract，不执行 tensor math，也不改变 parity 状态。
+本阶段的接口面包括两个 single API、两个 injected-JIT 入口、三个 batch wrapper 与 mixed
+`BatchAttention`。合同覆盖签名、默认 backend、NHD/HND、packed/separate KV、GQA、mask、
+scale、caller-owned out/LSE、deprecated `forward`、图模式、mixed request 和 multi-token
+decode 语义。
+
+Ascend workspace formula、真实 JIT compiler/provider、`kv_cache_sf`/NVFP4、FP8/MX、attention
+sinks、FP16 softmax、SP-compression、Torch functional backend 和 NPU kernel 不属于 Host
+oracle；只有 provider descriptor 明确声明并绑定对应实现后才可进入自动选择。Torch metadata
+adapter 只构造 framework tensor/run contract，不执行 tensor math，也不改变 parity 状态。

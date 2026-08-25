@@ -639,6 +639,8 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         sinks=None,
         kv_cache_sf=None,
         skip_softmax_threshold_scale_factor=None,
+        use_fp16_softmax=None,
+        uses_spcompress=None,
     ):
         plan = self.plan_state
         kv_data = adapt_paged_kv_data(
@@ -681,6 +683,8 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             sinks=sinks,
             kv_cache_sf=kv_cache_sf,
             skip_softmax_threshold_scale_factor=skip_softmax_threshold_scale_factor,
+            use_fp16_softmax=use_fp16_softmax,
+            uses_spcompress=uses_spcompress,
         )
 
     def run_return_lse(self, *args, **kwargs):

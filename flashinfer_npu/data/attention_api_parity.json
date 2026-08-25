@@ -2,13 +2,13 @@
   "schema_version": 1,
   "upstream": {
     "project": "flashinfer-ai/flashinfer",
-    "ref": "main snapshot 2026-08-05",
+    "ref": "main snapshot 2026-08-25",
     "url": "https://github.com/flashinfer-ai/flashinfer"
   },
   "scope": "attention_core",
   "scope_definition": "Core MHA/GQA attention framework APIs: holistic BatchAttention, single prefill/decode, paged batch prefill/decode, ragged batch prefill, and their documented lifecycle surface. CUDA/TRT-LLM-specific adapters, MLA, sparse attention, cascade, POD, and page mutation APIs are outside this phase.",
   "inventory_status": "complete",
-  "generated_at": "2026-08-20",
+  "generated_at": "2026-08-25",
   "entries": [
     {
       "upstream": "flashinfer.attention.BatchAttention",
@@ -85,7 +85,8 @@
       "upstream_kind": "stable",
       "semantic_status": "compatible",
       "implementation_status": "reference",
-      "priority": "P0"
+      "priority": "P0",
+      "notes": "The public signature includes current upstream q/k/v scales, caller-owned buffers, runtime window, attention sinks, NVFP4 scale factors, skip-softmax sparsity, FP16 softmax, and SP-compression controls. The Host oracle rejects enabled backend-specific features that it cannot represent."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.reset_workspace_buffer",

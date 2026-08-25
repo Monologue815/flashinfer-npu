@@ -296,7 +296,7 @@ q.shape[0] = batch_size * q_len_per_req
 | 状态 | 含义 |
 | --- | --- |
 | `missing` | 尚无对应框架或实现 |
-| `framework` | schema/lifecycle/shape 已验证，但不执行 tensor math |
+| `framework` | 仅提供 schema/lifecycle/shape 合同，不执行 tensor math |
 | `reference` | 有可执行的高精度或组合 reference |
 | `functional` | 有可执行设备实现并通过 conformance |
 | `optimized` | 通过 correctness 与性能门禁 |

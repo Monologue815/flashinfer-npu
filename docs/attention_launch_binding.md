@@ -20,7 +20,7 @@ flowchart LR
     M --> B["TensorView / KV / Aux / RunOptions bytes"]
 ```
 
-物化器只消费已验证的 `TensorView` 与 `AttentionStorageLease`。它不接受无法追踪
+物化器只消费通过合同校验的 `TensorView` 与 `AttentionStorageLease`。它不接受无法追踪
 allocation generation 的裸地址，也不加载 artifact 或 launch kernel。
 
 ## 2. Auxiliary role

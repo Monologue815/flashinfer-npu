@@ -463,7 +463,7 @@ Planner 根据 batch/token/expert 分布选择 fused 或 staged 实现。不能�
 5. 无 tuning 数据时使用 deterministic heuristic。
 6. 返回选择结果、fallback chain 和 reason code。
 
-默认优先级不是简单固定的 AOT > JIT > aclnn；同一 workload 上应以已验证的 tuning record 为准。reference 永远不应静默进入生产热路径。
+默认优先级不是简单固定的 AOT > JIT > aclnn；同一 workload 上应以满足证据合同的 tuning record 为准。reference 永远不应静默进入生产热路径。
 
 ### 11.3 Autotuning
 
