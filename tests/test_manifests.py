@@ -8,7 +8,11 @@ from flashinfer_npu.cli import (
     packaged_kernel_manifest_path,
 )
 from flashinfer_npu.attention import load_attention_capability_manifest
-from flashinfer_npu.parity import load_packaged_manifest
+from flashinfer_npu.parity import (
+    ParityManifest,
+    load_packaged_manifest,
+    packaged_manifest_path,
+)
 from flashinfer_npu.runtime import SchemaError, load_kernel_manifest
 
 
@@ -26,6 +30,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_packaged_parity_manifest_is_valid(self):
         manifest = load_packaged_manifest("all")
+        self.assertEqual(manifest.schema_version, 2)
         self.assertEqual(manifest.inventory_status, "bootstrap")
         self.assertGreaterEqual(len(manifest.entries), 20)
         self.assertFalse(manifest.is_complete)
@@ -33,6 +38,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_attention_parity_inventory_tracks_single_reference_facades(self):
         manifest = load_packaged_manifest("attention")
+        self.assertEqual(manifest.schema_version, 2)
         self.assertEqual(manifest.scope, "attention_core")
         self.assertEqual(manifest.inventory_status, "complete")
         self.assertGreaterEqual(len(manifest.entries), 18)
@@ -80,6 +86,78 @@ class ManifestTests(unittest.TestCase):
         ):
             self.assertEqual(statuses[symbol], "framework")
         self.assertFalse(manifest.is_complete)
+
+    def test_attention_parity_tracks_the_six_public_provider_routes(self):
+        manifest = load_packaged_manifest("attention")
+        surfaces = {item.attention_mode: item for item in manifest.attention_surfaces}
+
+        self.assertEqual(
+            set(surfaces),
+            {
+                "single_prefill",
+                "single_decode",
+                "batch_mixed_paged",
+                "batch_prefill_paged",
+                "batch_prefill_ragged",
+                "batch_decode_paged",
+            },
+        )
+        for mode in ("single_prefill", "single_decode"):
+            self.assertEqual(surfaces[mode].public_lifecycle, "one_shot")
+            self.assertEqual(surfaces[mode].provider_routing, "ephemeral")
+        for mode in (
+            "batch_mixed_paged",
+            "batch_prefill_paged",
+            "batch_prefill_ragged",
+            "batch_decode_paged",
+        ):
+            self.assertEqual(surfaces[mode].public_lifecycle, "plan_run")
+            self.assertEqual(surfaces[mode].provider_routing, "mode_bound")
+        self.assertTrue(all(item.host_reference for item in surfaces.values()))
+        self.assertTrue(
+            all(
+                item.npu_execution == "integration_required"
+                for item in surfaces.values()
+            )
+        )
+        self.assertEqual(
+            manifest.attention_surface_counts(),
+            {
+                "host_reference": 6,
+                "provider_routed": 6,
+                "npu_callable": 0,
+            },
+        )
+        report = manifest.report()
+        self.assertIn("attention-surfaces: 6", report)
+        self.assertIn("provider-routed-surfaces: 6", report)
+        self.assertIn("npu-callable-surfaces: 0", report)
+
+    def test_attention_surface_lifecycle_and_inventory_links_are_enforced(self):
+        source = json.loads(
+            packaged_manifest_path("attention").read_text(encoding="utf-8")
+        )
+        invalid_values = []
+
+        invalid_lifecycle = json.loads(json.dumps(source))
+        invalid_lifecycle["attention_surfaces"][1]["provider_routing"] = (
+            "mode_bound"
+        )
+        invalid_values.append((invalid_lifecycle, "one-shot"))
+
+        unknown_local = json.loads(json.dumps(source))
+        unknown_local["attention_surfaces"][0]["local"] = (
+            "flashinfer_npu.attention.Unknown"
+        )
+        invalid_values.append((unknown_local, "not in the inventory"))
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "parity.json"
+            for value, message in invalid_values:
+                with self.subTest(message=message):
+                    path.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaisesRegex(SchemaError, message):
+                        ParityManifest.load(path)
 
     def test_duplicate_kernel_ids_are_rejected(self):
         kernel = {

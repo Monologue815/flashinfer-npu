@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "upstream": {
     "project": "flashinfer-ai/flashinfer",
     "ref": "main snapshot 2026-08-25",
@@ -9,6 +9,62 @@
   "scope_definition": "Core MHA/GQA attention framework APIs: holistic BatchAttention, single prefill/decode, paged batch prefill/decode, ragged batch prefill, and their documented lifecycle surface. CUDA/TRT-LLM-specific adapters, MLA, sparse attention, cascade, POD, and page mutation APIs are outside this phase.",
   "inventory_status": "complete",
   "generated_at": "2026-08-25",
+  "attention_surfaces": [
+    {
+      "surface_id": "mixed_paged_attention",
+      "local": "flashinfer_npu.attention.BatchAttention",
+      "attention_mode": "batch_mixed_paged",
+      "public_lifecycle": "plan_run",
+      "host_reference": true,
+      "provider_routing": "mode_bound",
+      "npu_execution": "integration_required"
+    },
+    {
+      "surface_id": "single_prefill",
+      "local": "flashinfer_npu.prefill.single_prefill_with_kv_cache",
+      "attention_mode": "single_prefill",
+      "public_lifecycle": "one_shot",
+      "host_reference": true,
+      "provider_routing": "ephemeral",
+      "npu_execution": "integration_required"
+    },
+    {
+      "surface_id": "paged_batch_prefill",
+      "local": "flashinfer_npu.prefill.BatchPrefillWithPagedKVCacheWrapper",
+      "attention_mode": "batch_prefill_paged",
+      "public_lifecycle": "plan_run",
+      "host_reference": true,
+      "provider_routing": "mode_bound",
+      "npu_execution": "integration_required"
+    },
+    {
+      "surface_id": "ragged_batch_prefill",
+      "local": "flashinfer_npu.prefill.BatchPrefillWithRaggedKVCacheWrapper",
+      "attention_mode": "batch_prefill_ragged",
+      "public_lifecycle": "plan_run",
+      "host_reference": true,
+      "provider_routing": "mode_bound",
+      "npu_execution": "integration_required"
+    },
+    {
+      "surface_id": "single_decode",
+      "local": "flashinfer_npu.decode.single_decode_with_kv_cache",
+      "attention_mode": "single_decode",
+      "public_lifecycle": "one_shot",
+      "host_reference": true,
+      "provider_routing": "ephemeral",
+      "npu_execution": "integration_required"
+    },
+    {
+      "surface_id": "paged_batch_decode",
+      "local": "flashinfer_npu.decode.BatchDecodeWithPagedKVCacheWrapper",
+      "attention_mode": "batch_decode_paged",
+      "public_lifecycle": "plan_run",
+      "host_reference": true,
+      "provider_routing": "mode_bound",
+      "npu_execution": "integration_required"
+    }
+  ],
   "entries": [
     {
       "upstream": "flashinfer.attention.BatchAttention",
@@ -17,7 +73,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Public Host facade executes mixed paged prefill/decode requests and always returns output plus LSE. device='cpu' is an explicit oracle opt-in."
+      "notes": "Public plan/run facade executes mixed paged prefill/decode requests and always returns output plus LSE. device='cpu' is an explicit oracle opt-in; an NPU device owns a private mode-bound provider resolver."
     },
     {
       "upstream": "flashinfer.attention.BatchAttention.plan",
@@ -42,7 +98,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. backend='reference' is required; auto never selects the oracle. NVFP4 kv_cache_sf remains an explicit gap."
+      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. backend='reference' explicitly selects the oracle; backend='auto' with NPU tensors owns an ephemeral provider resolver. NVFP4 kv_cache_sf remains an explicit gap."
     },
     {
       "upstream": "flashinfer.prefill.single_prefill_with_kv_cache_with_jit_module",
@@ -139,7 +195,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Public Host wrapper covers ragged request segmentation, GQA, NHD/HND, masks, scale and LSE semantics."
+      "notes": "Public wrapper covers ragged request segmentation, GQA, NHD/HND, masks, scale and LSE semantics. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper.plan",
@@ -205,7 +261,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. ReferenceTensor inputs explicitly opt into the oracle because the upstream API has no backend argument."
+      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. ReferenceTensor inputs explicitly opt into the oracle because the upstream API has no backend argument; NPU tensors own an ephemeral provider resolver."
     },
     {
       "upstream": "flashinfer.decode.single_decode_with_kv_cache_with_jit_module",
@@ -223,7 +279,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Public Host wrapper covers packed/separate paged KV, graph lifecycle, scalar scales, output/LSE buffers, and multi-token causal decode."
+      "notes": "Public wrapper covers packed/separate paged KV, graph lifecycle, scalar scales, output/LSE buffers, and multi-token causal decode. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver."
     },
     {
       "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper.workspace_size",

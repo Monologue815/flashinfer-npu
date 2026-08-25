@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "upstream": {
     "project": "flashinfer-ai/flashinfer",
     "ref": "main snapshot 2026-08-05",
@@ -178,4 +178,3 @@
     }
   ]
 }
-

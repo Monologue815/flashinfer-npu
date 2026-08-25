@@ -14,14 +14,22 @@ not a validation log or a claim that an Ascend kernel is available.
 
 ## Public Attention surface
 
+Executable level and routing level are separate axes. A row can have a Host
+oracle and a provider resolver while still having no callable NPU operator.
+
+| Capability | Public lifecycle | Host semantics | Provider routing | Production NPU |
+|---|---|---|---|---|
+| Single prefill | one-shot function | `reference` | ephemeral private resolver | `integration-required` |
+| Single decode | one-shot function | `reference` | ephemeral private resolver | `integration-required` |
+| Batch paged prefill | wrapper `plan()`/`run()` | `reference` | mode-bound private resolver | `integration-required` |
+| Batch ragged prefill | wrapper `plan()`/`run()` | `reference` | mode-bound private resolver | `integration-required` |
+| Batch paged decode | wrapper `plan()`/`run()` | `reference` | mode-bound private resolver | `integration-required` |
+| Mixed paged `BatchAttention` | wrapper `plan()`/`run()` | `reference` | mode-bound private resolver | `integration-required` |
+
+The remaining cross-cutting contracts are framework-level capabilities:
+
 | Capability | Status | Notes |
 |---|---|---|
-| Single prefill | `framework` | FlashInfer-style function, explicit Host oracle and private one-shot provider resolver |
-| Single decode | `framework` | FlashInfer-style function, explicit Host oracle and private one-shot provider resolver |
-| Batch paged prefill | `framework` | Wrapper-owned plan, Host oracle and mode-bound provider resolver |
-| Batch ragged prefill | `framework` | Wrapper-owned plan, Host oracle and mode-bound provider resolver |
-| Batch paged decode | `framework` | Wrapper-owned plan, Host oracle and mode-bound provider resolver |
-| Mixed paged `BatchAttention` | `framework` | Wrapper-owned `plan()`/`run()` lifecycle and mode-bound provider resolver |
 | NHD/HND KV layouts | `framework` | Logical tensor and metadata contracts are defined |
 | Causal/window/custom masks | `framework` | Admission and reference semantics are defined |
 | RoPE/ALiBi | `framework` | Plan and reference semantics are defined |

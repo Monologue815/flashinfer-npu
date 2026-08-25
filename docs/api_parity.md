@@ -6,6 +6,17 @@ core Attention framework surface defined in that manifest. The broader
 `flashinfer_npu/data/api_parity.json` remains a bootstrap and is intentionally
 not part of the current development phase.
 
+Parity schema v2 separates two views:
+
+- `entries` tracks each upstream symbol's semantic and executable level;
+- `attention_surfaces` tracks the six user-facing Attention modes, their
+  one-shot or `plan()`/`run()` lifecycle, Host oracle, private provider routing
+  and production-NPU boundary.
+
+This prevents an executable Host `reference` from hiding the presence of a
+framework-only provider resolver, while also preventing that resolver from
+being reported as a callable NPU implementation.
+
 Render the manifest as a parity report with:
 
 ```bash
