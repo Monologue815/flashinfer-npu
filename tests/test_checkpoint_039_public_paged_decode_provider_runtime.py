@@ -137,7 +137,7 @@ class PublicPagedDecodeProviderRuntimeCheckpointTests(unittest.TestCase):
             plan_public_wrapper(wrapper, fixed_split_size=1)
         self.assertEqual(package_attention.calls, [])
 
-    def test_provider_resource_controls_fail_explicitly(self):
+    def test_provider_resource_controls_and_non_executing_workspace_query(self):
         with self.assertRaisesRegex(NotImplementedError, "graph resources"):
             BatchDecodeWithPagedKVCacheWrapper(
                 FakeNpuWorkspace(),
@@ -151,8 +151,11 @@ class PublicPagedDecodeProviderRuntimeCheckpointTests(unittest.TestCase):
                 backend="auto",
             )
         wrapper = self.wrapper()
-        with self.assertRaisesRegex(NotImplementedError, "workspace_size"):
-            wrapper.workspace_size([0, 1], [7], [64], 8, 2, 128, 128)
+        self.assertEqual(
+            wrapper.workspace_size([0, 1], [7], [64], 8, 2, 128, 128),
+            (0, 0),
+        )
+        self.assertEqual(package_attention.calls, [])
 
     def test_shared_base_never_enables_provider_resolution_implicitly(self):
         with self.assertRaisesRegex(

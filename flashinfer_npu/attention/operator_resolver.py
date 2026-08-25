@@ -569,6 +569,16 @@ class AttentionOperatorRuntime:
             )
         return self._workspace_contract
 
+    def fork_unplanned(self) -> "AttentionOperatorRuntime":
+        """Create an empty runtime over the exact same frozen resolver inputs."""
+
+        return AttentionOperatorRuntime(
+            self.device,
+            self._resolver_registry,
+            self._operation_catalog,
+            mode=self.mode,
+        )
+
     def rebind_workspace_contract(self, workspace_contract) -> None:
         """Publish a same-device package-managed workspace replacement."""
 

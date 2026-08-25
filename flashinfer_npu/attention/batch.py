@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import copy
 from typing import Optional, Sequence
 
 from flashinfer_npu.runtime import DispatchError, SchemaError
@@ -19,7 +20,11 @@ from .plan_selection import (
     build_provider_plan_selection,
     build_reference_plan_selection,
 )
-from .planner import AttentionFrameworkPlan, AttentionFrameworkSession
+from .planner import (
+    AttentionFrameworkPlan,
+    AttentionFrameworkSession,
+    AttentionStateError,
+)
 from .reference import (
     ReferenceAttentionExecutor,
     ReferenceBuffer,
@@ -200,6 +205,24 @@ class HostBatchReferenceWrapper:
                 ),
             )
         return build_reference_plan_selection(plan)
+
+    def _provider_workspace_query_probe(self):
+        """Fork wrapper state for a plan-equivalent, non-publishing size query."""
+
+        if self._operator_runtime is None:
+            raise AttentionStateError(
+                "provider workspace query requires a provider runtime"
+            )
+        probe = copy(self)
+        probe._operator_runtime = self._operator_runtime.fork_unplanned()
+        probe._workspace_contract = AttentionWorkspaceContract(
+            backend="auto",
+            device=self._workspace_contract.device,
+            float_capacity_bytes=(1 << 63) - 1,
+            int_capacity_bytes=(1 << 63) - 1,
+        )
+        probe._capture_record = None
+        return probe
 
     @property
     def is_graph_enabled(self) -> bool:

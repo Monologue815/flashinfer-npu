@@ -123,7 +123,7 @@ class PublicPagedPrefillProviderRuntimeCheckpointTests(unittest.TestCase):
             )
         self.assertEqual(package_attention.calls, [])
 
-    def test_provider_resource_controls_fail_explicitly(self):
+    def test_provider_graph_fails_and_workspace_query_remains_non_executing(self):
         with self.assertRaisesRegex(NotImplementedError, "graph resources"):
             BatchPrefillWithPagedKVCacheWrapper(
                 FakeNpuWorkspace(),
@@ -132,10 +132,13 @@ class PublicPagedPrefillProviderRuntimeCheckpointTests(unittest.TestCase):
                 backend="auto",
             )
         wrapper = self.wrapper()
-        with self.assertRaisesRegex(NotImplementedError, "workspace_size"):
+        self.assertEqual(
             wrapper.workspace_size(
                 [0, 2], [0, 1], [7], [64], 8, 2, 128, 128
-            )
+            ),
+            (0, 0),
+        )
+        self.assertEqual(package_attention.calls, [])
 
     def test_public_signature_exposes_no_provider_runtime_handle(self):
         for callable_value in (

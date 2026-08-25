@@ -73,10 +73,20 @@ stateDiagram-v2
 - [FlashInfer paged prefill source](https://github.com/flashinfer-ai/flashinfer/blob/main/flashinfer/prefill.py)
 - [FlashInfer paged decode source](https://github.com/flashinfer-ai/flashinfer/blob/main/flashinfer/decode.py)
 
-本项目对应两个 public facade 保持 snapshot signature，并通过临时 Host planning context 执行
-与 `plan()` 相同的 metadata/spec 校验。返回 `(0, 0)` 只代表显式选择的 reference backend。
-Provider 的非变异 `workspace_size()` 仍要求独立的 package size-query binding；active plan
-中的 package-managed resource binding 不能替代该查询。
+本项目 public facade 保持 snapshot signature。reference 路径通过临时 Host planning
+context 执行与 `plan()` 相同的 metadata/spec 校验。provider 路径从 wrapper 构造时冻结的
+resolver/catalog 派生未发布 runtime，在该 runtime 中完成候选选择、authority、provider
+planning 和资源绑定，然后只返回 caller-workspace requirement。
+
+查询使用独立的 accounting capacity，因此当前调用者 buffer 太小不会阻止获得 required
+size；真实 `plan()` 仍用实际 capacity 做准入。临时 runtime 不执行 Attention，也不向原
+wrapper 发布 framework plan、provider plan、executor、workspace generation 或 selection。
+查询失败时原 active plan 保持不变。对于 `package_managed` operation，返回 `(0, 0)` 只表示
+wrapper workspace 不传入 package，不表示 package 或底层 kernel 没有内部 scratch。
+
+目前 paged prefill 与 paged decode 已采用该 provider 查询模型。未来
+`caller_managed` operation 必须由显式 resource binder 给出非零需求，不能从函数名或 backend
+类型推测。
 
 ## 5. Provider resource binding
 

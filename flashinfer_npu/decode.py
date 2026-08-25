@@ -416,18 +416,17 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         disable_split_kv=False,
         q_len_per_req=1,
     ):
-        """Return Host-reference workspace bytes without mutating this plan."""
+        """Return caller-workspace bytes without mutating this wrapper's plan."""
 
-        if self._operator_runtime is not None:
-            raise NotImplementedError(
-                "provider workspace_size requires a package size-query binding"
+        probe = (
+            self._provider_workspace_query_probe()
+            if self._operator_runtime is not None
+            else BatchDecodeWithPagedKVCacheWrapper(
+                self._float_workspace_buffer,
+                kv_layout=self._kv_layout.value,
+                use_tensor_cores=self.use_tensor_cores,
+                backend="reference",
             )
-
-        probe = BatchDecodeWithPagedKVCacheWrapper(
-            self._float_workspace_buffer,
-            kv_layout=self._kv_layout.value,
-            use_tensor_cores=self.use_tensor_cores,
-            backend="reference",
         )
         probe.plan(
             indptr,

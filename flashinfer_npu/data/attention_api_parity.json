@@ -125,7 +125,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Exact snapshot signature. The explicit Host reference backend truthfully reports (0, 0) without mutating plan state; Ascend backend sizes remain unknown until a descriptor supplies them."
+      "notes": "Exact snapshot signature. Host reference reports (0, 0). Provider queries use an unpublished runtime fork over the wrapper's frozen registry and return the selected operation's caller-workspace requirement without mutating active plan state; package-managed workspace currently reports (0, 0)."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.plan",
@@ -288,7 +288,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Exact snapshot signature. Host reference size query returns (0, 0), performs plan-equivalent validation, and does not mutate cached plan state; no Ascend size is inferred."
+      "notes": "Exact snapshot signature. Host reference reports (0, 0). Provider queries use an unpublished runtime fork over the wrapper's frozen registry and return the selected operation's caller-workspace requirement without mutating active plan state; package-managed workspace currently reports (0, 0)."
     },
     {
       "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper.plan",

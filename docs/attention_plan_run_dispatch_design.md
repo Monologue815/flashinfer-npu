@@ -331,6 +331,13 @@ Provider plans report the exact registry generation captured by the wrapper.
 If replanning fails, both the old active plan and its selection summary remain
 unchanged.
 
+`workspace_size()` uses the same frozen registry and plan gates through an
+unpublished runtime fork. It may resolve and prepare the selected provider in
+order to derive its exact resource binding, but it never executes Attention or
+changes the wrapper's active plan. Returned sizes describe caller-owned wrapper
+workspace only; package-managed internal scratch is not reported as zero memory
+usage.
+
 ## 13. `run()` validation and lowering
 
 `run()` performs no automatic backend reselection. It:

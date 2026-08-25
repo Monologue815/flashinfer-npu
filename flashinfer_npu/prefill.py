@@ -518,17 +518,16 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         fixed_split_size=None,
         disable_split_kv=False,
     ):
-        """Return Host-reference workspace bytes without mutating this plan."""
+        """Return caller-workspace bytes without mutating this wrapper's plan."""
 
-        if self._operator_runtime is not None:
-            raise NotImplementedError(
-                "provider workspace_size requires a package size-query binding"
+        probe = (
+            self._provider_workspace_query_probe()
+            if self._operator_runtime is not None
+            else BatchPrefillWithPagedKVCacheWrapper(
+                self._float_workspace_buffer,
+                kv_layout=self._kv_layout.value,
+                backend="reference",
             )
-
-        probe = BatchPrefillWithPagedKVCacheWrapper(
-            self._float_workspace_buffer,
-            kv_layout=self._kv_layout.value,
-            backend="reference",
         )
         probe.plan(
             qo_indptr,
