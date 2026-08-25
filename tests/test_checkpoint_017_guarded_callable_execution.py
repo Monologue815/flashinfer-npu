@@ -80,6 +80,7 @@ def runtime_binding(operation, probe, binding, active_plan_fingerprint=None):
         provider_probe_fingerprint=probe.fingerprint,
         operation_binding_fingerprint=hash_value("b"),
         callable_binding_fingerprint=binding.fingerprint,
+        resource_binding_fingerprint=hash_value("c"),
         operation_id=operation.operation_id,
         operation_fingerprint=operation.fingerprint,
         observation_fingerprint=binding.observation_fingerprint,

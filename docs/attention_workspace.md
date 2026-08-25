@@ -11,13 +11,15 @@ Workspace 必须区分两个值：
 - **capacity**：调用者当前绑定的 byte buffer 容量。
 - **required size**：具体 backend 对某个 plan 所需的容量。
 
-未知 requirement 使用 `None`，不能解释为零。只有 Host scalar reference 因为确实不使用
-scratch，才能报告 `(required_float_bytes, required_int_bytes) = (0, 0)`。
+未知 requirement 使用 `None`，不能解释为零。Host scalar reference 因为确实不使用
+scratch，可以报告 `(required_float_bytes, required_int_bytes) = (0, 0)`。外部 package
+operation 若签名中不接收 wrapper workspace，也可以把“调用者提供的 workspace”需求绑定为
+`(0, 0)`；这只表示 workspace 由 package 管理，不表示 package 或底层算子没有内部 scratch。
 
 ```mermaid
 flowchart LR
     B["Caller-owned uint8 buffers"] --> C["AttentionWorkspaceContract"]
-    D["Backend size query / descriptor"] --> C
+    D["Backend size query / resource binding"] --> C
     C --> P["Plan generation binding"]
     P --> R["Run capacity + device validation"]
     C -. "unknown until backend exists" .-> N["Ascend float/int requirements"]
@@ -70,9 +72,26 @@ stateDiagram-v2
 
 本项目对应两个 public facade 保持 snapshot signature，并通过临时 Host planning context 执行
 与 `plan()` 相同的 metadata/spec 校验。返回 `(0, 0)` 只代表显式选择的 reference backend。
-它不表示 Ascend C、aclnn 或未来 functional backend 无需 workspace。
+Provider 的非变异 `workspace_size()` 仍要求独立的 package size-query binding；active plan
+中的 package-managed resource binding 不能替代该查询。
 
-## 5. Graph metadata 与 scratch 分离
+## 5. Provider resource binding
+
+每个已选择的 provider operation 在 active plan 发布前生成
+`AttentionOperatorResourceBinding`。它固定：
+
+- operation 与 active-plan fingerprint；
+- workspace 是 `package_managed` 还是 `caller_managed`；
+- wrapper float/int workspace 的精确需求；
+- output 与 LSE 是返回值还是 caller-owned mutable argument。
+
+当前 catalog 中的 CANN 与 flash-attention-npu Python API 都返回 output/LSE，且没有 wrapper
+workspace 参数，因此绑定为 `package_managed + returned`。wrapper workspace 的调用侧需求为
+零并绑定到 plan generation；query device、capacity 和 generation 仍在每次 `run()` 前校验。
+当前 operation 也没有 caller-owned `out/lse` mutable argument，所以对应 public 参数必须在
+package invocation 前失败，不能假定返回 tensor 可以安全复制或复用为调用者 buffer。
+
+## 6. Graph metadata 与 scratch 分离
 
 `qo_indptr_buf`、page indptr/indices/last-page-len、custom-mask buffer 等 graph 固定容量是
 持久 metadata resource，不计入 float/int kernel scratch：
@@ -86,9 +105,9 @@ stateDiagram-v2
 | Graph mask | wrapper lifetime | packed byte capacity |
 | Backend auxiliary plan | plan lifetime | 后续 descriptor 定义 |
 
-## 6. Ascend backend 接入门禁
+## 7. Ascend backend 接入门禁
 
-任何 Ascend backend descriptor 必须提供或查询：
+任何使用 caller-managed workspace 的 Ascend backend descriptor 必须提供或查询：
 
 1. float/int required bytes，不能沿用 reference 的零值。
 2. byte alignment 和地址 alignment。
@@ -98,8 +117,10 @@ stateDiagram-v2
 6. reset 时在飞行 kernel 的同步/事件要求。
 7. capacity 不足时在 launch 前失败，禁止运行中扩容或隐式分配。
 
-在这些信息由真实 backend 提供前，`requirements_known=False`，访问 required sizes 会抛出
-`WorkspaceRequirementUnknownError`。
+在这些信息由真实 backend 提供前，caller-managed 路径保持
+`requirements_known=False`，访问 required sizes 会抛出
+`WorkspaceRequirementUnknownError`。Package-managed 路径必须由精确 operation signature
+证明 wrapper workspace 不会作为参数传入，不能仅凭适配器实现习惯推断。
 
 `KernelDescriptor.workspace` 与 `KernelDescriptor.int_workspace` 分别描述 float/int
 workspace formula。Dispatch receipt 固定两者各自的 required bytes 和 alignment；execution

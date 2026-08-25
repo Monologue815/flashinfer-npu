@@ -367,6 +367,7 @@ class AttentionOperatorWrapperSession:
         self._operation_binding = None
         self._callable_binding = None
         self._runtime_binding = None
+        self._resource_binding = None
 
     @property
     def is_planned(self) -> bool:
@@ -395,6 +396,12 @@ class AttentionOperatorWrapperSession:
         if self._runtime_binding is None:
             raise AttentionStateError("Attention operator wrapper has not been planned")
         return self._runtime_binding
+
+    @property
+    def resource_binding(self):
+        if self._resource_binding is None:
+            raise AttentionStateError("Attention operator resources are not bound")
+        return self._resource_binding
 
     def plan(
         self,
@@ -446,16 +453,30 @@ class AttentionOperatorWrapperSession:
         candidate_binding = bind_attention_operator_operation(
             self._operation_catalog, candidate_session.active_plan
         )
+        from .operator_resources import bind_attention_operator_resources
+
+        candidate_resource_binding = bind_attention_operator_resources(
+            operation,
+            candidate_session.active_plan,
+            candidate_binding,
+        )
         candidate_runtime_binding = bind_attention_operator_runtime(
             candidate_session.active_plan,
             candidate_binding,
             callable_binding,
+            candidate_resource_binding.fingerprint,
         )
+        if (
+            candidate_runtime_binding.resource_binding_fingerprint
+            != candidate_resource_binding.fingerprint
+        ):
+            raise SchemaError("runtime binding did not freeze provider resources")
         self._plan_session = candidate_session
         self._run_adapter = run_adapter
         self._operation_binding = candidate_binding
         self._callable_binding = callable_binding
         self._runtime_binding = candidate_runtime_binding
+        self._resource_binding = candidate_resource_binding
 
     def run(
         self,
@@ -488,6 +509,12 @@ class AttentionOperatorWrapperSession:
             profiler_buffer=profiler_buffer,
             kv_cache_sf=kv_cache_sf,
         )
+        if (
+            self.runtime_binding.resource_binding_fingerprint
+            != self.resource_binding.fingerprint
+        ):
+            raise AttentionStateError("Attention operator resource binding is stale")
+        self.resource_binding.validate_request(request)
         lowered = lower_attention_operator_run(
             self._run_adapter, active_plan, request
         )

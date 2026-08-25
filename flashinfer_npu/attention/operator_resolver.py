@@ -535,6 +535,7 @@ class AttentionOperatorRuntime:
         self._jit_planner_binding = None
         self._jit_executor_binding = None
         self._last_lowered_call = None
+        self._workspace_contract = None
 
     @property
     def is_planned(self) -> bool:
@@ -555,6 +556,18 @@ class AttentionOperatorRuntime:
         if self._last_lowered_call is None:
             raise AttentionStateError("Attention operator runtime has not been run")
         return self._last_lowered_call
+
+    @property
+    def resource_binding(self):
+        return self.operator_session.resource_binding
+
+    @property
+    def workspace_contract(self):
+        if self._workspace_contract is None:
+            raise AttentionStateError(
+                "Attention operator runtime has no caller workspace binding"
+            )
+        return self._workspace_contract
 
     @property
     def jit_plan_binding(self):
@@ -586,7 +599,13 @@ class AttentionOperatorRuntime:
             raise AttentionStateError("Attention operator runtime has not been planned")
         return self._jit_planner_binding
 
-    def plan(self, spec: AttentionPlanSpec, metadata: AttentionMetadata) -> None:
+    def plan(
+        self,
+        spec: AttentionPlanSpec,
+        metadata: AttentionMetadata,
+        *,
+        workspace_contract=None,
+    ) -> None:
         """Resolve and prepare completely, then publish all wrapper state."""
 
         candidate_plan = self._framework_session.prepare_plan(spec, metadata)
@@ -627,6 +646,14 @@ class AttentionOperatorRuntime:
                 else None
             ),
         )
+        candidate_workspace_contract = None
+        if workspace_contract is not None:
+            candidate_workspace_contract = (
+                candidate_operator_session.resource_binding.bind_workspace_contract(
+                    workspace_contract,
+                    plan_generation=candidate_plan.generation,
+                )
+            )
         candidate_executor = resolved.executor
         candidate_jit_plan_binding = resolved.jit_plan_binding
         candidate_jit_artifact_binding = resolved.jit_artifact_binding
@@ -703,6 +730,7 @@ class AttentionOperatorRuntime:
         self._jit_planner_binding = candidate_jit_planner_binding
         self._jit_executor_binding = candidate_jit_executor_binding
         self._last_lowered_call = None
+        self._workspace_contract = candidate_workspace_contract
 
     def run(
         self,
@@ -720,6 +748,12 @@ class AttentionOperatorRuntime:
         session = self.operator_session
         if self._executor is None:  # defensive; plan publication is atomic
             raise AttentionStateError("Attention operator executor is not initialized")
+        if self._workspace_contract is not None:
+            query_device = str(getattr(q, "device", self.device))
+            self._workspace_contract.validate_run(
+                device=query_device,
+                plan_generation=self.plan_state.generation,
+            )
         if self._jit_plan_binding is not None:
             if (
                 session.active_plan.jit_plan_binding_fingerprint

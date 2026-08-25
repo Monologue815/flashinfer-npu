@@ -98,6 +98,11 @@ class PublicPagedDecodeProviderRuntimeCheckpointTests(unittest.TestCase):
             ("package-output:q-lse", "package-lse:0.25"),
         )
         self.assertEqual(wrapper.plan_state.spec.mode, AttentionMode.BATCH_DECODE_PAGED)
+        self.assertEqual(wrapper.workspace_contract.required_sizes, (0, 0))
+        self.assertEqual(
+            wrapper.workspace_contract.plan_generation,
+            wrapper.plan_state.generation,
+        )
         self.assertEqual(self.components["loader"].resolve_calls, 1)
         self.assertEqual(self.components["authority"].calls, 1)
         self.assertEqual(len(package_attention.calls), 2)

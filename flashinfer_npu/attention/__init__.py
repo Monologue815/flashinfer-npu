@@ -316,6 +316,11 @@ from .operator_run import (
     lower_attention_operator_run,
     validate_attention_lowered_operator_call,
 )
+from .operator_resources import (
+    ATTENTION_OPERATOR_RESOURCE_VERSION,
+    AttentionOperatorResourceBinding,
+    bind_attention_operator_resources,
+)
 from .operation_catalog import (
     ATTENTION_OPERATOR_OPERATION_CATALOG_VERSION,
     AttentionOperatorOperationBinding,
@@ -501,6 +506,7 @@ __all__ = [
     "ATTENTION_OPERATOR_PLAN_VERSION",
     "ATTENTION_OPERATOR_RUN_REQUEST_FIELDS",
     "ATTENTION_OPERATOR_RUN_VERSION",
+    "ATTENTION_OPERATOR_RESOURCE_VERSION",
     "ATTENTION_OPERATOR_OPERATION_CATALOG_VERSION",
     "ATTENTION_OPERATOR_CALLABLE_VERSION",
     "ATTENTION_PROVIDER_ADAPTER_VERSION",
@@ -642,6 +648,7 @@ __all__ = [
     "AttentionOperatorRunAdapterFactory",
     "AttentionOperatorRunRequest",
     "AttentionOperatorWrapperSession",
+    "AttentionOperatorResourceBinding",
     "AttentionOperatorOperationBinding",
     "AttentionOperatorOperationCatalog",
     "AttentionOperatorOperationSpec",
@@ -795,6 +802,7 @@ __all__ = [
     "build_reference_execution_identity",
     "bind_attention_operator_provider",
     "bind_attention_operator_operation",
+    "bind_attention_operator_resources",
     "bind_attention_operator_callable",
     "bind_attention_operator_runtime",
     "build_attention_dense_page_table",

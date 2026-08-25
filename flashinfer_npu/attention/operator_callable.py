@@ -24,7 +24,7 @@ from .operator_plan import AttentionOperatorActivePlan
 from .operator_provider import AttentionOperatorProviderProbe
 
 
-ATTENTION_OPERATOR_CALLABLE_VERSION = 1
+ATTENTION_OPERATOR_CALLABLE_VERSION = 2
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -316,6 +316,7 @@ class AttentionOperatorRuntimeBinding:
     provider_probe_fingerprint: str
     operation_binding_fingerprint: str
     callable_binding_fingerprint: str
+    resource_binding_fingerprint: str
     operation_id: str
     operation_fingerprint: str
     observation_fingerprint: str
@@ -331,6 +332,7 @@ class AttentionOperatorRuntimeBinding:
             "provider_probe_fingerprint",
             "operation_binding_fingerprint",
             "callable_binding_fingerprint",
+            "resource_binding_fingerprint",
             "operation_fingerprint",
             "observation_fingerprint",
         ):
@@ -443,6 +445,7 @@ def bind_attention_operator_runtime(
     active_plan: AttentionOperatorActivePlan,
     operation_binding: AttentionOperatorOperationBinding,
     callable_binding: AttentionOperatorCallableBinding,
+    resource_binding_fingerprint: str,
 ) -> AttentionOperatorRuntimeBinding:
     """Close identities before a wrapper publishes a prepared runtime."""
 
@@ -452,6 +455,7 @@ def bind_attention_operator_runtime(
         raise TypeError("operation_binding must be AttentionOperatorOperationBinding")
     if not isinstance(callable_binding, AttentionOperatorCallableBinding):
         raise TypeError("callable_binding must be AttentionOperatorCallableBinding")
+    _require_hash("resource_binding_fingerprint", resource_binding_fingerprint)
     selection = active_plan.provider_selection
     if (
         operation_binding.active_plan_fingerprint != active_plan.fingerprint
@@ -475,6 +479,7 @@ def bind_attention_operator_runtime(
         provider_probe_fingerprint=selection.provider_probe_fingerprint,
         operation_binding_fingerprint=operation_binding.fingerprint,
         callable_binding_fingerprint=callable_binding.fingerprint,
+        resource_binding_fingerprint=resource_binding_fingerprint,
         operation_id=operation_binding.operation_id,
         operation_fingerprint=operation_binding.operation_fingerprint,
         observation_fingerprint=callable_binding.observation_fingerprint,

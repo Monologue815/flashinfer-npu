@@ -227,7 +227,12 @@ class HostBatchReferenceWrapper:
                 raise NotImplementedError(
                     "provider custom-mask plan binding is not implemented"
                 )
-            self._operator_runtime.plan(spec, metadata)
+            self._operator_runtime.plan(
+                spec,
+                metadata,
+                workspace_contract=self._workspace_contract,
+            )
+            self._workspace_contract = self._operator_runtime.workspace_contract
             self._capture_record = None
             return
         plan = self._session.plan(spec, metadata)

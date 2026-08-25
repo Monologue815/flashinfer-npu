@@ -326,11 +326,18 @@ bindings, stale receipts or identity drift are hard errors.
 
 The internal run request carries `return_lse` as a required boolean semantic,
 even though it is not a provider handle and does not alter plan selection.
-Paged/ragged wrappers set it from the public flag, or force it on when a caller
-supplies an LSE destination buffer. A provider adapter must map that intent to
-the selected operation's exact LSE-control argument and return schema. The
-holistic `BatchAttention` contract always requests LSE because its public return
-value is fixed to `(output, lse)`.
+Paged/ragged wrappers set it from the public flag. A provider adapter must map
+that intent to the selected operation's exact LSE-control argument and return
+schema. The holistic `BatchAttention` contract always requests LSE because its
+public return value is fixed to `(output, lse)`.
+
+An immutable resource binding is derived from the selected operation before
+active-plan publication. It distinguishes package-managed from caller-managed
+workspace and returned tensors from mutable output arguments. The current
+documented package APIs expose returned output/LSE values and no wrapper
+workspace argument. Their caller workspace requirement is therefore zero while
+package-internal scratch remains outside this contract. Public `out` or `lse`
+buffers are rejected unless an exact mutable-argument binding exists.
 
 ## 14. Failure and replanning rules
 

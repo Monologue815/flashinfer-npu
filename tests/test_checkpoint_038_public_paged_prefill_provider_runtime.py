@@ -79,23 +79,18 @@ class PublicPagedPrefillProviderRuntimeCheckpointTests(unittest.TestCase):
         output_with_lse = wrapper.run(
             "q-lse", ("k-cache", "v-cache"), return_lse=True
         )
-        output_with_lse_buffer = wrapper.run(
-            "q-buffer", ("k-cache", "v-cache"), lse="lse-buffer"
-        )
 
         self.assertEqual(output, "package-output:q")
         self.assertEqual(
             output_with_lse,
             ("package-output:q-lse", "package-lse:0.25"),
         )
-        self.assertEqual(output_with_lse_buffer, "package-output:q-buffer")
         self.assertEqual(wrapper.plan_state.spec.mode, AttentionMode.BATCH_PREFILL_PAGED)
         self.assertEqual(self.components["loader"].resolve_calls, 1)
         self.assertEqual(self.components["authority"].calls, 1)
-        self.assertEqual(len(package_attention.calls), 3)
+        self.assertEqual(len(package_attention.calls), 2)
         self.assertFalse(package_attention.calls[0][5])
         self.assertTrue(package_attention.calls[1][5])
-        self.assertTrue(package_attention.calls[2][5])
 
     def test_wrapper_freezes_the_registry_snapshot_at_construction(self):
         wrapper = self.wrapper()
@@ -119,6 +114,8 @@ class PublicPagedPrefillProviderRuntimeCheckpointTests(unittest.TestCase):
             wrapper.run("q", ("k", "v"), sinks="sink")
         with self.assertRaisesRegex(NotImplementedError, "SP-compression"):
             wrapper.run("q", ("k", "v"), uses_spcompress=True)
+        with self.assertRaisesRegex(NotImplementedError, "LSE-buffer"):
+            wrapper.run("q", ("k", "v"), lse="lse-buffer")
         with self.assertRaisesRegex(NotImplementedError, "split-K"):
             wrapper.plan(
                 [0, 2], [0, 1], [7], [64], 8, 2, 128, 128,

@@ -48,7 +48,8 @@
 
 `return_lse` 属于 run-time 返回语义，不参与 plan 选择，但必须进入内部 provider run
 request。外部 operation 是否生成 LSE、lowered return schema 以及 public 返回值必须由同一
-布尔意图驱动；caller-owned LSE buffer 会强制内部生成 LSE，但不会改变 public 返回形态。
+布尔意图驱动。caller-owned `out/lse` 还必须具备 plan-bound mutable-argument resource
+binding；只有返回值、没有对应 argument 的 operation 必须在外部调用前拒绝这些 buffer。
 
 ### 2.1 当前分层
 
