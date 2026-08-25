@@ -16,12 +16,12 @@ not a validation log or a claim that an Ascend kernel is available.
 
 | Capability | Status | Notes |
 |---|---|---|
-| Single prefill | `reference` | FlashInfer-style function surface with Host oracle semantics |
-| Single decode | `reference` | FlashInfer-style function surface with Host oracle semantics |
-| Batch paged prefill | `framework` | Plan/metadata/reference contracts exist; no default NPU provider |
-| Batch ragged prefill | `framework` | Plan/metadata/reference contracts exist; no default NPU provider |
-| Batch paged decode | `framework` | Plan/metadata/reference contracts exist; no default NPU provider |
-| Mixed paged `BatchAttention` | `framework` | Wrapper-owned `plan()`/`run()` lifecycle and automatic resolver contract |
+| Single prefill | `framework` | FlashInfer-style function, explicit Host oracle and private one-shot provider resolver |
+| Single decode | `framework` | FlashInfer-style function, explicit Host oracle and private one-shot provider resolver |
+| Batch paged prefill | `framework` | Wrapper-owned plan, Host oracle and mode-bound provider resolver |
+| Batch ragged prefill | `framework` | Wrapper-owned plan, Host oracle and mode-bound provider resolver |
+| Batch paged decode | `framework` | Wrapper-owned plan, Host oracle and mode-bound provider resolver |
+| Mixed paged `BatchAttention` | `framework` | Wrapper-owned `plan()`/`run()` lifecycle and mode-bound provider resolver |
 | NHD/HND KV layouts | `framework` | Logical tensor and metadata contracts are defined |
 | Causal/window/custom masks | `framework` | Admission and reference semantics are defined |
 | RoPE/ALiBi | `framework` | Plan and reference semantics are defined |

@@ -1,15 +1,11 @@
 # FlashInfer-NPU 总体架构设计
 
-> 状态：Draft v0.1，供架构评审  
-> 日期：2026-08-05  
-> 项目名：暂定 `flashinfer-npu`；Python 包名暂定 `flashinfer_npu`
-
-> 落地状态：Phase 0 host-side 骨架已建立，包括版本化 schema、kernel
-> registry、可解释 dispatch、不可变 plan、parity manifest、CLI 和无 NPU
-> 单元测试。当前尚无通过验证的 Ascend C artifact，不能宣称 NPU 可运行。
+> 文档状态：Architecture draft v0.1
+> 项目名：`flashinfer-npu`；Python 包名：`flashinfer_npu`
 >
-> 当前阶段范围（2026-08-05）：只验证 Attention 框架层，不开发 NPU kernel，
-> GEMM、MoE、sampling 等其他能力域暂不推进。Attention 细化设计见
+> 仓库范围：当前只建设 Attention 框架层，不包含 NPU kernel 实现，也不把
+> Host 合同解释为可用的 Ascend 算子。GEMM、MoE、sampling 等其他能力域不在
+> 本阶段范围。Attention 细化设计见
 > `docs/attention_framework.md`。
 
 ## 1. 摘要

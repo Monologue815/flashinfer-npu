@@ -2,7 +2,7 @@
 
 > 状态：Accuracy contract v1.2  
 > 日期：2026-08-21  
-> 范围：纯 Host framework/reference 验证；不包含 NPU kernel
+> 范围：Host reference 语义与未来 backend 的误差预算；不包含 NPU kernel
 
 ## 1. 目的
 

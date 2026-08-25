@@ -1,8 +1,7 @@
 # FlashInfer-NPU Attention 框架对标设计
 
-> 状态：Attention framework design v1.11
-> 日期：2026-08-21  
-> 当前阶段：纯 Host 验证，不依赖 NPU、CANN、PyTorch 或 torch_npu
+> 文档状态：Attention framework design v1.11
+> 实现边界：框架合同与 Host reference；不依赖 NPU、CANN、PyTorch 或 torch_npu
 
 ## 1. 当前范围
 
@@ -23,7 +22,7 @@
 - MLA、sparse、cascade、POD、page mutation 等独立 Attention 扩展模块。
 - GEMM、MoE、sampling、norm 等非 Attention 能力域。
 
-这些内容不是永久移除，而是不进入当前框架验证门禁。
+这些内容不是永久移除，而是不进入当前 Attention 框架范围。
 
 上游依据：
 

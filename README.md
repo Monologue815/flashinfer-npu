@@ -135,9 +135,10 @@ paired accuracy corpus.
 Explicit quantized storage/scale/zero-point blocking, padding, layout catalogs,
 and non-executing converter plans are specified in
 [`docs/attention_quant_physical_layout.md`](docs/attention_quant_physical_layout.md).
-The two single-request APIs and three paged/ragged batch wrappers now have
-explicit Host-reference facades; the remaining FlashInfer-compatible public
-surface and current gaps are documented in
+The two single-request APIs, the three paged/ragged batch wrappers and mixed
+`BatchAttention` share the same internal provider-selection policy while
+keeping Host reference execution explicit. Their public contract and remaining
+capability boundaries are documented in
 [`docs/attention_frontend_contract.md`](docs/attention_frontend_contract.md).
 
 ## Development checks

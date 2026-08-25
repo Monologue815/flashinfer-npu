@@ -1,8 +1,7 @@
 # Attention Torch 元数据适配器
 
-> 状态：Protocol-conformant adapter v1  
-> 日期：2026-08-13  
-> 验证边界：只定义 metadata 协议；尚未声明真实 PyTorch/torch_npu 运行时支持
+> 文档状态：Protocol-conformant adapter v1
+> 适配边界：只定义 metadata 协议；不声明真实 PyTorch/torch_npu 运行时支持
 
 ## 1. 定位
 
