@@ -154,7 +154,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         self.assertIs(keywords["value_scale"], kv_input.value_scale)
         self.assertEqual(
             lowered.consumed_request_fields,
-            ("query", "kv_cache", "logits_soft_cap"),
+            ("query", "kv_cache", "return_lse", "logits_soft_cap"),
         )
         self.assertEqual(package_attention.calls, [])
 
@@ -221,7 +221,14 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         self.assertIs(keywords["runtime_value_scale"], runtime_v_scale)
         self.assertEqual(
             lowered.consumed_request_fields,
-            ("query", "kv_cache", "k_scale", "v_scale", "logits_soft_cap"),
+            (
+                "query",
+                "kv_cache",
+                "return_lse",
+                "k_scale",
+                "v_scale",
+                "logits_soft_cap",
+            ),
         )
         self.assertEqual(package_attention.calls, [])
 

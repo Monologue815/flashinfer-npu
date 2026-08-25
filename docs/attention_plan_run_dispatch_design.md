@@ -324,6 +324,14 @@ Publication is atomic. Any error keeps the previous active plan intact.
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.
 
+The internal run request carries `return_lse` as a required boolean semantic,
+even though it is not a provider handle and does not alter plan selection.
+Paged/ragged wrappers set it from the public flag, or force it on when a caller
+supplies an LSE destination buffer. A provider adapter must map that intent to
+the selected operation's exact LSE-control argument and return schema. The
+holistic `BatchAttention` contract always requests LSE because its public return
+value is fixed to `(output, lse)`.
+
 ## 14. Failure and replanning rules
 
 The framework is fail-closed:

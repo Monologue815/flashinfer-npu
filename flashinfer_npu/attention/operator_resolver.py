@@ -708,6 +708,7 @@ class AttentionOperatorRuntime:
         self,
         q,
         kv_cache,
+        return_lse=True,
         out=None,
         lse=None,
         k_scale=None,
@@ -789,6 +790,7 @@ class AttentionOperatorRuntime:
         lowered = session.run(
             q,
             kv_cache,
+            return_lse=return_lse,
             out=out,
             lse=lse,
             k_scale=k_scale,

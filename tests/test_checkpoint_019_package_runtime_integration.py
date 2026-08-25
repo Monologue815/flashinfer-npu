@@ -56,7 +56,10 @@ def package_attention(
             runtime_value_scale,
         )
     )
-    return ("package-output:%s" % query, "package-lse:%s" % scale)
+    output = "package-output:%s" % query
+    if return_softmax_lse:
+        return (output, "package-lse:%s" % scale)
+    return output
 
 
 package_attention.calls = []
@@ -255,9 +258,13 @@ class FakeLogicalRunAdapter:
             keyword_arguments=(
                 ("table", state.table),
                 ("scale", 0.25),
-                ("return_softmax_lse", True),
+                ("return_softmax_lse", request.return_lse),
             ),
-            return_names=("output", "softmax_lse"),
+            return_names=(
+                ("output", "softmax_lse")
+                if request.return_lse
+                else ("output",)
+            ),
             consumed_request_fields=request.consumed_fields,
         )
 

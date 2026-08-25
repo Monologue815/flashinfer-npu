@@ -715,6 +715,7 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             result = self._operator_runtime.run(
                 q,
                 paged_kv_cache,
+                return_lse=bool(return_lse) or lse is not None,
                 out=out,
                 lse=lse,
                 k_scale=k_scale,
@@ -1065,6 +1066,7 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
             result = self._operator_runtime.run(
                 q,
                 (k, v),
+                return_lse=bool(return_lse) or lse is not None,
                 out=out,
                 lse=lse,
                 k_scale=k_scale,

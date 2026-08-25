@@ -283,6 +283,7 @@ class BatchAttention:
             return self._operator_runtime.run(
                 q,
                 kv_cache,
+                return_lse=True,
                 out=out,
                 lse=lse,
                 k_scale=k_scale,

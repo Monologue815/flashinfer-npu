@@ -35,11 +35,12 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 1
+ATTENTION_OPERATOR_RUN_VERSION = 2
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
     "kv_cache",
+    "return_lse",
     "out",
     "lse",
     "k_scale",
@@ -82,6 +83,7 @@ class AttentionOperatorRunRequest:
     framework_plan_generation: int
     query: Any
     kv_cache: Any
+    return_lse: bool = True
     out: Any = None
     lse: Any = None
     k_scale: Any = None
@@ -104,6 +106,8 @@ class AttentionOperatorRunRequest:
             raise SchemaError("operator run plan generation must be positive")
         if self.query is None or self.kv_cache is None:
             raise SchemaError("operator run query and kv_cache must be provided")
+        if not isinstance(self.return_lse, bool):
+            raise SchemaError("return_lse must be boolean")
         if isinstance(self.logits_soft_cap, bool):
             raise SchemaError("logits_soft_cap must be a finite non-negative scalar")
         try:
@@ -123,6 +127,7 @@ class AttentionOperatorRunRequest:
         query: Any,
         kv_cache: Any,
         *,
+        return_lse: bool = True,
         out: Any = None,
         lse: Any = None,
         k_scale: Any = None,
@@ -139,6 +144,7 @@ class AttentionOperatorRunRequest:
             framework_plan_generation=active_plan.framework_plan.generation,
             query=query,
             kv_cache=kv_cache,
+            return_lse=return_lse,
             out=out,
             lse=lse,
             k_scale=k_scale,
@@ -163,7 +169,7 @@ class AttentionOperatorRunRequest:
         return tuple(
             field
             for field in ATTENTION_OPERATOR_RUN_REQUEST_FIELDS
-            if field in ("query", "kv_cache", "logits_soft_cap")
+            if field in ("query", "kv_cache", "return_lse", "logits_soft_cap")
             or optional_values.get(field) is not None
         )
 
@@ -455,6 +461,7 @@ class AttentionOperatorWrapperSession:
         self,
         q,
         kv_cache,
+        return_lse=True,
         out=None,
         lse=None,
         k_scale=None,
@@ -472,6 +479,7 @@ class AttentionOperatorWrapperSession:
             active_plan,
             q,
             kv_cache,
+            return_lse=return_lse,
             out=out,
             lse=lse,
             k_scale=k_scale,

@@ -46,6 +46,10 @@
 8. plan-time feature 与 run-time 参数一致，例如 soft cap 和 profiler buffer。
 9. Framework-only、reference、functional、optimized 四种状态在 parity 中不混淆。
 
+`return_lse` 属于 run-time 返回语义，不参与 plan 选择，但必须进入内部 provider run
+request。外部 operation 是否生成 LSE、lowered return schema 以及 public 返回值必须由同一
+布尔意图驱动；caller-owned LSE buffer 会强制内部生成 LSE，但不会改变 public 返回形态。
+
 ### 2.1 当前分层
 
 ```mermaid

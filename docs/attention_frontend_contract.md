@@ -88,6 +88,12 @@ return_lse=False
 
 ### 4.3 Batch wrapper 生命周期
 
+三类 batch wrapper 的 public `run(..., return_lse=False)` 返回 output；设为 `True`
+返回 `(output, lse)`。若调用者传入 `lse` destination，即使 `return_lse=False`，内部
+provider request 仍必须请求生成 LSE，但 public 返回值继续遵守 flag。provider adapter
+根据该内部意图设置外部 package 的 LSE control 与 return schema，不能总是计算后再静默
+丢弃。
+
 Paged prefill `plan()` 的 P0 参数顺序为：
 
 ```text

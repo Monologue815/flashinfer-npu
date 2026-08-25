@@ -195,11 +195,16 @@ class AttentionProviderAdaptersCheckpoint(unittest.TestCase):
         self.assertEqual(lowered.return_names, ("output", "softmax_lse"))
         self.assertEqual(
             lowered.consumed_request_fields,
-            ("query", "kv_cache", "logits_soft_cap"),
+            ("query", "kv_cache", "return_lse", "logits_soft_cap"),
         )
         imported_after = set(sys.modules).difference(imported_before)
         self.assertNotIn("torch_npu", imported_after)
         self.assertNotIn("flash_attn", imported_after)
+
+        output_only = wrapper.run(query, (key, value), return_lse=False)
+        output_only_keywords = dict(output_only.keyword_arguments)
+        self.assertFalse(output_only_keywords["return_softmax_lse"])
+        self.assertEqual(output_only.return_names, ("output",))
 
     def test_flash_attention_npu_v3_plan_owns_ragged_and_page_metadata(self):
         wrapper = planned_wrapper("flash_attention_npu")

@@ -540,7 +540,7 @@ class CannV2PagedRunAdapter:
             ("key_quant_mode", 0),
             ("value_quant_mode", 0),
             ("inner_precise", state.inner_precise),
-            ("return_softmax_lse", True),
+            ("return_softmax_lse", request.return_lse),
         )
         return AttentionLoweredOperatorCall(
             provider_id=self.provider_id,
@@ -552,7 +552,11 @@ class CannV2PagedRunAdapter:
                 ("value", value),
             ),
             keyword_arguments=keywords,
-            return_names=("output", "softmax_lse"),
+            return_names=(
+                ("output", "softmax_lse")
+                if request.return_lse
+                else ("output",)
+            ),
             consumed_request_fields=request.consumed_fields,
         )
 
@@ -670,9 +674,13 @@ class FlashAttentionNpuV3PagedRunAdapter:
                 ("window_size", state.window_size),
                 ("softcap", 0.0),
                 ("num_splits", 0),
-                ("return_softmax_lse", True),
+                ("return_softmax_lse", request.return_lse),
             ),
-            return_names=("output", "softmax_lse"),
+            return_names=(
+                ("output", "softmax_lse")
+                if request.return_lse
+                else ("output",)
+            ),
             mutable_argument_names=("k_cache", "v_cache"),
             consumed_request_fields=request.consumed_fields,
         )
