@@ -109,10 +109,10 @@ Artifact verification、resolved symbol、provider error/event 与 unload 生命
 | `single_prefill_with_kv_cache` | `SINGLE_PREFILL` + `SingleAttentionMetadata` | Public facade + Host reference |
 | `single_decode_with_kv_cache` | `SINGLE_DECODE` + `SingleAttentionMetadata` | Public facade + Host reference |
 | `BatchPrefillWithPagedKVCacheWrapper` | `BATCH_PREFILL_PAGED` + `PagedPrefillMetadata` | Public facade + Host reference + mode-bound provider runtime |
-| `BatchPrefillWithRaggedKVCacheWrapper` | `BATCH_PREFILL_RAGGED` + `RaggedKVMetadata` | Public facade + Host reference |
+| `BatchPrefillWithRaggedKVCacheWrapper` | `BATCH_PREFILL_RAGGED` + `RaggedKVMetadata` | Public facade + Host reference + mode-bound provider runtime |
 | `BatchDecodeWithPagedKVCacheWrapper` | `BATCH_DECODE_PAGED` + `PagedKVMetadata` | Public facade + Host reference + mode-bound provider runtime |
 | `workspace_size()` | Backend-explicit workspace query | paged prefill/decode Host facade 返回真实 `(0,0)`；Ascend requirement 仍为 unknown |
-| `run()` | active plan + private executor | single 与三类 batch wrapper 均有同名 Host facade；paged prefill/decode 可进入私有 provider runtime |
+| `run()` | active plan + private executor | single 与三类 batch wrapper 均有同名 Host facade；三类 batch wrapper 可进入私有 provider runtime |
 
 `AttentionFrameworkSession` 是内部 plan 生命周期状态机。两个 single API、三个 batch
 wrapper 与 mixed `BatchAttention` 均由同名 public Host facade 暴露。
@@ -124,7 +124,7 @@ wrapper 与 mixed `BatchAttention` 均由同名 public Host facade 暴露。
 自动选择、原子发布和 run lowering 生命周期。
 
 共享 batch lifecycle 默认不创建 provider runtime。只有已经具备完整 public
-`plan()`/`run()` lowering 的 wrapper 才能显式开启该路径；未接通的 ragged prefill
+`plan()`/`run()` lowering 的 wrapper 才能显式开启该路径；任何尚未接通的 mode 都必须
 在 registry resolution 和 package loading 之前失败，不能形成只有 plan 或只有 run
 一侧可用的半连接状态。
 

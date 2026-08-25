@@ -72,6 +72,7 @@ def fake_operation():
         candidate_modes=(
             AttentionMode.BATCH_MIXED_PAGED,
             AttentionMode.BATCH_PREFILL_PAGED,
+            AttentionMode.BATCH_PREFILL_RAGGED,
             AttentionMode.BATCH_DECODE_PAGED,
         ),
         positional_arguments=("query", "key", "value"),

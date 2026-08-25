@@ -8,8 +8,7 @@ from flashinfer_npu.attention import (
     attention_operator_runtime_registry_snapshot,
     install_attention_operator_runtime_resolvers,
 )
-from flashinfer_npu.attention.batch import HostBatchReferenceWrapper
-from flashinfer_npu.decode import BatchDecodeWithPagedKVCacheWrapper
+from flashinfer_npu.prefill import BatchPrefillWithRaggedKVCacheWrapper
 from tests.test_checkpoint_019_package_runtime_integration import (
     build_components,
     package_attention,
@@ -20,17 +19,6 @@ class FakeNpuWorkspace:
     shape = (1024,)
     dtype = "uint8"
     device = "npu:0"
-
-
-class UnconnectedBatchWrapper(HostBatchReferenceWrapper):
-    def __init__(self):
-        self._init_host_wrapper(
-            mode=AttentionMode.BATCH_PREFILL_RAGGED,
-            float_workspace_buffer=FakeNpuWorkspace(),
-            backend="auto",
-            graph_enabled=False,
-            fixed_batch_size=None,
-        )
 
 
 def runtime_registry(components):
@@ -44,12 +32,10 @@ def runtime_registry(components):
 
 def plan_public_wrapper(wrapper, **kwargs):
     return wrapper.plan(
-        [0, 1],
-        [7],
-        [64],
+        [0, 2],
+        [0, 2],
         8,
         2,
-        128,
         128,
         q_data_type="bfloat16",
         kv_data_type="bfloat16",
@@ -58,8 +44,8 @@ def plan_public_wrapper(wrapper, **kwargs):
     )
 
 
-class PublicPagedDecodeProviderRuntimeCheckpointTests(unittest.TestCase):
-    """The paged-decode facade owns provider selection and plan/run state."""
+class PublicRaggedPrefillProviderRuntimeCheckpointTests(unittest.TestCase):
+    """The ragged-prefill facade owns provider selection and plan/run state."""
 
     def setUp(self):
         self.original = attention_operator_runtime_registry_snapshot()
@@ -77,7 +63,7 @@ class PublicPagedDecodeProviderRuntimeCheckpointTests(unittest.TestCase):
         )
 
     def wrapper(self):
-        return BatchDecodeWithPagedKVCacheWrapper(
+        return BatchPrefillWithRaggedKVCacheWrapper(
             FakeNpuWorkspace(),
             kv_layout="HND",
             backend="auto",
@@ -87,17 +73,18 @@ class PublicPagedDecodeProviderRuntimeCheckpointTests(unittest.TestCase):
         wrapper = self.wrapper()
 
         self.assertIsNone(plan_public_wrapper(wrapper))
-        output = wrapper.run("q", ("k-cache", "v-cache"))
-        output_with_lse = wrapper.run(
-            "q-lse", ("k-cache", "v-cache"), return_lse=True
-        )
+        output = wrapper.run("q", "k", "v")
+        output_with_lse = wrapper.run("q-lse", "k", "v", return_lse=True)
 
         self.assertEqual(output, "package-output:q")
         self.assertEqual(
             output_with_lse,
             ("package-output:q-lse", "package-lse:0.25"),
         )
-        self.assertEqual(wrapper.plan_state.spec.mode, AttentionMode.BATCH_DECODE_PAGED)
+        self.assertEqual(
+            wrapper.plan_state.spec.mode,
+            AttentionMode.BATCH_PREFILL_RAGGED,
+        )
         self.assertEqual(self.components["loader"].resolve_calls, 1)
         self.assertEqual(self.components["authority"].calls, 1)
         self.assertEqual(len(package_attention.calls), 2)
@@ -109,59 +96,35 @@ class PublicPagedDecodeProviderRuntimeCheckpointTests(unittest.TestCase):
         )
 
         plan_public_wrapper(wrapper)
-        self.assertEqual(
-            wrapper.run("q", ("k", "v")),
-            "package-output:q",
-        )
+        self.assertEqual(wrapper.run("q", "k", "v"), "package-output:q")
 
     def test_unbound_options_fail_before_provider_execution(self):
         wrapper = self.wrapper()
         plan_public_wrapper(wrapper)
 
         with self.assertRaisesRegex(NotImplementedError, "query-scale"):
-            wrapper.run("q", ("k", "v"), q_scale="scale")
-        with self.assertRaisesRegex(NotImplementedError, "attention-sink"):
-            wrapper.run("q", ("k", "v"), sinks="sink")
-        with self.assertRaisesRegex(NotImplementedError, "skip-softmax"):
-            wrapper.run(
-                "q",
-                ("k", "v"),
-                skip_softmax_threshold_scale_factor=1.0,
-            )
+            wrapper.run("q", "k", "v", q_scale="scale")
+        with self.assertRaisesRegex(NotImplementedError, "o_scale"):
+            wrapper.run("q", "k", "v", o_scale="scale")
         with self.assertRaisesRegex(NotImplementedError, "split-K"):
             plan_public_wrapper(wrapper, fixed_split_size=1)
+        with self.assertRaisesRegex(NotImplementedError, "custom-mask"):
+            plan_public_wrapper(wrapper, custom_mask=[True, True, True, True])
         self.assertEqual(package_attention.calls, [])
 
-    def test_provider_resource_controls_fail_explicitly(self):
+    def test_provider_graph_resources_fail_explicitly(self):
         with self.assertRaisesRegex(NotImplementedError, "graph resources"):
-            BatchDecodeWithPagedKVCacheWrapper(
+            BatchPrefillWithRaggedKVCacheWrapper(
                 FakeNpuWorkspace(),
                 use_cuda_graph=True,
                 backend="auto",
             )
-        with self.assertRaisesRegex(NotImplementedError, "matrix-core"):
-            BatchDecodeWithPagedKVCacheWrapper(
-                FakeNpuWorkspace(),
-                use_tensor_cores=True,
-                backend="auto",
-            )
-        wrapper = self.wrapper()
-        with self.assertRaisesRegex(NotImplementedError, "workspace_size"):
-            wrapper.workspace_size([0, 1], [7], [64], 8, 2, 128, 128)
-
-    def test_shared_base_never_enables_provider_resolution_implicitly(self):
-        with self.assertRaisesRegex(
-            NotImplementedError, "batch_prefill_ragged public wrapper"
-        ):
-            UnconnectedBatchWrapper()
-        self.assertEqual(self.components["loader"].resolve_calls, 0)
-        self.assertEqual(self.components["authority"].calls, 0)
 
     def test_public_signature_exposes_no_provider_runtime_handle(self):
         for callable_value in (
-            BatchDecodeWithPagedKVCacheWrapper,
-            BatchDecodeWithPagedKVCacheWrapper.plan,
-            BatchDecodeWithPagedKVCacheWrapper.run,
+            BatchPrefillWithRaggedKVCacheWrapper,
+            BatchPrefillWithRaggedKVCacheWrapper.plan,
+            BatchPrefillWithRaggedKVCacheWrapper.run,
         ):
             parameters = inspect.signature(callable_value).parameters
             self.assertNotIn("provider", parameters)

@@ -785,7 +785,7 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
 
 
 class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
-    """FlashInfer-compatible ragged prefill lifecycle on the Host oracle."""
+    """FlashInfer-compatible ragged prefill lifecycle owned by one wrapper."""
 
     def __init__(
         self,
@@ -803,6 +803,15 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
         layout = parse_kv_layout(kv_layout)
         if jit_args is not None or jit_kwargs is not None:
             raise NotImplementedError("custom JIT modules are not implemented")
+        if (
+            backend == "auto"
+            and str(getattr(float_workspace_buffer, "device", "")).split(":", 1)[0]
+            == "npu"
+            and use_cuda_graph
+        ):
+            raise NotImplementedError(
+                "provider graph resources are not bound to ragged prefill"
+            )
         fixed_batch_size = None
         graph_buffers = ()
         if use_cuda_graph:
@@ -846,6 +855,7 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
             graph_enabled=bool(use_cuda_graph),
             fixed_batch_size=fixed_batch_size,
             graph_buffers=graph_buffers,
+            provider_runtime_enabled=True,
         )
         if any(
             buffer.device != self._float_workspace_buffer.device
@@ -892,7 +902,17 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
         v_indptr=None,
         o_indptr=None,
     ):
-        del non_blocking, fixed_split_size, disable_split_kv
+        del non_blocking
+        if self._operator_runtime is not None:
+            if fixed_split_size is not None or disable_split_kv:
+                raise NotImplementedError(
+                    "provider split-K planning controls are not bound"
+                )
+            if use_fp16_qk_reduction:
+                raise NotImplementedError(
+                    "provider FP16 QK reduction is not bound"
+                )
+        del fixed_split_size, disable_split_kv
         require_no_host_plan_extensions(
             prefix_len_ptr=prefix_len_ptr,
             token_pos_in_items_ptr=token_pos_in_items_ptr,
@@ -905,20 +925,32 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
             v_indptr=v_indptr,
             o_indptr=o_indptr,
         )
+        index_reader = (
+            framework_index_values
+            if self._operator_runtime is not None
+            else reference_index_values
+        )
         metadata = RaggedKVMetadata(
-            reference_index_values(qo_indptr, "qo_indptr"),
-            reference_index_values(kv_indptr, "kv_indptr"),
+            index_reader(qo_indptr, "qo_indptr"),
+            index_reader(kv_indptr, "kv_indptr"),
         )
         segment_sizes = tuple(
             q_len * kv_len
             for q_len, kv_len in zip(metadata.qo_lengths, metadata.kv_lengths)
         )
-        mask_spec, mask_data = adapt_batch_custom_mask(
-            custom_mask,
-            packed_custom_mask,
-            segment_sizes=segment_sizes,
-            device=self._float_workspace_buffer.device,
-        )
+        if self._operator_runtime is not None:
+            if custom_mask is not None or packed_custom_mask is not None:
+                raise NotImplementedError(
+                    "provider custom-mask plan binding is not implemented"
+                )
+            mask_spec, mask_data = None, None
+        else:
+            mask_spec, mask_data = adapt_batch_custom_mask(
+                custom_mask,
+                packed_custom_mask,
+                segment_sizes=segment_sizes,
+                device=self._float_workspace_buffer.device,
+            )
         if (
             mask_spec is not None
             and self.is_graph_enabled
@@ -1017,6 +1049,39 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
         if o_scale is not None:
             raise NotImplementedError("ragged o_scale semantics are not frozen yet")
         plan = self.plan_state
+        if self._operator_runtime is not None:
+            if args:
+                raise NotImplementedError(
+                    "provider custom JIT run arguments are not implemented"
+                )
+            if q_scale is not None:
+                raise NotImplementedError(
+                    "provider query-scale run binding is not implemented"
+                )
+            if enable_pdl not in (None, False):
+                raise NotImplementedError(
+                    "enable_pdl has no authorized Ascend provider binding"
+                )
+            result = self._operator_runtime.run(
+                q,
+                (k, v),
+                out=out,
+                lse=lse,
+                k_scale=k_scale,
+                v_scale=v_scale,
+                logits_soft_cap=plan.spec.logits_soft_cap,
+                profiler_buffer=None,
+                kv_cache_sf=kv_cache_sf,
+            )
+            if return_lse:
+                if not isinstance(result, tuple) or len(result) != 2:
+                    raise SchemaError(
+                        "provider did not return the requested output and LSE pair"
+                    )
+                return result
+            if isinstance(result, tuple) and len(result) == 2:
+                return result[0]
+            return result
         kv_data = adapt_ragged_kv_data(
             k,
             v,
