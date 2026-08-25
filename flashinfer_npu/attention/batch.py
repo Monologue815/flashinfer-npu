@@ -77,6 +77,7 @@ class HostBatchReferenceWrapper:
         graph_enabled: bool,
         fixed_batch_size: Optional[int],
         graph_buffers: Sequence[ReferenceTensor] = (),
+        provider_runtime_enabled: bool = False,
     ) -> None:
         self._operator_runtime = None
         if backend != "reference":
@@ -85,6 +86,11 @@ class HostBatchReferenceWrapper:
             if backend != "auto":
                 raise DispatchError(
                     "non-reference batch wrappers currently require backend='auto'"
+                )
+            if not provider_runtime_enabled:
+                raise NotImplementedError(
+                    "provider runtime is not connected to the %s public wrapper"
+                    % mode.value
                 )
             if graph_enabled:
                 raise NotImplementedError(

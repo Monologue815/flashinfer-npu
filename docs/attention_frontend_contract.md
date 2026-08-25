@@ -45,9 +45,9 @@ flowchart LR
 | --- | --- | --- | --- |
 | `single_prefill_with_kv_cache` | `flashinfer_npu.prefill` | `SINGLE_PREFILL` | Public facade + Host oracle；Torch/NPU provider 待接入 |
 | `single_decode_with_kv_cache` | `flashinfer_npu.decode` | `SINGLE_DECODE` | Public facade + Host oracle；Torch/NPU provider 待接入 |
-| `BatchPrefillWithPagedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_PAGED` | Public facade + Host oracle；Host workspace 为零，Ascend formula 由 provider 声明 |
+| `BatchPrefillWithPagedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_PAGED` | Public facade + Host oracle + mode-bound provider runtime；Ascend workspace formula 由 provider 声明 |
 | `BatchPrefillWithRaggedKVCacheWrapper` | `flashinfer_npu.prefill` | `BATCH_PREFILL_RAGGED` | Public facade + Host oracle；backend-specific scoring 能力由 provider 声明 |
-| `BatchDecodeWithPagedKVCacheWrapper` | `flashinfer_npu.decode` | `BATCH_DECODE_PAGED` | Public facade + Host oracle；接口覆盖 multi-token decode |
+| `BatchDecodeWithPagedKVCacheWrapper` | `flashinfer_npu.decode` | `BATCH_DECODE_PAGED` | Public facade + Host oracle + mode-bound provider runtime；接口覆盖 multi-token decode |
 | `attention.BatchAttention` | `flashinfer_npu.attention` | `BATCH_MIXED_PAGED` | Public facade + Host oracle；返回约定固定为 output + LSE |
 
 Deprecated `begin_forward/forward/end_forward` 在 P3 提供兼容 alias，不驱动内部设计。
@@ -142,10 +142,16 @@ Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
 本地 backend 候选预计为 `auto`、`ascendc`、`aclnn`、`reference`；正式名称在
 backend ABI 评审后冻结。
 
-Paged prefill 的 `backend="auto"` 路径由 NPU workspace 确定设备，并在 wrapper 构造时
-冻结 runtime registry snapshot。`plan()` 只提交 canonical plan/metadata，provider、package
-callable、JIT module、plan factory 与 executor 均由 wrapper 私有持有；`run()` 不接受这些
-内部对象。尚无精确 provider lowering 的 public 选项必须在调用外部 package 前失败。
+Paged prefill 与 paged decode 的 `backend="auto"` 路径由 NPU workspace 确定设备，并在
+wrapper 构造时冻结 runtime registry 与 operation catalog 的同一个 snapshot。`plan()`
+只提交 canonical plan/metadata，provider、package callable、JIT module、plan factory 与
+executor 均由 wrapper 私有持有；`run()` 不接受这些内部对象。尚无精确 provider lowering
+的 public 选项必须在调用外部 package 前失败。
+
+Provider routing 按 wrapper mode 显式开启。共享基类不会根据 NPU workspace 自动替所有
+batch wrapper 接通路由；尚未实现完整 lowering 的 ragged prefill 会在 registry resolution
+之前拒绝 `backend="auto"`。因此每个可用的 provider 路径都必须同时具备 canonical plan、
+provider selection、active plan 和 run lowering，不能暴露半连接状态。
 
 当前 Host facade 中，single prefill 必须显式传入 `backend="reference"`；默认
 `auto` 会失败，防止参考执行器进入生产路径。single decode 的上游签名没有 backend

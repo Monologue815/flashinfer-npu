@@ -16,6 +16,7 @@ from .attention.frontend import (
     optional_finite_scalar,
     parse_kv_layout,
     parse_pos_encoding_mode,
+    framework_index_values,
     reference_index_values,
 )
 from .attention.planner import AttentionFrameworkSession
@@ -242,6 +243,19 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         layout = parse_kv_layout(kv_layout)
         if jit_args is not None:
             raise NotImplementedError("custom JIT modules are not implemented")
+        provider_workspace = (
+            backend == "auto"
+            and str(getattr(float_workspace_buffer, "device", "")).split(":", 1)[0]
+            == "npu"
+        )
+        if provider_workspace and use_cuda_graph:
+            raise NotImplementedError(
+                "provider graph resources are not bound to paged decode"
+            )
+        if provider_workspace and use_tensor_cores:
+            raise NotImplementedError(
+                "provider matrix-core preference is not bound to paged decode"
+            )
         fixed_batch_size = None
         graph_buffers = ()
         if use_cuda_graph:
@@ -283,6 +297,7 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             graph_enabled=bool(use_cuda_graph),
             fixed_batch_size=fixed_batch_size,
             graph_buffers=graph_buffers,
+            provider_runtime_enabled=True,
         )
         if any(
             buffer.device != self._float_workspace_buffer.device
@@ -331,6 +346,11 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         q_len_per_req=1,
     ):
         """Return Host-reference workspace bytes without mutating this plan."""
+
+        if self._operator_runtime is not None:
+            raise NotImplementedError(
+                "provider workspace_size requires a package size-query binding"
+            )
 
         probe = BatchDecodeWithPagedKVCacheWrapper(
             self._float_workspace_buffer,
@@ -433,7 +453,14 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         disable_split_kv=False,
         q_len_per_req=1,
     ):
-        del non_blocking, fixed_split_size, disable_split_kv
+        del non_blocking
+        if self._operator_runtime is not None and (
+            fixed_split_size is not None or disable_split_kv
+        ):
+            raise NotImplementedError(
+                "provider split-K planning controls are not bound"
+            )
+        del fixed_split_size, disable_split_kv
         if block_tables is not None or seq_lens is not None:
             raise NotImplementedError(
                 "alternate block_tables/seq_lens metadata is not implemented"
@@ -449,10 +476,15 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         q_dtype = str(q_data_type)
         kv_dtype, kv_quant_spec = canonicalize_kv_dtype(kv_data_type, q_dtype)
         o_dtype = q_dtype if o_data_type is None else str(o_data_type)
+        index_reader = (
+            framework_index_values
+            if self._operator_runtime is not None
+            else reference_index_values
+        )
         metadata = PagedKVMetadata(
-            reference_index_values(indptr, "indptr"),
-            reference_index_values(indices, "indices"),
-            reference_index_values(last_page_len, "last_page_len"),
+            index_reader(indptr, "indptr"),
+            index_reader(indices, "indices"),
+            index_reader(last_page_len, "last_page_len"),
             page_size,
         )
         if (
@@ -553,6 +585,49 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             )
             if q_len_per_req != plan.spec.q_len_per_req:
                 raise ValueError("run q_len_per_req must match the planned value")
+        if self._operator_runtime is not None:
+            if args:
+                raise NotImplementedError(
+                    "provider custom JIT run arguments are not implemented"
+                )
+            if q_scale is not None:
+                raise NotImplementedError(
+                    "provider query-scale run binding is not implemented"
+                )
+            if enable_pdl not in (None, False):
+                raise NotImplementedError(
+                    "enable_pdl has no authorized Ascend provider binding"
+                )
+            if window_left is not None and window_left != plan.spec.window_left:
+                raise SchemaError("run window_left must match the planned value")
+            if sinks is not None:
+                raise NotImplementedError(
+                    "provider attention-sink run binding is not implemented"
+                )
+            if skip_softmax_threshold_scale_factor is not None:
+                raise NotImplementedError(
+                    "provider skip-softmax run binding is not implemented"
+                )
+            result = self._operator_runtime.run(
+                q,
+                paged_kv_cache,
+                out=out,
+                lse=lse,
+                k_scale=k_scale,
+                v_scale=v_scale,
+                logits_soft_cap=plan.spec.logits_soft_cap,
+                profiler_buffer=None,
+                kv_cache_sf=kv_cache_sf,
+            )
+            if return_lse:
+                if not isinstance(result, tuple) or len(result) != 2:
+                    raise SchemaError(
+                        "provider did not return the requested output and LSE pair"
+                    )
+                return result
+            if isinstance(result, tuple) and len(result) == 2:
+                return result[0]
+            return result
         kv_data = adapt_paged_kv_data(
             paged_kv_cache,
             page_size=plan.metadata.page_size,

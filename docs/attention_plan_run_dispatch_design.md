@@ -108,13 +108,19 @@ publish a decode or mixed-batch plan. Mode validation precedes package probing,
 callable loading and provider planning. The holistic `BatchAttention` runtime
 is the `BATCH_MIXED_PAGED` specialization of this shared runtime contract.
 
-For paged prefill, `backend="reference"` selects only the explicit Host oracle.
-`backend="auto"` requires an NPU workspace and snapshots the installed runtime
-registry together with its versioned operation catalog when the wrapper is
-constructed. Public `plan()` publishes the exact provider plan atomically;
-public `run()` reuses it and preserves FlashInfer's
+For paged prefill and paged decode, `backend="reference"` selects only the
+explicit Host oracle. `backend="auto"` requires an NPU workspace and snapshots
+the installed runtime registry together with its versioned operation catalog
+when the wrapper is constructed. Public `plan()` publishes the exact provider
+plan atomically; public `run()` reuses it and preserves FlashInfer's
 output-versus-`(output, lse)` return convention. Provider options without an
 authorized lowering are rejected before invocation.
+
+Provider routing is an explicit per-wrapper capability, not a side effect of
+the shared batch base class. A wrapper mode that has no complete public
+`plan()`/`run()` lowering, such as the current ragged-prefill facade, rejects
+`backend="auto"` before registry resolution. This prevents a wrapper from
+publishing provider state that its public execution path cannot consume.
 
 ## 4. Canonical framework plan
 

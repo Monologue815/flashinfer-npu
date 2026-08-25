@@ -145,7 +145,7 @@ surface and current gaps are documented in
 The host-side checks have no third-party dependencies:
 
 ```bash
-python3 -m unittest discover -s tests -v
+python3 -m unittest tests/test_*.py
 python3 -m flashinfer_npu show-config
 python3 -m flashinfer_npu parity-report --scope attention
 python3 -m flashinfer_npu list-kernels

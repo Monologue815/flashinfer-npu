@@ -374,6 +374,7 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             graph_enabled=bool(use_cuda_graph),
             fixed_batch_size=fixed_batch_size,
             graph_buffers=graph_buffers,
+            provider_runtime_enabled=True,
         )
         if any(
             buffer.device != self._float_workspace_buffer.device
@@ -718,7 +719,7 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 lse=lse,
                 k_scale=k_scale,
                 v_scale=v_scale,
-                logits_soft_cap=0.0,
+                logits_soft_cap=plan.spec.logits_soft_cap,
                 profiler_buffer=None,
                 kv_cache_sf=kv_cache_sf,
             )
