@@ -66,7 +66,8 @@ optional runtime multiplier arguments authorized by the selected exact
 binding; this lowering remains non-executing until the callable authority is
 completed.
 
-The authoritative design is in
+The documentation map and content policy are in
+[`docs/README.md`](docs/README.md). The authoritative design is in
 [`docs/architecture.md`](docs/architecture.md). The current repository is a
 Phase 0 host-side architecture skeleton; it does not yet contain runnable
 Ascend C kernels.

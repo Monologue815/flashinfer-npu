@@ -141,8 +141,8 @@ Attention 消费。mixed 语义还必须覆盖 NHD/HND、GQA、共享/重复 pag
 asymmetric UINT8 channel scale、per-head runtime K/V scale、sliding window 与
 plan/runtime soft-cap，并以显式解量化后的 dense oracle 定义逐元素预期。
 
-Corpus v4 明确包含 paged INT4 multi-request/shared-page、groupwise paged
-decode/GQA/QK-VO 不同维度，以及以下两个 mixed 联合门禁：
+量化 corpus 必须覆盖 paged INT4 multi-request/shared-page、groupwise paged
+decode/GQA/QK-VO 不同维度，以及以下两类 mixed 联合门禁：
 
 - packed INT4 + 奇数维 + shared/repeated page + window + runtime soft-cap + per-head scale；
 - asymmetric UINT8 + per-head channel scale/zero-point + HND + GQA + runtime soft-cap/scale。
@@ -152,8 +152,9 @@ decode/GQA/QK-VO 不同维度，以及以下两个 mixed 联合门禁：
 window 组合只在内部 plan/reference contract 中验证，避免产生伪 upstream parity。
 
 量化准确度 v1 使用 paired dense/quantized trace 区分量化误差与未来 backend 执行误差，
-详见 [`attention_accuracy.md`](attention_accuracy.md)。内置 accuracy corpus 定义精确
-INT8、lossy asymmetric UINT8、奇数维 packed INT4 和必须拒绝的 scale overflow。
+详见 [`attention_accuracy.md`](attention_accuracy.md)。Accuracy policy 必须区分精确量化、
+有损量化、奇数维 packed INT4 和必须拒绝的非有限值或 overflow，不在文档中维护具体
+case 清单或执行结果。
 
 进入 Torch/NPU 层前仍需补齐：
 

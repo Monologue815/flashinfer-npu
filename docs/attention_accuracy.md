@@ -78,31 +78,18 @@ NaN 只与 NaN 匹配，`+inf`/`-inf` 必须符号完全一致。non-finite mism
 这可阻止把不同 workload 的输出误当成量化误差。报告绑定 dense input fingerprint、
 quantized input fingerprint、candidate result fingerprint 和 budget fingerprint。
 
-## 5. 版本化证据
+## 5. 版本化证据模型
 
 budget、metrics、report、case 和 corpus 均有严格字段校验。报告中的
 `quantization_within_budget`、`backend_within_budget`、`passes` 是派生字段；反序列化时会
 重新计算并拒绝被篡改的 verdict。
 
-内置 `attention-quantization-accuracy-v1` 有 4 个 paired case：
+Accuracy corpus 必须同时表达正向样例和预期拒绝样例。正向样例覆盖精确与有损量化，
+预期拒绝样例覆盖非有限 scale、overflow 和结构不匹配。预期拒绝是判定规则，不代表 backend
+执行失败，也不能被登记为通过 correctness 的 capability evidence。
 
-| Case | 预期 | 关键覆盖 |
-| --- | --- | --- |
-| `exact_int8` | pass | 精确 INT8，量化/backend error 都为零 |
-| `lossy_asymmetric_uint8` | pass | 非对称 UINT8 rounding 使用独立量化预算 |
-| `lossy_packed_int4_odd_dimension` | pass | packed INT4 奇数维 padding 与非精确 scale |
-| `int8_scale_overflow_rejected` | fail | finite scale 导致反量化 Inf，任何有限预算都不能接受 |
-
-最后一个是检测器的负向证据；corpus replay 成功表示它确实被判为 quantization failure，
-不是表示 overflow 数值被接受。所有 case 的 backend self-reference 层必须通过。
-
-```bash
-# 重放并检查 3 个 accepted / 1 个 expected rejected verdict
-python3 -m flashinfer_npu attention-accuracy
-
-# 导出可审计 JSON corpus
-python3 -m flashinfer_npu attention-accuracy-corpus --pretty
-```
+具体 case 清单、预期 verdict 和覆盖统计由版本化 corpus 自身维护，文档不复制动态测试
+清单或某次 replay 结果。
 
 ## 6. Accuracy ↔ dispatch 证据绑定
 

@@ -132,32 +132,16 @@ device stream/alias 生命周期。
 case id 和 input fingerprint 均必须唯一。覆盖特征从 plan/metadata/KV data 自动推导，
 不接受调用者手工声明标签。
 
-内置 `attention-framework-smoke-v4` 包含 14 个 case，对应全部核心 mode、量化组合与数值边界：
+Coverage policy 必须覆盖 mode、layout、cache kind、storage、scheme、granularity、causal、
+position、mask、MHA/GQA、head dimension relation、空请求、numerical edge、window、
+soft-cap、KV runtime scale，以及 single/ragged/paged/mixed 的量化消费。
 
-| Case | 关键覆盖 |
-| --- | --- |
-| `single_decode_dense` | dense、NHD、MHA |
-| `single_prefill_int4_hnd_rope` | packed INT4、HND、GQA、causal、RoPE |
-| `paged_prefill_int8_mask` | paged INT8、unpacked custom mask |
-| `ragged_prefill_uint8_group_packed` | asymmetric UINT8 group、packed mask |
-| `paged_decode_int8_token_alibi_empty` | token scale、ALiBi、空 request |
-| `paged_prefill_int4_multi_request_shared_page` | paged INT4、奇数维 padding、多请求共享 page |
-| `paged_decode_int8_group_gqa_distinct_dims` | groupwise decode、GQA、QK/VO 不同维度 |
-| `mixed_dense_distinct_dims` | mixed batch、GQA、QK/VO 不同维度 |
-| `mixed_int4_window_softcap_per_head_scale` | mixed packed INT4、奇数维、共享/重复 page、window、runtime soft-cap/per-head scale |
-| `mixed_asymmetric_uint8_channel_per_head_scale` | mixed asymmetric UINT8 channel、HND、GQA、per-head zero/scale |
-| `single_prefill_all_mask` | 全 mask、零 output/`-inf` LSE |
-| `single_prefill_nan_logit` | NaN row propagation |
-| `single_prefill_positive_infinity_logits` | 多 `+inf` key 均分 |
-| `single_prefill_negative_infinity_row` | 全 `-inf` row |
+Policy 还必须支持联合 selector，避免“每个 feature 分别出现过，但关键组合从未出现”造成
+虚假覆盖。例如 paged + packed INT4、groupwise decode + GQA + QK/VO 不同维度，以及 mixed
+batch 中量化格式、物理页面复用、window、soft-cap 和 runtime scale 的组合，都应作为联合
+能力约束表达。
 
-`attention-framework-v4` policy 当前包含 51 个 cell，覆盖 mode、layout、cache kind、
-storage、scheme、granularity、causal、position、mask、MHA/GQA、head dimension relation、
-空请求、numerical edge、window、soft-cap、KV runtime scale，以及 single/ragged/paged 的量化消费。selector 可包含多个 feature，因此能够发现
-“paged 和 INT4 分别出现、但从未共同出现”这种边缘覆盖掩盖的组合 gap。
-v4 还显式要求 `paged-int4`、`groupwise-decode`、
-`paged-quantized-gqa-distinct-dims`、`mixed-int4-window-softcap-per-head-scale` 和
-`mixed-asymmetric-uint8-channel-per-head-scale` 五个联合 selector。
+具体 case 清单和 coverage 统计由版本化 corpus 与 policy 生成，不复制到设计文档。
 
 ```bash
 # 输出内置 corpus JSON
