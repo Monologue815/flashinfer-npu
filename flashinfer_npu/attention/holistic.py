@@ -24,6 +24,11 @@ from .operator_resolver import (
     AttentionOperatorBatchRuntime,
     AttentionOperatorRuntimeResolverRegistry,
 )
+from .plan_selection import (
+    AttentionPlanSelection,
+    build_provider_plan_selection,
+    build_reference_plan_selection,
+)
 from .operation_catalog import (
     AttentionOperatorOperationCatalog,
     load_packaged_attention_operator_catalog,
@@ -200,6 +205,21 @@ class BatchAttention:
         if self._operator_runtime is not None:
             return self._operator_runtime.plan_state
         return self._session.plan_state
+
+    @property
+    def plan_selection(self) -> AttentionPlanSelection:
+        """Describe the selected route without exposing an executable handle."""
+
+        plan = self.plan_state
+        if self._operator_runtime is not None:
+            return build_provider_plan_selection(
+                plan,
+                self._operator_runtime.operator_session.active_plan,
+                registry_generation=(
+                    self._operator_runtime_registry_snapshot.generation
+                ),
+            )
+        return build_reference_plan_selection(plan)
 
     @property
     def workspace_contract(self):

@@ -30,6 +30,12 @@ from .planner import (
     AttentionOutputSpec,
     AttentionStateError,
 )
+from .plan_selection import (
+    ATTENTION_PLAN_SELECTION_VERSION,
+    AttentionPlanSelection,
+    build_provider_plan_selection,
+    build_reference_plan_selection,
+)
 from .reference import (
     ReferenceAttentionExecutor,
     ReferenceAttentionResult,

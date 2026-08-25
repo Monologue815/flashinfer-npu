@@ -35,6 +35,11 @@ attention.plan(
 output, lse = attention.run(q, (k_cache, v_cache))
 ```
 
+After `plan()`, `attention.plan_selection` provides optional read-only
+diagnostics about the chosen mode, provider operation, backend and registry
+generation. It never contains an executable plan, module, callable or provider
+handle, and callers never pass it to `run()`.
+
 This example documents the target interface. Internally, a declarative
 bootstrap composes exact package versions, capability evidence, kernel/ABI
 provenance, provider adapters and tensor materializers into the automatic NPU

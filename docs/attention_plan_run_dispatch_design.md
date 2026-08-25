@@ -319,6 +319,18 @@ transaction succeeds. It binds:
 
 Publication is atomic. Any error keeps the previous active plan intact.
 
+After publication, batch wrappers expose `plan_selection` as a read-only
+diagnostic value. It contains only the Attention mode, route, backend,
+provider/operation identifiers, registry generation and plan fingerprints. It
+contains no callable, module, executor, opaque provider state or mutable plan
+handle. The property is not an input to `run()` and does not transfer plan
+ownership to the caller.
+
+Reference plans report `route="reference"` and contain no provider identity.
+Provider plans report the exact registry generation captured by the wrapper.
+If replanning fails, both the old active plan and its selection summary remain
+unchanged.
+
 ## 13. `run()` validation and lowering
 
 `run()` performs no automatic backend reselection. It:
