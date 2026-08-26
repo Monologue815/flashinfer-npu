@@ -40,6 +40,10 @@ class ManifestTests(unittest.TestCase):
         manifest = load_packaged_manifest("attention")
         self.assertEqual(manifest.schema_version, 2)
         self.assertEqual(manifest.scope, "attention_core")
+        self.assertEqual(
+            manifest.upstream_ref,
+            "919a24e5b1d971d50c97a3cd38862f801527eab5",
+        )
         self.assertEqual(manifest.inventory_status, "complete")
         self.assertGreaterEqual(len(manifest.entries), 18)
         self.assertEqual(manifest.counts()["reference"], 32)
@@ -86,6 +90,17 @@ class ManifestTests(unittest.TestCase):
         ):
             self.assertEqual(statuses[symbol], "framework")
         self.assertFalse(manifest.is_complete)
+
+    def test_attention_parity_requires_immutable_upstream_commit(self):
+        source = json.loads(
+            packaged_manifest_path("attention").read_text(encoding="utf-8")
+        )
+        source["upstream"]["ref"] = "main snapshot 2026-08-27"
+        with tempfile.TemporaryDirectory() as directory:
+            manifest_path = Path(directory) / "attention_api_parity.json"
+            manifest_path.write_text(json.dumps(source), encoding="utf-8")
+            with self.assertRaisesRegex(SchemaError, "full commit SHA"):
+                ParityManifest.load(manifest_path)
 
     def test_attention_parity_tracks_the_six_public_provider_routes(self):
         manifest = load_packaged_manifest("attention")

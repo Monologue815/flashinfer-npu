@@ -1,7 +1,7 @@
 # FlashInfer-NPU Attention Frontend Contract
 
 > 文档状态：Single + Batch wrapper contract v0.7
-> 上游基线：`flashinfer-ai/flashinfer` main，2026-08-25 接口快照
+> 上游基线：`flashinfer-ai/flashinfer@919a24e5b1d971d50c97a3cd38862f801527eab5`，2026-08-27 接口快照
 > 实现边界：框架接口与 Host reference；不依赖 PyTorch、torch_npu、CANN 或 NPU
 
 ## 1. 目标

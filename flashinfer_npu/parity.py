@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -179,6 +180,12 @@ class ParityManifest:
     def validate(self) -> None:
         if self.inventory_status not in {"bootstrap", "complete"}:
             raise SchemaError("invalid inventory_status: %s" % self.inventory_status)
+        if self.scope == "attention_core" and not re.fullmatch(
+            r"[0-9a-f]{40}", self.upstream_ref
+        ):
+            raise SchemaError(
+                "attention parity upstream_ref must pin a full commit SHA"
+            )
         upstream_symbols = tuple(entry.upstream for entry in self.entries)
         local_symbols = tuple(entry.local for entry in self.entries)
         if len(upstream_symbols) != len(set(upstream_symbols)):
