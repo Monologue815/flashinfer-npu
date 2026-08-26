@@ -41,6 +41,7 @@ def package_attention(
     value_scale=None,
     runtime_key_scale=None,
     runtime_value_scale=None,
+    runtime_query_scale=None,
 ):
     package_attention.calls.append(
         (
@@ -54,6 +55,7 @@ def package_attention(
             value_scale,
             runtime_key_scale,
             runtime_value_scale,
+            runtime_query_scale,
         )
     )
     output = "package-output:%s" % query
@@ -89,6 +91,7 @@ def fake_operation():
             "value_scale",
             "runtime_key_scale",
             "runtime_value_scale",
+            "runtime_query_scale",
         ),
         return_names=("output", "softmax_lse"),
         paged_table_argument="table",
@@ -98,6 +101,7 @@ def fake_operation():
             "value_scale",
             "runtime_key_scale",
             "runtime_value_scale",
+            "runtime_query_scale",
         ),
         source_url="https://example.com/checkpoint-019-attention-v1",
     )

@@ -9,6 +9,7 @@ from flashinfer_npu.attention import (
     AttentionCapabilityStatus,
     AttentionMetadataLimits,
     AttentionNumericsPolicy,
+    AttentionOperatorQuantArgumentBinding,
     AttentionOperatorQuantizedKVInput,
     AttentionStateError,
     AttentionTraceCorpus,
@@ -143,9 +144,17 @@ def public_prefill_runtime():
         ),
         launch_abi=attention_launch_abi("attention_paged_prefill_test_entry"),
     )
+    original_binding = values["spec"].quantization_bindings[0]
     binding = replace(
-        values["spec"].quantization_bindings[0],
+        original_binding,
         quant_spec=case.trace.spec.kv_quant_spec,
+        argument_bindings=original_binding.argument_bindings
+        + (
+            AttentionOperatorQuantArgumentBinding(
+                "run.q_scale", "runtime_query_scale"
+            ),
+        ),
+        runtime_q_scale_policy="argument",
     )
     runtime_spec = replace(
         values["spec"],
@@ -260,8 +269,9 @@ class PublicQuantizedPagedPrefillTests(unittest.TestCase):
         wrapper = self.wrapper()
         self.assertIsNone(plan_public_wrapper(wrapper, self.case))
         kv_input = quantized_kv_input(self.case.trace.spec.kv_quant_spec)
+        query_scale = object()
 
-        output = wrapper.run("q", kv_input)
+        output = wrapper.run("q", kv_input, q_scale=query_scale)
         output_lse = wrapper.run("q-lse", kv_input, return_lse=True)
 
         self.assertEqual(output, "package-output:q")
@@ -274,6 +284,7 @@ class PublicQuantizedPagedPrefillTests(unittest.TestCase):
         self.assertIs(first_call[2], kv_input.value_storage)
         self.assertIs(first_call[6], kv_input.key_scale)
         self.assertIs(first_call[7], kv_input.value_scale)
+        self.assertIs(first_call[10], query_scale)
         self.assertIsNot(first_call[6], first_call[7])
         self.assertEqual(wrapper.plan_selection.route, "provider")
         self.assertEqual(wrapper.plan_selection.provider_id, "cann")

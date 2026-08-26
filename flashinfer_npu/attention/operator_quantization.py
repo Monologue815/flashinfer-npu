@@ -48,7 +48,7 @@ from .schema import (
 from .tensor_contract import KVCacheView, QuantizedTensorView, TensorView
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 1
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 2
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -56,6 +56,7 @@ _QUANT_ARGUMENT_SOURCES = {
     "kv.value.scale",
     "kv.key.zero_point",
     "kv.value.zero_point",
+    "run.q_scale",
     "run.k_scale",
     "run.v_scale",
 }
@@ -105,6 +106,7 @@ class AttentionOperatorQuantizationBinding:
     operation_id: str
     quant_spec: QuantSpec
     argument_bindings: Tuple[AttentionOperatorQuantArgumentBinding, ...]
+    runtime_q_scale_policy: str = "reject"
     runtime_k_scale_policy: str = "reject"
     runtime_v_scale_policy: str = "reject"
     kv_input_contract: str = "separate_storage_scale_zero_point"
@@ -143,6 +145,7 @@ class AttentionOperatorQuantizationBinding:
             missing = sorted(required_sources.difference(sources))[0]
             raise SchemaError("quantization binding is missing source %s" % missing)
         for name, source in (
+            ("runtime_q_scale_policy", "run.q_scale"),
             ("runtime_k_scale_policy", "run.k_scale"),
             ("runtime_v_scale_policy", "run.v_scale"),
         ):
@@ -177,6 +180,7 @@ class AttentionOperatorQuantizationBinding:
             "argument_bindings": [
                 item.to_dict() for item in self.argument_bindings
             ],
+            "runtime_q_scale_policy": self.runtime_q_scale_policy,
             "runtime_k_scale_policy": self.runtime_k_scale_policy,
             "runtime_v_scale_policy": self.runtime_v_scale_policy,
             "kv_input_contract": self.kv_input_contract,
@@ -826,6 +830,7 @@ class AttentionOperatorQuantizationRunAdapter:
                 physical_evidence,
             )
         for field_name, policy in (
+            ("q_scale", binding.runtime_q_scale_policy),
             ("k_scale", binding.runtime_k_scale_policy),
             ("v_scale", binding.runtime_v_scale_policy),
         ):
@@ -836,6 +841,7 @@ class AttentionOperatorQuantizationRunAdapter:
         delegated_request = replace(
             request,
             kv_cache=(kv_input.key_storage, kv_input.value_storage),
+            q_scale=None,
             k_scale=None,
             v_scale=None,
         )
@@ -847,6 +853,7 @@ class AttentionOperatorQuantizationRunAdapter:
             "kv.value.scale": kv_input.value_scale,
             "kv.key.zero_point": kv_input.key_zero_point,
             "kv.value.zero_point": kv_input.value_zero_point,
+            "run.q_scale": request.q_scale,
             "run.k_scale": request.k_scale,
             "run.v_scale": request.v_scale,
         }

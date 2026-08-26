@@ -10,6 +10,7 @@ from flashinfer_npu.attention import (
     AttentionMetadataLimits,
     AttentionMode,
     AttentionNumericsPolicy,
+    AttentionOperatorQuantArgumentBinding,
     AttentionOperatorQuantizedTensorInput,
     AttentionPlanSpec,
     AttentionTrace,
@@ -169,9 +170,17 @@ def public_ragged_runtime():
         ),
         launch_abi=attention_launch_abi("attention_ragged_prefill_test_entry"),
     )
+    original_binding = values["spec"].quantization_bindings[0]
     binding = replace(
-        values["spec"].quantization_bindings[0],
+        original_binding,
         quant_spec=spec.kv_quant_spec,
+        argument_bindings=original_binding.argument_bindings
+        + (
+            AttentionOperatorQuantArgumentBinding(
+                "run.q_scale", "runtime_query_scale"
+            ),
+        ),
+        runtime_q_scale_policy="argument",
     )
     runtime_spec = replace(
         values["spec"],
@@ -265,8 +274,9 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         wrapper = self.wrapper()
         self.assertIsNone(plan_public_wrapper(wrapper, self.case))
         key, value = quantized_tensor_pair(self.case.trace.spec.kv_quant_spec)
+        query_scale = object()
 
-        output = wrapper.run("q", key, value)
+        output = wrapper.run("q", key, value, q_scale=query_scale)
         output_lse = wrapper.run("q-lse", key, value, return_lse=True)
 
         self.assertEqual(output, "package-output:q")
@@ -279,6 +289,7 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         self.assertIs(first_call[2], value.storage)
         self.assertIs(first_call[6], key.scale)
         self.assertIs(first_call[7], value.scale)
+        self.assertIs(first_call[10], query_scale)
         self.assertEqual(wrapper.plan_selection.route, "provider")
         self.assertEqual(wrapper.plan_selection.provider_id, "cann")
 

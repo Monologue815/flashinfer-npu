@@ -82,8 +82,10 @@ class PublicSinglePrefillProviderRuntimeCheckpointTests(unittest.TestCase):
     def test_unbound_semantics_fail_before_package_resolution(self):
         q, k, v = inputs()
 
-        with self.assertRaisesRegex(NotImplementedError, "per-head scale"):
+        with self.assertRaisesRegex(NotImplementedError, "query-scale"):
             single_prefill_with_kv_cache(q, k, v, scale_q="scale")
+        with self.assertRaisesRegex(NotImplementedError, "per-head K/V scale"):
+            single_prefill_with_kv_cache(q, k, v, scale_k="scale")
         with self.assertRaisesRegex(NotImplementedError, "custom-mask"):
             single_prefill_with_kv_cache(q, k, v, custom_mask="mask")
         with self.assertRaisesRegex(NotImplementedError, "KV scale"):

@@ -148,13 +148,17 @@ class FakeRunAdapter:
 class AttentionOperatorWrapperSessionCheckpoint(unittest.TestCase):
     """Checkpoint 008: users see run(q, kv_cache, ...), not provider plumbing."""
 
-    def test_run_surface_adds_only_internal_lse_intent_without_plan_handles(self):
+    def test_run_surface_hides_internal_lse_and_query_scale_without_plan_handles(self):
         internal = tuple(
             inspect.signature(AttentionOperatorWrapperSession.run).parameters
         )
         public = tuple(inspect.signature(BatchAttention.run).parameters)
         self.assertEqual(
-            tuple(name for name in internal if name != "return_lse"),
+            tuple(
+                name
+                for name in internal
+                if name not in ("return_lse", "q_scale")
+            ),
             public,
         )
         self.assertNotIn(

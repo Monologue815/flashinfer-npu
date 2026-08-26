@@ -697,6 +697,8 @@ def _separate_kv_cache(kv_cache: Any) -> Tuple[Any, Any]:
 def _reject_unbound_run_options(request: AttentionOperatorRunRequest) -> None:
     if request.out is not None or request.lse is not None:
         raise SchemaError("provider adapter has no verified output-buffer binding")
+    if request.q_scale is not None:
+        raise SchemaError("provider adapter has no verified query scale binding")
     if request.k_scale is not None or request.v_scale is not None:
         raise SchemaError("provider adapter has no verified KV scale binding")
     if request.profiler_buffer is not None:

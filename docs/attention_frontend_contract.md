@@ -210,10 +210,11 @@ JIT call 与 provider launch 的 lifecycle 不写入数值 correctness trace。�
 3. Backend 层：descriptor 明确声明是否支持 per-tensor、per-head、per-channel、
    per-group 以及对称/非对称量化。
 
-Provider single facade 只有在 K/V 使用完整 `QuantSpec` 且所选 operation 的 quantization
-binding 明确允许时，才把 `k_scale`/`v_scale` 作为独立 run-time multiplier 注入对应参数；
-未声明或仅凭参数名称相似的候选必须失败。single decode 的标量 `q_scale` 折入 canonical
-softmax scale，不占用 K/V quant 参数来源。
+Provider facade 只有在 K/V 使用完整 `QuantSpec` 且所选 operation 的 quantization binding
+明确允许时，才把 query、key 或 value runtime scale 作为三个独立来源注入对应参数；未声明
+或仅凭参数名称相似的候选必须失败。single prefill 的 `scale_q` 与 batch paged/ragged 的
+`q_scale` 映射到 `run.q_scale`；single decode 的标量 `q_scale` 折入 canonical softmax
+scale，不占用 provider quant 参数来源。
 
 昇腾 INT8/INT4 扩展不能通过修改 FlashInfer 参数含义实现。新增信息应放入明确的
 `backend_options`/quantized wrapper 或版本化 spec，并在 parity 中标记 compatible 而非 exact。

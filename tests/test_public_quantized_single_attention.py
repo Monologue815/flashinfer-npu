@@ -227,12 +227,16 @@ def public_single_quantized_runtime(*, runtime_scales=True):
             argument_bindings=original_binding.argument_bindings
             + (
                 AttentionOperatorQuantArgumentBinding(
+                    "run.q_scale", "runtime_query_scale"
+                ),
+                AttentionOperatorQuantArgumentBinding(
                     "run.k_scale", "runtime_key_scale"
                 ),
                 AttentionOperatorQuantArgumentBinding(
                     "run.v_scale", "runtime_value_scale"
                 ),
             ),
+            runtime_q_scale_policy="argument",
             runtime_k_scale_policy="argument",
             runtime_v_scale_policy="argument",
         )
@@ -355,9 +359,15 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
         prefill_q = FakeNpuTensor("q-prefill-scale", (2, 2, 1))
         decode_q = FakeNpuTensor("q-decode-scale", (2, 1))
         key, value = quantized_tensor_pair(self.quant_spec)
+        query_scale = object()
 
         single_prefill_with_kv_cache(
-            prefill_q, key, value, k_scale=1.25, v_scale=0.75
+            prefill_q,
+            key,
+            value,
+            scale_q=query_scale,
+            k_scale=1.25,
+            v_scale=0.75,
         )
         single_decode_with_kv_cache(
             decode_q,
@@ -370,7 +380,9 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
 
         prefill_call, decode_call = package_attention.calls
         self.assertEqual(prefill_call[8:10], (1.25, 0.75))
+        self.assertIs(prefill_call[10], query_scale)
         self.assertEqual(decode_call[8:10], (1.5, 0.5))
+        self.assertIsNone(decode_call[10])
 
         package_attention.calls[:] = []
         with self.assertRaisesRegex(SchemaError, "q_scale must be finite"):
@@ -385,6 +397,10 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
         install_attention_operator_runtime_resolvers(
             registry, operation_catalog=values["catalog"]
         )
+        with self.assertRaisesRegex(SchemaError, "rejects run-time q_scale"):
+            single_prefill_with_kv_cache(
+                prefill_q, key, value, scale_q=query_scale
+            )
         with self.assertRaisesRegex(SchemaError, "rejects run-time k_scale"):
             single_decode_with_kv_cache(
                 decode_q, key, value, k_scale=1.5

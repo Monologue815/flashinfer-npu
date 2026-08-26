@@ -80,22 +80,28 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
     def test_runtime_scale_policy_must_match_explicit_argument_source(self):
         values = bootstrap_components()
         quant_spec = functional_profile().rules[0].quant_specs[0]
-        with self.assertRaisesRegex(SchemaError, "policy does not match"):
-            binding_for(
-                quant_spec,
-                values["operation"],
-                runtime_k_scale_policy="argument",
-            )
-        with self.assertRaisesRegex(SchemaError, "policy does not match"):
-            binding_for(
-                quant_spec,
-                values["operation"],
-                arguments=(
-                    argument("kv.key.scale", "key_scale"),
-                    argument("kv.value.scale", "value_scale"),
-                    argument("run.k_scale", "runtime_key_scale"),
-                ),
-            )
+        for component in ("q", "k", "v"):
+            source = "run.%s_scale" % component
+            argument_name = "runtime_%s_scale" % component
+            policy_name = "runtime_%s_scale_policy" % component
+            with self.subTest(component=component, missing_source=True):
+                with self.assertRaisesRegex(SchemaError, "policy does not match"):
+                    binding_for(
+                        quant_spec,
+                        values["operation"],
+                        **{policy_name: "argument"},
+                    )
+            with self.subTest(component=component, missing_policy=True):
+                with self.assertRaisesRegex(SchemaError, "policy does not match"):
+                    binding_for(
+                        quant_spec,
+                        values["operation"],
+                        arguments=(
+                            argument("kv.key.scale", "key_scale"),
+                            argument("kv.value.scale", "value_scale"),
+                            argument(source, argument_name),
+                        ),
+                    )
 
     def test_profile_and_operation_binding_validate_as_an_exact_set(self):
         values = bootstrap_components()

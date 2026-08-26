@@ -691,9 +691,9 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 raise NotImplementedError(
                     "provider custom JIT run arguments are not implemented"
                 )
-            if q_scale is not None:
+            if q_scale is not None and plan.spec.kv_quant_spec is None:
                 raise NotImplementedError(
-                    "provider query-scale run binding is not implemented"
+                    "provider query-scale binding requires quantized K/V"
                 )
             if enable_pdl not in (None, False):
                 raise NotImplementedError(
@@ -715,6 +715,7 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 return_lse=bool(return_lse) or lse is not None,
                 out=out,
                 lse=lse,
+                q_scale=q_scale,
                 k_scale=k_scale,
                 v_scale=v_scale,
                 logits_soft_cap=plan.spec.logits_soft_cap,

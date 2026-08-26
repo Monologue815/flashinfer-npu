@@ -127,11 +127,12 @@ single facade 不增加公开 plan handle。调用者仍只调用
 `QuantSpec`、shape、layout 和运行环境选择 provider。逻辑 shape 与实际 storage/scale shape
 会在进入外部 callable 前再次闭合验证。
 
-single prefill 的 `k_scale`/`v_scale` 与 single decode 的 `k_scale`/`v_scale` 是独立的
-run-time multiplier 来源，不能覆盖 wrapper 内的 K/V scale tensor。只有所选 operation 的
-`AttentionOperatorQuantizationBinding` 将对应来源精确绑定到 provider 参数时才会注入；默认
-策略是拒绝。single decode 的标量 `q_scale` 直接折入该次 canonical plan 的 softmax scale，
-不伪造额外 provider quant 参数。非量化 provider 路径仍拒绝这些尚无独立语义证明的 scale。
+single prefill 的 `scale_q`、batch paged/ragged 的 `q_scale`，以及 public run 中的
+`k_scale`/`v_scale`，都是与 wrapper 内 K/V scale tensor 相互独立的 run-time 来源。只有所选
+operation 的 `AttentionOperatorQuantizationBinding` 将 `run.q_scale`、`run.k_scale` 或
+`run.v_scale` 精确绑定到 provider 参数时，对应值才会注入；三者默认分别拒绝。single decode
+的标量 `q_scale` 直接折入该次 canonical plan 的 softmax scale，不伪造额外 provider quant
+参数。非量化 provider 路径仍拒绝这些尚无独立语义证明的 scale。
 
 把 `QuantSpec` 对象作为 `kv_data_type` 是本项目的框架扩展：Python signature 与上游一致，
 但运行时类型契约不是 upstream exact parity。未来 Torch frontend 可以增加清晰命名的

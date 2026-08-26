@@ -93,9 +93,13 @@ def single_prefill_with_kv_cache(
             mode=AttentionMode.SINGLE_PREFILL,
             kv_layout=kv_layout,
         )
-        if scale_q is not None or scale_k is not None or scale_v is not None:
+        if scale_k is not None or scale_v is not None:
             raise NotImplementedError(
-                "provider legacy per-head scale binding is not implemented"
+                "provider legacy per-head K/V scale binding is not implemented"
+            )
+        if scale_q is not None and adapted_provider.kv_quant_spec is None:
+            raise NotImplementedError(
+                "provider query-scale binding requires quantized K/V"
             )
         if (
             k_scale is not None or v_scale is not None
@@ -179,6 +183,7 @@ def single_prefill_with_kv_cache(
             q,
             provider_kv_input,
             return_lse=bool(return_lse),
+            q_scale=scale_q,
             k_scale=provider_k_scale,
             v_scale=provider_v_scale,
             logits_soft_cap=spec.logits_soft_cap,
@@ -803,9 +808,9 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 raise NotImplementedError(
                     "provider custom JIT run arguments are not implemented"
                 )
-            if q_scale is not None:
+            if q_scale is not None and plan.spec.kv_quant_spec is None:
                 raise NotImplementedError(
-                    "provider query-scale run binding is not implemented"
+                    "provider query-scale binding requires quantized K/V"
                 )
             if enable_pdl not in (None, False):
                 raise NotImplementedError(
@@ -835,6 +840,7 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 return_lse=bool(return_lse) or lse is not None,
                 out=out,
                 lse=lse,
+                q_scale=q_scale,
                 k_scale=k_scale,
                 v_scale=v_scale,
                 logits_soft_cap=plan.spec.logits_soft_cap,
@@ -1172,9 +1178,9 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
                 raise NotImplementedError(
                     "provider custom JIT run arguments are not implemented"
                 )
-            if q_scale is not None:
+            if q_scale is not None and plan.spec.kv_quant_spec is None:
                 raise NotImplementedError(
-                    "provider query-scale run binding is not implemented"
+                    "provider query-scale binding requires quantized K/V"
                 )
             if enable_pdl not in (None, False):
                 raise NotImplementedError(
@@ -1198,6 +1204,7 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
                 return_lse=bool(return_lse) or lse is not None,
                 out=out,
                 lse=lse,
+                q_scale=q_scale,
                 k_scale=k_scale,
                 v_scale=v_scale,
                 logits_soft_cap=plan.spec.logits_soft_cap,

@@ -180,7 +180,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         plan, session = active_session(values)
         kv_input = quantized_input(plan.spec.kv_quant_spec)
 
-        for name in ("k_scale", "v_scale"):
+        for name in ("q_scale", "k_scale", "v_scale"):
             with self.subTest(name=name):
                 with self.assertRaisesRegex(SchemaError, "rejects run-time"):
                     session.run("query", kv_input, **{name: object()})
@@ -194,29 +194,36 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
             argument_bindings=original.argument_bindings
             + (
                 AttentionOperatorQuantArgumentBinding(
+                    "run.q_scale", "runtime_query_scale"
+                ),
+                AttentionOperatorQuantArgumentBinding(
                     "run.k_scale", "runtime_key_scale"
                 ),
                 AttentionOperatorQuantArgumentBinding(
                     "run.v_scale", "runtime_value_scale"
                 ),
             ),
+            runtime_q_scale_policy="argument",
             runtime_k_scale_policy="argument",
             runtime_v_scale_policy="argument",
         )
         spec = replace(values["spec"], quantization_bindings=(extended,))
         plan, session = active_session(values, spec=spec)
         kv_input = quantized_input(plan.spec.kv_quant_spec)
+        runtime_q_scale = object()
         runtime_k_scale = object()
         runtime_v_scale = object()
 
         lowered = session.run(
             "query",
             kv_input,
+            q_scale=runtime_q_scale,
             k_scale=runtime_k_scale,
             v_scale=runtime_v_scale,
         )
 
         keywords = dict(lowered.keyword_arguments)
+        self.assertIs(keywords["runtime_query_scale"], runtime_q_scale)
         self.assertIs(keywords["runtime_key_scale"], runtime_k_scale)
         self.assertIs(keywords["runtime_value_scale"], runtime_v_scale)
         self.assertEqual(
@@ -225,6 +232,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
                 "query",
                 "kv_cache",
                 "return_lse",
+                "q_scale",
                 "k_scale",
                 "v_scale",
                 "logits_soft_cap",

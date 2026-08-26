@@ -35,7 +35,7 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 2
+ATTENTION_OPERATOR_RUN_VERSION = 3
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
@@ -43,6 +43,7 @@ ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "return_lse",
     "out",
     "lse",
+    "q_scale",
     "k_scale",
     "v_scale",
     "logits_soft_cap",
@@ -86,6 +87,7 @@ class AttentionOperatorRunRequest:
     return_lse: bool = True
     out: Any = None
     lse: Any = None
+    q_scale: Any = None
     k_scale: Any = None
     v_scale: Any = None
     logits_soft_cap: float = 0.0
@@ -130,6 +132,7 @@ class AttentionOperatorRunRequest:
         return_lse: bool = True,
         out: Any = None,
         lse: Any = None,
+        q_scale: Any = None,
         k_scale: Any = None,
         v_scale: Any = None,
         logits_soft_cap: float = 0.0,
@@ -147,6 +150,7 @@ class AttentionOperatorRunRequest:
             return_lse=return_lse,
             out=out,
             lse=lse,
+            q_scale=q_scale,
             k_scale=k_scale,
             v_scale=v_scale,
             logits_soft_cap=logits_soft_cap,
@@ -161,6 +165,7 @@ class AttentionOperatorRunRequest:
         optional_values = {
             "out": self.out,
             "lse": self.lse,
+            "q_scale": self.q_scale,
             "k_scale": self.k_scale,
             "v_scale": self.v_scale,
             "profiler_buffer": self.profiler_buffer,
@@ -485,6 +490,7 @@ class AttentionOperatorWrapperSession:
         return_lse=True,
         out=None,
         lse=None,
+        q_scale=None,
         k_scale=None,
         v_scale=None,
         logits_soft_cap=0.0,
@@ -503,6 +509,7 @@ class AttentionOperatorWrapperSession:
             return_lse=return_lse,
             out=out,
             lse=lse,
+            q_scale=q_scale,
             k_scale=k_scale,
             v_scale=v_scale,
             logits_soft_cap=logits_soft_cap,
