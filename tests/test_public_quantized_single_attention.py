@@ -11,6 +11,7 @@ from flashinfer_npu.attention import (
     AttentionMode,
     AttentionNumericsPolicy,
     AttentionOperatorQuantizedTensorInput,
+    AttentionOperatorQuantArgumentBinding,
     AttentionPlanSpec,
     AttentionTrace,
     AttentionTraceCase,
@@ -127,7 +128,7 @@ def single_quantized_case(mode, quant_spec):
     )
 
 
-def public_single_quantized_runtime():
+def public_single_quantized_runtime(*, runtime_scales=True):
     values = bootstrap_components()
     quant_spec = single_quant_spec()
     cases = tuple(
@@ -218,9 +219,25 @@ def public_single_quantized_runtime():
             profile_fingerprint=profile.fingerprint,
         ),
     )
-    binding = replace(
-        values["spec"].quantization_bindings[0], quant_spec=quant_spec
-    )
+    original_binding = values["spec"].quantization_bindings[0]
+    if runtime_scales:
+        binding = replace(
+            original_binding,
+            quant_spec=quant_spec,
+            argument_bindings=original_binding.argument_bindings
+            + (
+                AttentionOperatorQuantArgumentBinding(
+                    "run.k_scale", "runtime_key_scale"
+                ),
+                AttentionOperatorQuantArgumentBinding(
+                    "run.v_scale", "runtime_value_scale"
+                ),
+            ),
+            runtime_k_scale_policy="argument",
+            runtime_v_scale_policy="argument",
+        )
+    else:
+        binding = replace(original_binding, quant_spec=quant_spec)
     runtime_spec = replace(
         values["spec"],
         profiles=(profile,),
@@ -334,6 +351,45 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
             single_prefill_with_kv_cache(q, bad_storage, value)
         self.assertEqual(package_attention.calls, [])
 
+    def test_single_runtime_scales_require_and_follow_exact_binding(self):
+        prefill_q = FakeNpuTensor("q-prefill-scale", (2, 2, 1))
+        decode_q = FakeNpuTensor("q-decode-scale", (2, 1))
+        key, value = quantized_tensor_pair(self.quant_spec)
+
+        single_prefill_with_kv_cache(
+            prefill_q, key, value, k_scale=1.25, v_scale=0.75
+        )
+        single_decode_with_kv_cache(
+            decode_q,
+            key,
+            value,
+            q_scale=2.0,
+            k_scale=1.5,
+            v_scale=0.5,
+        )
+
+        prefill_call, decode_call = package_attention.calls
+        self.assertEqual(prefill_call[8:10], (1.25, 0.75))
+        self.assertEqual(decode_call[8:10], (1.5, 0.5))
+
+        package_attention.calls[:] = []
+        with self.assertRaisesRegex(SchemaError, "q_scale must be finite"):
+            single_decode_with_kv_cache(
+                decode_q, key, value, q_scale=float("nan")
+            )
+        self.assertEqual(package_attention.calls, [])
+
+        values, _, registry = public_single_quantized_runtime(
+            runtime_scales=False
+        )
+        install_attention_operator_runtime_resolvers(
+            registry, operation_catalog=values["catalog"]
+        )
+        with self.assertRaisesRegex(SchemaError, "rejects run-time k_scale"):
+            single_decode_with_kv_cache(
+                decode_q, key, value, k_scale=1.5
+            )
+        self.assertEqual(package_attention.calls, [])
 
 if __name__ == "__main__":
     unittest.main()

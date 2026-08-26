@@ -97,10 +97,18 @@ def single_prefill_with_kv_cache(
             raise NotImplementedError(
                 "provider legacy per-head scale binding is not implemented"
             )
-        if k_scale is not None or v_scale is not None:
+        if (
+            k_scale is not None or v_scale is not None
+        ) and adapted_provider.kv_quant_spec is None:
             raise NotImplementedError(
-                "provider single-prefill KV scale binding is not implemented"
+                "provider single-prefill KV scale binding requires quantized K/V"
             )
+        provider_k_scale = (
+            None if k_scale is None else finite_scalar(k_scale, "k_scale")
+        )
+        provider_v_scale = (
+            None if v_scale is None else finite_scalar(v_scale, "v_scale")
+        )
         if custom_mask is not None or packed_custom_mask is not None:
             raise NotImplementedError(
                 "provider single-prefill custom-mask binding is not implemented"
@@ -171,6 +179,8 @@ def single_prefill_with_kv_cache(
             q,
             provider_kv_input,
             return_lse=bool(return_lse),
+            k_scale=provider_k_scale,
+            v_scale=provider_v_scale,
             logits_soft_cap=spec.logits_soft_cap,
         )
         if return_lse:

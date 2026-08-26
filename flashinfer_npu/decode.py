@@ -67,10 +67,28 @@ def single_decode_with_kv_cache(
             raise NotImplementedError(
                 "provider single-decode matrix-core preference is not bound"
             )
-        if q_scale is not None or k_scale is not None or v_scale is not None:
+        if (
+            q_scale is not None or k_scale is not None or v_scale is not None
+        ) and adapted_provider.kv_quant_spec is None:
             raise NotImplementedError(
-                "provider single-decode Q/K/V scale binding is not implemented"
+                "provider single-decode Q/K/V scale binding requires quantized K/V"
             )
+        provider_q_scale = (
+            None if q_scale is None else finite_scalar(q_scale, "q_scale")
+        )
+        provider_k_scale = (
+            None if k_scale is None else finite_scalar(k_scale, "k_scale")
+        )
+        provider_v_scale = (
+            None if v_scale is None else finite_scalar(v_scale, "v_scale")
+        )
+        provider_softmax_scale = (
+            1.0 / math.sqrt(adapted_provider.head_dim_qk)
+            if sm_scale is None
+            else finite_scalar(sm_scale, "sm_scale")
+        )
+        if provider_q_scale is not None:
+            provider_softmax_scale *= provider_q_scale
         spec = AttentionPlanSpec(
             mode=AttentionMode.SINGLE_DECODE,
             num_qo_heads=adapted_provider.num_qo_heads,
@@ -83,11 +101,7 @@ def single_decode_with_kv_cache(
             kv_dtype=adapted_provider.kv_dtype,
             kv_quant_spec=adapted_provider.kv_quant_spec,
             o_dtype=adapted_provider.q_dtype,
-            sm_scale=(
-                1.0 / math.sqrt(adapted_provider.head_dim_qk)
-                if sm_scale is None
-                else finite_scalar(sm_scale, "sm_scale")
-            ),
+            sm_scale=provider_softmax_scale,
             logits_soft_cap=(
                 0.0
                 if logits_soft_cap is None
@@ -124,6 +138,8 @@ def single_decode_with_kv_cache(
             q,
             provider_kv_input,
             return_lse=bool(return_lse),
+            k_scale=provider_k_scale,
+            v_scale=provider_v_scale,
             logits_soft_cap=spec.logits_soft_cap,
         )
         if return_lse:
