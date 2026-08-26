@@ -48,6 +48,10 @@ from .attention.schema import (
     PagedPrefillMetadata,
     RaggedKVMetadata,
 )
+from .attention.operator_quantization import (
+    AttentionOperatorQuantizedTensorInput,
+    combine_attention_operator_quantized_kv_input,
+)
 
 
 def single_prefill_with_kv_cache(
@@ -1155,9 +1159,21 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
                 raise NotImplementedError(
                     "enable_pdl has no authorized Ascend provider binding"
                 )
+            if plan.spec.kv_quant_spec is not None:
+                provider_kv_input = combine_attention_operator_quantized_kv_input(
+                    k, v
+                )
+            else:
+                if isinstance(
+                    k, AttentionOperatorQuantizedTensorInput
+                ) or isinstance(v, AttentionOperatorQuantizedTensorInput):
+                    raise SchemaError(
+                        "dense provider plan cannot consume quantized tensor inputs"
+                    )
+                provider_kv_input = (k, v)
             result = self._operator_runtime.run(
                 q,
-                (k, v),
+                provider_kv_input,
                 return_lse=bool(return_lse) or lse is not None,
                 out=out,
                 lse=lse,

@@ -188,6 +188,31 @@ class AttentionOperatorQuantizationBinding:
 
 
 @dataclass(frozen=True)
+class AttentionOperatorQuantizedTensorInput:
+    """One opaque quantized tensor for public APIs with separate K/V slots."""
+
+    quant_spec: QuantSpec
+    storage: Any
+    scale: Any
+    zero_point: Any = None
+    schema_version: int = ATTENTION_OPERATOR_QUANTIZATION_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_QUANTIZATION_VERSION:
+            raise SchemaError("unsupported Attention quantized tensor input version")
+        if not isinstance(self.quant_spec, QuantSpec):
+            raise TypeError("quant_spec must be QuantSpec")
+        if self.storage is None or self.scale is None:
+            raise SchemaError("quantized tensor input requires storage and scale")
+        if self.quant_spec.has_zero_point and self.zero_point is None:
+            raise SchemaError("asymmetric quantized tensor input requires zero_point")
+        if not self.quant_spec.has_zero_point and self.zero_point is not None:
+            raise SchemaError(
+                "symmetric quantized tensor input cannot carry zero_point"
+            )
+
+
+@dataclass(frozen=True)
 class AttentionOperatorQuantizedKVInput:
     """Opaque provider tensors carried through the unchanged public run slot."""
 
@@ -221,6 +246,35 @@ class AttentionOperatorQuantizedKVInput:
             raise SchemaError(
                 "symmetric quantized KV input cannot carry zero points"
             )
+
+
+def combine_attention_operator_quantized_kv_input(
+    key: AttentionOperatorQuantizedTensorInput,
+    value: AttentionOperatorQuantizedTensorInput,
+) -> AttentionOperatorQuantizedKVInput:
+    """Combine separate public K/V arguments without exposing provider state."""
+
+    if not isinstance(key, AttentionOperatorQuantizedTensorInput):
+        raise SchemaError(
+            "quantized provider plan requires AttentionOperatorQuantizedTensorInput "
+            "for key"
+        )
+    if not isinstance(value, AttentionOperatorQuantizedTensorInput):
+        raise SchemaError(
+            "quantized provider plan requires AttentionOperatorQuantizedTensorInput "
+            "for value"
+        )
+    if key.quant_spec.fingerprint != value.quant_spec.fingerprint:
+        raise SchemaError("quantized key/value inputs use different QuantSpec values")
+    return AttentionOperatorQuantizedKVInput(
+        quant_spec=key.quant_spec,
+        key_storage=key.storage,
+        value_storage=value.storage,
+        key_scale=key.scale,
+        value_scale=value.scale,
+        key_zero_point=key.zero_point,
+        value_zero_point=value.zero_point,
+    )
 
 
 @runtime_checkable
@@ -843,9 +897,11 @@ __all__ = [
     "AttentionOperatorQuantizationPlanGate",
     "AttentionOperatorQuantizationRunAdapter",
     "AttentionOperatorQuantizationRunAdapterFactory",
+    "AttentionOperatorQuantizedTensorInput",
     "AttentionOperatorQuantizedKVInput",
     "AttentionOperatorTensorMetadataInspector",
     "inspect_attention_operator_quantized_kv_input",
+    "combine_attention_operator_quantized_kv_input",
     "validate_attention_operator_quantization_bindings",
     "validate_attention_operator_quant_physical_layouts",
 ]

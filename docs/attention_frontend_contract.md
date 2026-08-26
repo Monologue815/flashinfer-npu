@@ -219,6 +219,12 @@ JIT call 与 provider launch 的 lifecycle 不写入数值 correctness trace。�
 zero-point 与 INT4 packing 约定见
 [`attention_quantization.md`](attention_quantization.md)。
 
+Provider 路径沿用每个上游 `run()` 的 KV 参数形态：paged/mixed 的单一 cache 参数接收
+`AttentionOperatorQuantizedKVInput`；ragged prefill 的分离 `k`/`v` 参数分别接收
+`AttentionOperatorQuantizedTensorInput`。ragged wrapper 在内部组合两者，并要求 K/V 使用
+完全相同的 `QuantSpec`；storage、scale 和可选 zero-point 仍保持独立。两种输入都只携带
+量化 tensor，不包含 provider plan、callable、module 或执行句柄。
+
 真实 tensor frontend 统一映射到 `TensorView`/`QuantizedTensorView`，必须保留 stride、
 storage bounds、alignment、alias identity 和 current stream；详见
 [`attention_tensor_contract.md`](attention_tensor_contract.md)。Adapter 不允许静默

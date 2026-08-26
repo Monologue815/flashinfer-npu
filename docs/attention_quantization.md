@@ -114,7 +114,9 @@ INT4 沿逻辑 tensor 的最后一维打包，物理末维为 `ceil(logical_last
 - single prefill/decode：K、V 传入两个 `ReferenceQuantizedTensor` 即显式选择 Host
   量化 oracle。
 - batch prefill/decode 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；
-  run 传入 `ReferenceQuantizedKVData`。
+  Host run 传入 `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
+  `AttentionOperatorQuantizedKVInput`；ragged run 的分离 K/V 参数分别传入
+  `AttentionOperatorQuantizedTensorInput`，由 wrapper 内部组合。
 - `kv_cache_sf` 仍保留上游 NVFP4 含义，当前显式报未实现，不能借用该参数表达 INT8/INT4。
 
 把 `QuantSpec` 对象作为 `kv_data_type` 是本项目的框架扩展：Python signature 与上游一致，

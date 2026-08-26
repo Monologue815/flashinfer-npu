@@ -59,12 +59,14 @@ independent zero-point sources to exact quantization arguments in the selected
 catalog operation. Merely exposing quantization-named package parameters is
 not treated as runtime support.
 
-The unchanged `kv_cache` run slot can carry an
-`AttentionOperatorQuantizedKVInput` for a future provider integration. The
-framework unwraps K/V storage and injects only the scale, zero-point and
-optional runtime multiplier arguments authorized by the selected exact
-binding; this lowering remains non-executing until the callable authority is
-completed.
+The unchanged paged/mixed `kv_cache` run slot can carry an
+`AttentionOperatorQuantizedKVInput` for a future provider integration. Ragged
+prefill keeps its upstream-style separate `k` and `v` positions; each carries
+an `AttentionOperatorQuantizedTensorInput`, and the wrapper combines them
+privately. The framework unwraps K/V storage and injects only the scale,
+zero-point and optional runtime multiplier arguments authorized by the
+selected exact binding; neither public input exposes a provider plan or
+callable handle.
 
 The documentation map and content policy are in
 [`docs/README.md`](docs/README.md). The authoritative design is in
