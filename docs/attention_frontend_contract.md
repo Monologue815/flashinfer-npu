@@ -93,6 +93,9 @@ return_lse=False
 与 return schema，不能总是计算后再静默丢弃。caller-owned `out/lse` 只有在选中 operation
 明确声明对应 mutable argument 后才能使用；当前返回 tensor 的 package API 不具备该绑定，
 所以这两个参数在 package invocation 前显式失败。
+ragged prefill 继续公开 `q_scale/k_scale/v_scale/o_scale`。其中 `o_scale` 是输出 scale，
+只有选中 operation 的量化 binding 同时声明精确参数名和允许的 plan 输出 dtype 时才会传入；
+它不会改变 plan 选择，也不会被解释成 KV scale。
 
 Paged prefill `plan()` 的 P0 参数顺序为：
 
@@ -203,7 +206,7 @@ JIT call 与 provider launch 的 lifecycle 不写入数值 correctness trace。�
 
 量化参数分为三层，不能混成一个无类型的 `scale`：
 
-1. 上游兼容层：`scale_q/scale_k/scale_v`、`q_scale/k_scale/v_scale` 和
+1. 上游兼容层：`scale_q/scale_k/scale_v`、`q_scale/k_scale/v_scale/o_scale` 和
    `kv_cache_sf` 保持原参数位置。
 2. 规范层：转换为带 axis、granularity、group size、zero-point、packing 与物理
    scale layout 的 `QuantSpec`/scale tensor view。
@@ -215,6 +218,8 @@ Provider facade 只有在 K/V 使用完整 `QuantSpec` 且所选 operation 的 q
 或仅凭参数名称相似的候选必须失败。single prefill 的 `scale_q` 与 batch paged/ragged 的
 `q_scale` 映射到 `run.q_scale`；single decode 的标量 `q_scale` 折入 canonical softmax
 scale，不占用 provider quant 参数来源。
+ragged `o_scale` 是第四个独立来源；除精确 argument binding 外还受 plan `o_dtype` 白名单
+约束。未绑定、非量化或输出 dtype 不匹配的 provider 路径均在 package invocation 前失败。
 
 昇腾 INT8/INT4 扩展不能通过修改 FlashInfer 参数含义实现。新增信息应放入明确的
 `backend_options`/quantized wrapper 或版本化 spec，并在 parity 中标记 compatible 而非 exact。

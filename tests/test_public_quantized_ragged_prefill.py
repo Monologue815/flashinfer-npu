@@ -67,7 +67,7 @@ def ragged_quantized_case():
         q_dtype="float32",
         kv_dtype="int8",
         kv_quant_spec=quant_spec,
-        o_dtype="float32",
+        o_dtype="int8",
     )
     metadata = RaggedKVMetadata((0, 1), (0, 2))
     cache = RaggedKVCacheSpec(
@@ -179,8 +179,13 @@ def public_ragged_runtime():
             AttentionOperatorQuantArgumentBinding(
                 "run.q_scale", "runtime_query_scale"
             ),
+            AttentionOperatorQuantArgumentBinding(
+                "run.o_scale", "runtime_output_scale"
+            ),
         ),
         runtime_q_scale_policy="argument",
+        runtime_o_scale_policy="argument",
+        runtime_o_scale_output_dtypes=("int8",),
     )
     runtime_spec = replace(
         values["spec"],
@@ -275,8 +280,15 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         self.assertIsNone(plan_public_wrapper(wrapper, self.case))
         key, value = quantized_tensor_pair(self.case.trace.spec.kv_quant_spec)
         query_scale = object()
+        output_scale = object()
 
-        output = wrapper.run("q", key, value, q_scale=query_scale)
+        output = wrapper.run(
+            "q",
+            key,
+            value,
+            q_scale=query_scale,
+            o_scale=output_scale,
+        )
         output_lse = wrapper.run("q-lse", key, value, return_lse=True)
 
         self.assertEqual(output, "package-output:q")
@@ -290,6 +302,7 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         self.assertIs(first_call[6], key.scale)
         self.assertIs(first_call[7], value.scale)
         self.assertIs(first_call[10], query_scale)
+        self.assertIs(first_call[11], output_scale)
         self.assertEqual(wrapper.plan_selection.route, "provider")
         self.assertEqual(wrapper.plan_selection.provider_id, "cann")
 

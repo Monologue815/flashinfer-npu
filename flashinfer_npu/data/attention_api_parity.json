@@ -195,7 +195,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Public wrapper covers ragged request segmentation, GQA, NHD/HND, masks, scale and LSE semantics. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver."
+      "notes": "Public wrapper covers ragged request segmentation, GQA, NHD/HND, masks, Q/K/V scale, output-scale and LSE semantics. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver. Provider output-scale forwarding requires an exact quant argument binding and an eligible planned output dtype."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper.plan",

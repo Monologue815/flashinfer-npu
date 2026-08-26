@@ -1170,8 +1170,6 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
         enable_pdl=None,
         kv_cache_sf=None,
     ):
-        if o_scale is not None:
-            raise NotImplementedError("ragged o_scale semantics are not frozen yet")
         plan = self.plan_state
         if self._operator_runtime is not None:
             if args:
@@ -1181,6 +1179,10 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
             if q_scale is not None and plan.spec.kv_quant_spec is None:
                 raise NotImplementedError(
                     "provider query-scale binding requires quantized K/V"
+                )
+            if o_scale is not None and plan.spec.kv_quant_spec is None:
+                raise NotImplementedError(
+                    "provider output-scale binding requires quantized K/V"
                 )
             if enable_pdl not in (None, False):
                 raise NotImplementedError(
@@ -1207,6 +1209,7 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
                 q_scale=q_scale,
                 k_scale=k_scale,
                 v_scale=v_scale,
+                o_scale=o_scale,
                 logits_soft_cap=plan.spec.logits_soft_cap,
                 profiler_buffer=None,
                 kv_cache_sf=kv_cache_sf,
@@ -1220,6 +1223,10 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
             if isinstance(result, tuple) and len(result) == 2:
                 return result[0]
             return result
+        if o_scale is not None:
+            raise NotImplementedError(
+                "ragged o_scale requires an authorized provider output-scale binding"
+            )
         kv_data = adapt_ragged_kv_data(
             k,
             v,

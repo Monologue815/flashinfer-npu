@@ -48,7 +48,7 @@ from .schema import (
 from .tensor_contract import KVCacheView, QuantizedTensorView, TensorView
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 2
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 3
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -59,6 +59,7 @@ _QUANT_ARGUMENT_SOURCES = {
     "run.q_scale",
     "run.k_scale",
     "run.v_scale",
+    "run.o_scale",
 }
 _RUNTIME_SCALE_POLICIES = {"reject", "argument"}
 
@@ -109,6 +110,8 @@ class AttentionOperatorQuantizationBinding:
     runtime_q_scale_policy: str = "reject"
     runtime_k_scale_policy: str = "reject"
     runtime_v_scale_policy: str = "reject"
+    runtime_o_scale_policy: str = "reject"
+    runtime_o_scale_output_dtypes: Tuple[str, ...] = ()
     kv_input_contract: str = "separate_storage_scale_zero_point"
     schema_version: int = ATTENTION_OPERATOR_QUANTIZATION_VERSION
 
@@ -148,6 +151,7 @@ class AttentionOperatorQuantizationBinding:
             ("runtime_q_scale_policy", "run.q_scale"),
             ("runtime_k_scale_policy", "run.k_scale"),
             ("runtime_v_scale_policy", "run.v_scale"),
+            ("runtime_o_scale_policy", "run.o_scale"),
         ):
             policy = str(getattr(self, name))
             if policy not in _RUNTIME_SCALE_POLICIES:
@@ -157,6 +161,24 @@ class AttentionOperatorQuantizationBinding:
                     "%s policy does not match its argument binding" % name
                 )
             object.__setattr__(self, name, policy)
+        output_dtypes = tuple(str(item) for item in self.runtime_o_scale_output_dtypes)
+        if any(not item for item in output_dtypes) or len(set(output_dtypes)) != len(
+            output_dtypes
+        ):
+            raise SchemaError(
+                "runtime o_scale output dtypes must be non-empty and unique"
+            )
+        if self.runtime_o_scale_policy == "argument" and not output_dtypes:
+            raise SchemaError(
+                "runtime o_scale argument policy requires eligible output dtypes"
+            )
+        if self.runtime_o_scale_policy == "reject" and output_dtypes:
+            raise SchemaError(
+                "runtime o_scale reject policy cannot declare output dtypes"
+            )
+        object.__setattr__(
+            self, "runtime_o_scale_output_dtypes", tuple(sorted(output_dtypes))
+        )
         if self.kv_input_contract != "separate_storage_scale_zero_point":
             raise SchemaError("unsupported Attention quantized KV input contract")
         object.__setattr__(self, "provider_id", str(self.provider_id))
@@ -183,6 +205,10 @@ class AttentionOperatorQuantizationBinding:
             "runtime_q_scale_policy": self.runtime_q_scale_policy,
             "runtime_k_scale_policy": self.runtime_k_scale_policy,
             "runtime_v_scale_policy": self.runtime_v_scale_policy,
+            "runtime_o_scale_policy": self.runtime_o_scale_policy,
+            "runtime_o_scale_output_dtypes": list(
+                self.runtime_o_scale_output_dtypes
+            ),
             "kv_input_contract": self.kv_input_contract,
         }
 
@@ -545,6 +571,25 @@ def validate_attention_operator_quantization_bindings(
                 "quantization binding uses non-catalog argument %s"
                 % sorted(undeclared)[0]
             )
+        supported_output_dtypes = {
+            dtype_signature[2]
+            for profile in profile_values
+            for rule in profile.rules
+            if set(rule.modes).intersection(operation.candidate_modes)
+            and any(
+                item.fingerprint == binding.quant_spec.fingerprint
+                for item in rule.quant_specs
+            )
+            for dtype_signature in rule.dtype_signatures
+        }
+        undeclared_output_dtypes = set(
+            binding.runtime_o_scale_output_dtypes
+        ).difference(supported_output_dtypes)
+        if undeclared_output_dtypes:
+            raise SchemaError(
+                "runtime o_scale output dtype has no capability rule: %s"
+                % sorted(undeclared_output_dtypes)[0]
+            )
     profile_quant_specs = {
         quant_spec.fingerprint: quant_spec
         for profile in profile_values
@@ -833,17 +878,28 @@ class AttentionOperatorQuantizationRunAdapter:
             ("q_scale", binding.runtime_q_scale_policy),
             ("k_scale", binding.runtime_k_scale_policy),
             ("v_scale", binding.runtime_v_scale_policy),
+            ("o_scale", binding.runtime_o_scale_policy),
         ):
             if policy == "reject" and getattr(request, field_name) is not None:
                 raise SchemaError(
                     "quantization binding rejects run-time %s" % field_name
                 )
+        if (
+            request.o_scale is not None
+            and active_plan.framework_plan.spec.o_dtype
+            not in binding.runtime_o_scale_output_dtypes
+        ):
+            raise SchemaError(
+                "quantization binding does not authorize run-time o_scale for "
+                "output dtype %s" % active_plan.framework_plan.spec.o_dtype
+            )
         delegated_request = replace(
             request,
             kv_cache=(kv_input.key_storage, kv_input.value_storage),
             q_scale=None,
             k_scale=None,
             v_scale=None,
+            o_scale=None,
         )
         lowered = self._base_adapter.lower(active_plan, delegated_request)
         if not isinstance(lowered, AttentionLoweredOperatorCall):
@@ -856,6 +912,7 @@ class AttentionOperatorQuantizationRunAdapter:
             "run.q_scale": request.q_scale,
             "run.k_scale": request.k_scale,
             "run.v_scale": request.v_scale,
+            "run.o_scale": request.o_scale,
         }
         injected = tuple(
             (item.argument_name, values_by_source[item.source])

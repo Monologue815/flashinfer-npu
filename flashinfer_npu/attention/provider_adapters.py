@@ -701,6 +701,8 @@ def _reject_unbound_run_options(request: AttentionOperatorRunRequest) -> None:
         raise SchemaError("provider adapter has no verified query scale binding")
     if request.k_scale is not None or request.v_scale is not None:
         raise SchemaError("provider adapter has no verified KV scale binding")
+    if request.o_scale is not None:
+        raise SchemaError("provider adapter has no verified output scale binding")
     if request.profiler_buffer is not None:
         raise SchemaError("provider adapter has no profiler-buffer binding")
     if request.kv_cache_sf is not None:

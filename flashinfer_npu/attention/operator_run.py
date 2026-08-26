@@ -35,7 +35,7 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 3
+ATTENTION_OPERATOR_RUN_VERSION = 4
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
@@ -46,6 +46,7 @@ ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "q_scale",
     "k_scale",
     "v_scale",
+    "o_scale",
     "logits_soft_cap",
     "profiler_buffer",
     "kv_cache_sf",
@@ -90,6 +91,7 @@ class AttentionOperatorRunRequest:
     q_scale: Any = None
     k_scale: Any = None
     v_scale: Any = None
+    o_scale: Any = None
     logits_soft_cap: float = 0.0
     profiler_buffer: Any = None
     kv_cache_sf: Any = None
@@ -135,6 +137,7 @@ class AttentionOperatorRunRequest:
         q_scale: Any = None,
         k_scale: Any = None,
         v_scale: Any = None,
+        o_scale: Any = None,
         logits_soft_cap: float = 0.0,
         profiler_buffer: Any = None,
         kv_cache_sf: Any = None,
@@ -153,6 +156,7 @@ class AttentionOperatorRunRequest:
             q_scale=q_scale,
             k_scale=k_scale,
             v_scale=v_scale,
+            o_scale=o_scale,
             logits_soft_cap=logits_soft_cap,
             profiler_buffer=profiler_buffer,
             kv_cache_sf=kv_cache_sf,
@@ -168,6 +172,7 @@ class AttentionOperatorRunRequest:
             "q_scale": self.q_scale,
             "k_scale": self.k_scale,
             "v_scale": self.v_scale,
+            "o_scale": self.o_scale,
             "profiler_buffer": self.profiler_buffer,
             "kv_cache_sf": self.kv_cache_sf,
         }
@@ -493,6 +498,7 @@ class AttentionOperatorWrapperSession:
         q_scale=None,
         k_scale=None,
         v_scale=None,
+        o_scale=None,
         logits_soft_cap=0.0,
         profiler_buffer=None,
         kv_cache_sf=None,
@@ -512,6 +518,7 @@ class AttentionOperatorWrapperSession:
             q_scale=q_scale,
             k_scale=k_scale,
             v_scale=v_scale,
+            o_scale=o_scale,
             logits_soft_cap=logits_soft_cap,
             profiler_buffer=profiler_buffer,
             kv_cache_sf=kv_cache_sf,

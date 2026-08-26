@@ -202,10 +202,15 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
                 AttentionOperatorQuantArgumentBinding(
                     "run.v_scale", "runtime_value_scale"
                 ),
+                AttentionOperatorQuantArgumentBinding(
+                    "run.o_scale", "runtime_output_scale"
+                ),
             ),
             runtime_q_scale_policy="argument",
             runtime_k_scale_policy="argument",
             runtime_v_scale_policy="argument",
+            runtime_o_scale_policy="argument",
+            runtime_o_scale_output_dtypes=("float32",),
         )
         spec = replace(values["spec"], quantization_bindings=(extended,))
         plan, session = active_session(values, spec=spec)
@@ -213,6 +218,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         runtime_q_scale = object()
         runtime_k_scale = object()
         runtime_v_scale = object()
+        runtime_o_scale = object()
 
         lowered = session.run(
             "query",
@@ -220,12 +226,14 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
             q_scale=runtime_q_scale,
             k_scale=runtime_k_scale,
             v_scale=runtime_v_scale,
+            o_scale=runtime_o_scale,
         )
 
         keywords = dict(lowered.keyword_arguments)
         self.assertIs(keywords["runtime_query_scale"], runtime_q_scale)
         self.assertIs(keywords["runtime_key_scale"], runtime_k_scale)
         self.assertIs(keywords["runtime_value_scale"], runtime_v_scale)
+        self.assertIs(keywords["runtime_output_scale"], runtime_o_scale)
         self.assertEqual(
             lowered.consumed_request_fields,
             (
@@ -235,6 +243,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
                 "q_scale",
                 "k_scale",
                 "v_scale",
+                "o_scale",
                 "logits_soft_cap",
             ),
         )

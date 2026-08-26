@@ -1,8 +1,8 @@
-# Attention 量化 KV Cache 框架设计
+# Attention 量化输入与输出绑定框架设计
 
-> 状态：Host reference contract v0.4  
-> 日期：2026-08-21  
-> 范围：只定义并验证 Attention 消费量化 KV 的框架语义；不包含 NPU kernel
+> 状态：Host reference contract v0.5
+> 日期：2026-08-26
+> 范围：定义 Attention 消费量化 KV 及 provider 输出量化参数的框架语义；不包含 NPU kernel
 
 ## 1. 目标与边界
 
@@ -134,6 +134,13 @@ operation 的 `AttentionOperatorQuantizationBinding` 将 `run.q_scale`、`run.k_
 的标量 `q_scale` 直接折入该次 canonical plan 的 softmax scale，不伪造额外 provider quant
 参数。非量化 provider 路径仍拒绝这些尚无独立语义证明的 scale。
 
+ragged prefill 的公开 `o_scale` 独立建模为 `run.o_scale`。它不是 K/V 反量化 scale，也不能
+仅凭 provider 参数名相似就转发。绑定除声明精确 catalog argument 外，还必须列出允许的
+`AttentionPlanSpec.o_dtype`；run-time 输出 dtype 不在该集合中时，在外部 package 调用前失败。
+这允许 FlashInfer facade 保留同一 `o_scale` 参数，同时区分支持输出缩放/量化的 operation
+与必须拒绝该参数的 operation。CANN v2 的 `quant_scale_out` 属于输出量化参数，真实 binding
+还必须遵守该版本对输出 dtype、scale dtype 与 shape 的约束。
+
 把 `QuantSpec` 对象作为 `kv_data_type` 是本项目的框架扩展：Python signature 与上游一致，
 但运行时类型契约不是 upstream exact parity。未来 Torch frontend 可以增加清晰命名的
 量化 cache wrapper；不能把额外语义隐藏在裸字符串 dtype 中。
@@ -183,7 +190,8 @@ case 清单或执行结果。
 6. package runtime bootstrap 已要求 capability `QuantSpec` 与 catalog quant arguments 完全闭合；
    真实 CANN/flash-attention-npu binding 仍需逐参数语义与版本证据，不能由参数名称推断。
 7. 通用 provider quantized-KV input 与非执行 run lowering 已冻结 storage/scale/zero-point/
-   runtime multiplier 的独立来源；真实 Torch tensor metadata 与 package adapter 尚未接入。
+   runtime Q/K/V/output scale 的独立来源；真实 Torch tensor metadata 与 package adapter
+   尚未接入。
 
 FP8、NVFP4、MX、真实非逻辑 layout descriptor/converter、K/V 不同 `QuantSpec` 配置和
 量化 packed combined-KV allocation 仍是显式 gap。

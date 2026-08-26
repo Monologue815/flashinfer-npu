@@ -354,7 +354,8 @@ Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.
 
 The internal run request carries `return_lse` as a required boolean semantic and
-keeps `q_scale`, `k_scale` and `v_scale` as three independent optional sources;
+keeps `q_scale`, `k_scale`, `v_scale` and ragged-prefill `o_scale` as four
+independent optional sources;
 none is a provider handle or alters plan selection.
 Paged/ragged wrappers set it from the public flag. A provider adapter must map
 that intent to the selected operation's exact LSE-control argument and return
@@ -362,10 +363,13 @@ schema. The holistic `BatchAttention` contract always requests LSE because its
 public return value is fixed to `(output, lse)`.
 
 For a quantized plan, the quantization binding independently decides whether
-`run.q_scale`, `run.k_scale` and `run.v_scale` map to exact catalog arguments.
-The default policy rejects each source. The base provider adapter sees none of
-the authorized scale values; the quantization adapter injects them only after
-the selected operation, complete `QuantSpec` and argument names are closed.
+`run.q_scale`, `run.k_scale`, `run.v_scale` and `run.o_scale` map to exact catalog
+arguments. The default policy rejects each source. An `o_scale` argument binding
+also declares its eligible plan output dtypes, so output quantization cannot leak
+onto a float-output route that merely shares the same KV `QuantSpec`. The base
+provider adapter sees none of the authorized scale values; the quantization
+adapter injects them only after the selected operation, complete `QuantSpec`,
+output dtype and argument names are closed.
 
 An immutable resource binding is derived from the selected operation before
 active-plan publication. It distinguishes package-managed from caller-managed

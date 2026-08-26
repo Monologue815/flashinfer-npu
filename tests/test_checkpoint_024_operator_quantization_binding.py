@@ -103,6 +103,77 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
                         ),
                     )
 
+    def test_runtime_output_scale_requires_source_policy_and_output_dtype(self):
+        values = bootstrap_components()
+        quant_spec = functional_profile().rules[0].quant_specs[0]
+        arguments = (
+            argument("kv.key.scale", "key_scale"),
+            argument("kv.value.scale", "value_scale"),
+            argument("run.o_scale", "runtime_output_scale"),
+        )
+
+        with self.assertRaisesRegex(SchemaError, "policy does not match"):
+            binding_for(
+                quant_spec,
+                values["operation"],
+                runtime_o_scale_policy="argument",
+                runtime_o_scale_output_dtypes=("float32",),
+            )
+        with self.assertRaisesRegex(SchemaError, "policy does not match"):
+            binding_for(
+                quant_spec,
+                values["operation"],
+                arguments=arguments,
+                runtime_o_scale_output_dtypes=("float32",),
+            )
+        with self.assertRaisesRegex(SchemaError, "requires eligible output dtypes"):
+            binding_for(
+                quant_spec,
+                values["operation"],
+                arguments=arguments,
+                runtime_o_scale_policy="argument",
+            )
+
+    def test_runtime_output_scale_dtype_must_have_capability_rule(self):
+        values = bootstrap_components()
+        quant_spec = functional_profile().rules[0].quant_specs[0]
+        arguments = (
+            argument("kv.key.scale", "key_scale"),
+            argument("kv.value.scale", "value_scale"),
+            argument("run.o_scale", "runtime_output_scale"),
+        )
+        with self.assertRaisesRegex(
+            SchemaError, "output dtype has no capability rule"
+        ):
+            validate_attention_operator_quantization_bindings(
+                values["operation"],
+                values["spec"].profiles,
+                (
+                    binding_for(
+                        quant_spec,
+                        values["operation"],
+                        arguments=arguments,
+                        runtime_o_scale_policy="argument",
+                        runtime_o_scale_output_dtypes=("int8",),
+                    ),
+                ),
+            )
+
+        validated = validate_attention_operator_quantization_bindings(
+            values["operation"],
+            values["spec"].profiles,
+            (
+                binding_for(
+                    quant_spec,
+                    values["operation"],
+                    arguments=arguments,
+                    runtime_o_scale_policy="argument",
+                    runtime_o_scale_output_dtypes=("float32",),
+                ),
+            ),
+        )
+        self.assertEqual(validated[0].runtime_o_scale_output_dtypes, ("float32",))
+
     def test_profile_and_operation_binding_validate_as_an_exact_set(self):
         values = bootstrap_components()
         validated = validate_attention_operator_quantization_bindings(

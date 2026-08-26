@@ -109,7 +109,7 @@ class PublicRaggedPrefillProviderRuntimeCheckpointTests(unittest.TestCase):
 
         with self.assertRaisesRegex(NotImplementedError, "query-scale"):
             wrapper.run("q", "k", "v", q_scale="scale")
-        with self.assertRaisesRegex(NotImplementedError, "o_scale"):
+        with self.assertRaisesRegex(NotImplementedError, "output-scale binding"):
             wrapper.run("q", "k", "v", o_scale="scale")
         with self.assertRaisesRegex(NotImplementedError, "split-K"):
             plan_public_wrapper(wrapper, fixed_split_size=1)
