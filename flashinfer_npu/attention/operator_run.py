@@ -35,7 +35,7 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 4
+ATTENTION_OPERATOR_RUN_VERSION = 5
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
@@ -46,6 +46,9 @@ ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "q_scale",
     "k_scale",
     "v_scale",
+    "q_head_scale",
+    "k_head_scale",
+    "v_head_scale",
     "o_scale",
     "logits_soft_cap",
     "profiler_buffer",
@@ -91,6 +94,9 @@ class AttentionOperatorRunRequest:
     q_scale: Any = None
     k_scale: Any = None
     v_scale: Any = None
+    q_head_scale: Any = None
+    k_head_scale: Any = None
+    v_head_scale: Any = None
     o_scale: Any = None
     logits_soft_cap: float = 0.0
     profiler_buffer: Any = None
@@ -137,6 +143,9 @@ class AttentionOperatorRunRequest:
         q_scale: Any = None,
         k_scale: Any = None,
         v_scale: Any = None,
+        q_head_scale: Any = None,
+        k_head_scale: Any = None,
+        v_head_scale: Any = None,
         o_scale: Any = None,
         logits_soft_cap: float = 0.0,
         profiler_buffer: Any = None,
@@ -156,6 +165,9 @@ class AttentionOperatorRunRequest:
             q_scale=q_scale,
             k_scale=k_scale,
             v_scale=v_scale,
+            q_head_scale=q_head_scale,
+            k_head_scale=k_head_scale,
+            v_head_scale=v_head_scale,
             o_scale=o_scale,
             logits_soft_cap=logits_soft_cap,
             profiler_buffer=profiler_buffer,
@@ -172,6 +184,9 @@ class AttentionOperatorRunRequest:
             "q_scale": self.q_scale,
             "k_scale": self.k_scale,
             "v_scale": self.v_scale,
+            "q_head_scale": self.q_head_scale,
+            "k_head_scale": self.k_head_scale,
+            "v_head_scale": self.v_head_scale,
             "o_scale": self.o_scale,
             "profiler_buffer": self.profiler_buffer,
             "kv_cache_sf": self.kv_cache_sf,
@@ -523,6 +538,28 @@ class AttentionOperatorWrapperSession:
             profiler_buffer=profiler_buffer,
             kv_cache_sf=kv_cache_sf,
         )
+        return self._lower_request(request)
+
+    def _lower_request(
+        self, request: AttentionOperatorRunRequest
+    ) -> AttentionLoweredOperatorCall:
+        """Lower an internal request while keeping mode-specific fields private."""
+
+        if not isinstance(request, AttentionOperatorRunRequest):
+            raise TypeError("request must be AttentionOperatorRunRequest")
+        active_plan = self.active_plan
+        if self._run_adapter is None:  # defensive; active publication is atomic
+            raise AttentionStateError("Attention operator run adapter is not initialized")
+        if (
+            request.active_plan_fingerprint != active_plan.fingerprint
+            or request.framework_plan_fingerprint
+            != active_plan.framework_plan.fingerprint
+            or request.framework_plan_generation
+            != active_plan.framework_plan.generation
+        ):
+            raise AttentionStateError(
+                "Attention operator request does not bind the active plan"
+            )
         if (
             self.runtime_binding.resource_binding_fingerprint
             != self.resource_binding.fingerprint

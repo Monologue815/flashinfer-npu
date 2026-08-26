@@ -127,12 +127,16 @@ single facade 不增加公开 plan handle。调用者仍只调用
 `QuantSpec`、shape、layout 和运行环境选择 provider。逻辑 shape 与实际 storage/scale shape
 会在进入外部 callable 前再次闭合验证。
 
-single prefill 的 `scale_q`、batch paged/ragged 的 `q_scale`，以及 public run 中的
-`k_scale`/`v_scale`，都是与 wrapper 内 K/V scale tensor 相互独立的 run-time 来源。只有所选
-operation 的 `AttentionOperatorQuantizationBinding` 将 `run.q_scale`、`run.k_scale` 或
-`run.v_scale` 精确绑定到 provider 参数时，对应值才会注入；三者默认分别拒绝。single decode
-的标量 `q_scale` 直接折入该次 canonical plan 的 softmax scale，不伪造额外 provider quant
-参数。非量化 provider 路径仍拒绝这些尚无独立语义证明的 scale。
+single prefill 的 `scale_q`/`scale_k`/`scale_v` 是上游 FP8 逐头 scale，在内部独立表示为
+`run.q_head_scale`/`run.k_head_scale`/`run.v_head_scale`。它们不能与同一公开函数中的
+`k_scale`/`v_scale` 校准倍率合并：后两者继续表示为 `run.k_scale`/`run.v_scale`。
+batch paged/ragged 的 `q_scale` 则表示为 `run.q_scale`。只有所选 operation 的
+`AttentionOperatorQuantizationBinding` 将相应来源精确绑定到 provider 参数时才会注入；
+每一项默认独立拒绝。single decode 的标量 `q_scale` 直接折入该次 canonical plan 的
+softmax scale，不伪造额外 provider quant 参数。非量化 provider 路径仍拒绝这些尚无独立
+语义证明的 scale。已授权的逐头 scale 还必须是 contiguous rank-1 tensor，Q 长度等于
+`num_qo_heads`，K/V 长度等于 `num_kv_heads`，dtype 等于绑定 `QuantSpec.scale_dtype`，且
+device 与 provider query 一致；这些检查先于 package callable。
 
 ragged prefill 的公开 `o_scale` 独立建模为 `run.o_scale`。它不是 K/V 反量化 scale，也不能
 仅凭 provider 参数名相似就转发。绑定除声明精确 catalog argument 外，还必须列出允许的
@@ -190,8 +194,9 @@ case 清单或执行结果。
 6. package runtime bootstrap 已要求 capability `QuantSpec` 与 catalog quant arguments 完全闭合；
    真实 CANN/flash-attention-npu binding 仍需逐参数语义与版本证据，不能由参数名称推断。
 7. 通用 provider quantized-KV input 与非执行 run lowering 已冻结 storage/scale/zero-point/
-   runtime Q/K/V/output scale 的独立来源；真实 Torch tensor metadata 与 package adapter
-   尚未接入。
+   runtime Q/K/V/output scale 以及 single-prefill 逐头 Q/K/V scale 的独立来源；真实 Torch
+   tensor metadata 与 package adapter 尚未接入。
 
-FP8、NVFP4、MX、真实非逻辑 layout descriptor/converter、K/V 不同 `QuantSpec` 配置和
-量化 packed combined-KV allocation 仍是显式 gap。
+裸 FP8 tensor 的自动 `QuantSpec` 构造、NVFP4、MX、真实非逻辑 layout
+descriptor/converter、K/V 不同 `QuantSpec` 配置和量化 packed combined-KV allocation
+仍是显式 gap。

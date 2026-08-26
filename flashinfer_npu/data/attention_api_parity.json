@@ -98,7 +98,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. backend='reference' explicitly selects the oracle; backend='auto' with NPU tensors owns an ephemeral provider resolver. Explicit quantized K/V logical shapes drive the plan, and runtime K/V multipliers require exact provider argument bindings. NVFP4 kv_cache_sf remains an explicit gap."
+      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. backend='reference' explicitly selects the oracle; backend='auto' with NPU tensors owns an ephemeral provider resolver. Explicit quantized K/V logical shapes drive the plan. Per-head scale_q/scale_k/scale_v and calibration k_scale/v_scale remain distinct internal sources and each requires an exact provider argument binding. NVFP4 kv_cache_sf remains an explicit gap."
     },
     {
       "upstream": "flashinfer.prefill.single_prefill_with_kv_cache_with_jit_module",

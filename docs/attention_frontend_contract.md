@@ -137,6 +137,10 @@ Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
 | out/lse buffer | shape contract | 是 | 不允许隐式 alias |
 | workspace 地址/容量 | wrapper resource | 可 reset，不能在 run 扩容 | caller-owned 优先 |
 
+single prefill 的 `scale_q`/`scale_k`/`scale_v` 属于逐头量化 scale；同一接口中的
+`k_scale`/`v_scale` 属于校准倍率。provider lowering 必须保持两组来源独立，并为每个非空
+来源声明精确参数绑定；不能因为名称相近而合并或覆盖。
+
 ## 6. CUDA 名称的兼容策略
 
 | 上游参数/属性 | 公共 facade | 内部含义 |

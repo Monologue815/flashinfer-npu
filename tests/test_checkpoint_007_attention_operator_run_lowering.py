@@ -119,6 +119,7 @@ class AttentionOperatorRunLoweringCheckpoint(unittest.TestCase):
             ("key-cache", "value-cache"),
             lse="lse-buffer",
             v_scale="value-scale",
+            q_head_scale="query-head-scale",
         )
         adapter = FakeCannRunAdapter()
 
@@ -142,6 +143,7 @@ class AttentionOperatorRunLoweringCheckpoint(unittest.TestCase):
             lowered.keyword_arguments,
         )
         self.assertEqual(lowered.consumed_request_fields, request.consumed_fields)
+        self.assertIn("q_head_scale", request.consumed_fields)
 
     def test_non_default_run_fields_cannot_be_silently_dropped(self):
         active = active_plan()

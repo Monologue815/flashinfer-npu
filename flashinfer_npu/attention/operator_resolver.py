@@ -37,6 +37,7 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .operator_run import (
     AttentionLoweredOperatorCall,
     AttentionOperatorRunAdapter,
+    AttentionOperatorRunRequest,
     AttentionOperatorWrapperSession,
 )
 from .dispatch import AttentionDispatchReceipt
@@ -770,6 +771,9 @@ class AttentionOperatorRuntime:
         q_scale=None,
         k_scale=None,
         v_scale=None,
+        q_head_scale=None,
+        k_head_scale=None,
+        v_head_scale=None,
         o_scale=None,
         logits_soft_cap=0.0,
         profiler_buffer=None,
@@ -851,7 +855,8 @@ class AttentionOperatorRuntime:
                 self._jit_module_binding,
                 session.callable_binding,
             )
-        lowered = session.run(
+        request = AttentionOperatorRunRequest.from_active_plan(
+            session.active_plan,
             q,
             kv_cache,
             return_lse=return_lse,
@@ -860,11 +865,15 @@ class AttentionOperatorRuntime:
             q_scale=q_scale,
             k_scale=k_scale,
             v_scale=v_scale,
+            q_head_scale=q_head_scale,
+            k_head_scale=k_head_scale,
+            v_head_scale=v_head_scale,
             o_scale=o_scale,
             logits_soft_cap=logits_soft_cap,
             profiler_buffer=profiler_buffer,
             kv_cache_sf=kv_cache_sf,
         )
+        lowered = session._lower_request(request)
         result = self._executor.execute(lowered)
         self._last_lowered_call = lowered
         return result

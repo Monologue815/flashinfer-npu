@@ -93,13 +93,13 @@ def single_prefill_with_kv_cache(
             mode=AttentionMode.SINGLE_PREFILL,
             kv_layout=kv_layout,
         )
-        if scale_k is not None or scale_v is not None:
+        if (
+            scale_q is not None
+            or scale_k is not None
+            or scale_v is not None
+        ) and adapted_provider.kv_quant_spec is None:
             raise NotImplementedError(
-                "provider legacy per-head K/V scale binding is not implemented"
-            )
-        if scale_q is not None and adapted_provider.kv_quant_spec is None:
-            raise NotImplementedError(
-                "provider query-scale binding requires quantized K/V"
+                "provider query-scale/per-head K/V scale binding requires quantized K/V"
             )
         if (
             k_scale is not None or v_scale is not None
@@ -183,9 +183,11 @@ def single_prefill_with_kv_cache(
             q,
             provider_kv_input,
             return_lse=bool(return_lse),
-            q_scale=scale_q,
             k_scale=provider_k_scale,
             v_scale=provider_v_scale,
+            q_head_scale=scale_q,
+            k_head_scale=scale_k,
+            v_head_scale=scale_v,
             logits_soft_cap=spec.logits_soft_cap,
         )
         if return_lse:

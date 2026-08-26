@@ -48,7 +48,7 @@ from .schema import (
 from .tensor_contract import KVCacheView, QuantizedTensorView, TensorView
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 3
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 4
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -59,6 +59,9 @@ _QUANT_ARGUMENT_SOURCES = {
     "run.q_scale",
     "run.k_scale",
     "run.v_scale",
+    "run.q_head_scale",
+    "run.k_head_scale",
+    "run.v_head_scale",
     "run.o_scale",
 }
 _RUNTIME_SCALE_POLICIES = {"reject", "argument"}
@@ -110,6 +113,9 @@ class AttentionOperatorQuantizationBinding:
     runtime_q_scale_policy: str = "reject"
     runtime_k_scale_policy: str = "reject"
     runtime_v_scale_policy: str = "reject"
+    runtime_q_head_scale_policy: str = "reject"
+    runtime_k_head_scale_policy: str = "reject"
+    runtime_v_head_scale_policy: str = "reject"
     runtime_o_scale_policy: str = "reject"
     runtime_o_scale_output_dtypes: Tuple[str, ...] = ()
     kv_input_contract: str = "separate_storage_scale_zero_point"
@@ -151,6 +157,9 @@ class AttentionOperatorQuantizationBinding:
             ("runtime_q_scale_policy", "run.q_scale"),
             ("runtime_k_scale_policy", "run.k_scale"),
             ("runtime_v_scale_policy", "run.v_scale"),
+            ("runtime_q_head_scale_policy", "run.q_head_scale"),
+            ("runtime_k_head_scale_policy", "run.k_head_scale"),
+            ("runtime_v_head_scale_policy", "run.v_head_scale"),
             ("runtime_o_scale_policy", "run.o_scale"),
         ):
             policy = str(getattr(self, name))
@@ -205,6 +214,9 @@ class AttentionOperatorQuantizationBinding:
             "runtime_q_scale_policy": self.runtime_q_scale_policy,
             "runtime_k_scale_policy": self.runtime_k_scale_policy,
             "runtime_v_scale_policy": self.runtime_v_scale_policy,
+            "runtime_q_head_scale_policy": self.runtime_q_head_scale_policy,
+            "runtime_k_head_scale_policy": self.runtime_k_head_scale_policy,
+            "runtime_v_head_scale_policy": self.runtime_v_head_scale_policy,
             "runtime_o_scale_policy": self.runtime_o_scale_policy,
             "runtime_o_scale_output_dtypes": list(
                 self.runtime_o_scale_output_dtypes
@@ -371,6 +383,25 @@ def _inspect_quant_component(
         raise TypeError("tensor metadata inspector must return TensorView")
     if not view.is_contiguous:
         raise SchemaError("%s must be contiguous for provider lowering" % name)
+    return view
+
+
+def _validate_runtime_head_scale(
+    inspector: AttentionOperatorTensorMetadataInspector,
+    value: Any,
+    *,
+    name: str,
+    num_heads: int,
+    dtype: str,
+    device: str,
+) -> TensorView:
+    view = _inspect_quant_component(inspector, value, name)
+    if view.shape != (num_heads,):
+        raise SchemaError("%s shape must be (%d,)" % (name, num_heads))
+    if view.dtype != dtype:
+        raise SchemaError("%s dtype must be %s" % (name, dtype))
+    if view.device != device:
+        raise SchemaError("%s device must match the provider query" % name)
     return view
 
 
@@ -878,11 +909,29 @@ class AttentionOperatorQuantizationRunAdapter:
             ("q_scale", binding.runtime_q_scale_policy),
             ("k_scale", binding.runtime_k_scale_policy),
             ("v_scale", binding.runtime_v_scale_policy),
+            ("q_head_scale", binding.runtime_q_head_scale_policy),
+            ("k_head_scale", binding.runtime_k_head_scale_policy),
+            ("v_head_scale", binding.runtime_v_head_scale_policy),
             ("o_scale", binding.runtime_o_scale_policy),
         ):
             if policy == "reject" and getattr(request, field_name) is not None:
                 raise SchemaError(
                     "quantization binding rejects run-time %s" % field_name
+                )
+        for field_name, num_heads in (
+            ("q_head_scale", active_plan.framework_plan.spec.num_qo_heads),
+            ("k_head_scale", active_plan.framework_plan.spec.num_kv_heads),
+            ("v_head_scale", active_plan.framework_plan.spec.num_kv_heads),
+        ):
+            value = getattr(request, field_name)
+            if value is not None:
+                _validate_runtime_head_scale(
+                    self._tensor_metadata_inspector,
+                    value,
+                    name=field_name,
+                    num_heads=num_heads,
+                    dtype=quant_spec.scale_dtype,
+                    device=self._expected_device,
                 )
         if (
             request.o_scale is not None
@@ -899,6 +948,9 @@ class AttentionOperatorQuantizationRunAdapter:
             q_scale=None,
             k_scale=None,
             v_scale=None,
+            q_head_scale=None,
+            k_head_scale=None,
+            v_head_scale=None,
             o_scale=None,
         )
         lowered = self._base_adapter.lower(active_plan, delegated_request)
@@ -912,6 +964,9 @@ class AttentionOperatorQuantizationRunAdapter:
             "run.q_scale": request.q_scale,
             "run.k_scale": request.k_scale,
             "run.v_scale": request.v_scale,
+            "run.q_head_scale": request.q_head_scale,
+            "run.k_head_scale": request.k_head_scale,
+            "run.v_head_scale": request.v_head_scale,
             "run.o_scale": request.o_scale,
         }
         injected = tuple(

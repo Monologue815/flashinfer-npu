@@ -80,7 +80,7 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
     def test_runtime_scale_policy_must_match_explicit_argument_source(self):
         values = bootstrap_components()
         quant_spec = functional_profile().rules[0].quant_specs[0]
-        for component in ("q", "k", "v"):
+        for component in ("q", "k", "v", "q_head", "k_head", "v_head"):
             source = "run.%s_scale" % component
             argument_name = "runtime_%s_scale" % component
             policy_name = "runtime_%s_scale_policy" % component
