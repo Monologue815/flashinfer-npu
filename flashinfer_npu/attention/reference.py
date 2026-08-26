@@ -200,6 +200,8 @@ class ReferenceQuantizedTensor:
             "uint8": ("uint8", 0, 255),
             "int4_packed": ("uint8", -8, 7),
             "uint4_packed": ("uint8", 0, 15),
+            "float8_e4m3fn": ("float8_e4m3fn", None, None),
+            "float8_e5m2": ("float8_e5m2", None, None),
         }
         if self.quant_spec.storage_dtype not in supported_storage:
             raise NotImplementedError(
@@ -213,6 +215,8 @@ class ReferenceQuantizedTensor:
         storage_tensor_dtype, minimum, maximum = supported_storage[
             self.quant_spec.storage_dtype
         ]
+        if minimum is None and self.quant_spec.has_zero_point:
+            raise SchemaError("FP8 quantized tensor cannot carry zero_point")
         if self.storage.dtype != storage_tensor_dtype:
             raise SchemaError(
                 "quantized storage tensor dtype must be %s" % storage_tensor_dtype
@@ -279,6 +283,10 @@ class ReferenceQuantizedTensor:
         return infer_quant_storage_shape(self.logical_shape, self.quant_spec)
 
     def _validate_storage_values(self, tensor_dtype: str) -> None:
+        if tensor_dtype in {"float8_e4m3fn", "float8_e5m2"}:
+            if any(not math.isfinite(value) for value in self.storage.data):
+                raise SchemaError("FP8 storage values must be finite")
+            return
         if tensor_dtype == "int8":
             minimum, maximum = -128, 127
         else:
@@ -327,7 +335,7 @@ class ReferenceQuantizedTensor:
             )
         return tuple(indices[axis] for axis in axes)
 
-    def quantized_at(self, *indices: int) -> int:
+    def quantized_at(self, *indices: int) -> float:
         if len(indices) != len(self.logical_shape):
             raise IndexError("expected %d logical indices" % len(self.logical_shape))
         for index, dim in zip(indices, self.logical_shape):
@@ -337,6 +345,11 @@ class ReferenceQuantizedTensor:
             "int4_packed",
             "uint4_packed",
         }:
+            if self.quant_spec.storage_dtype in {
+                "float8_e4m3fn",
+                "float8_e5m2",
+            }:
+                return self.storage.at(*indices)
             return int(self.storage.at(*indices))
         packed_indices = indices[:-1] + (indices[-1] // 2,)
         byte = int(self.storage.at(*packed_indices))

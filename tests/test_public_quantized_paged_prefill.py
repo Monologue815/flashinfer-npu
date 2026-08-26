@@ -45,6 +45,9 @@ class FakeNpuWorkspace:
 class MetadataTensor:
     def __init__(self, tensor_view):
         self.tensor_view = tensor_view
+        self.shape = tensor_view.shape
+        self.dtype = tensor_view.dtype
+        self.device = tensor_view.device
 
 
 def metadata_tensor(name, shape, dtype, *, device="npu:0"):

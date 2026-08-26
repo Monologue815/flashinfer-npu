@@ -19,6 +19,7 @@ from flashinfer_npu.prefill import (
     single_prefill_with_kv_cache,
 )
 from flashinfer_npu.runtime import QuantSpec, SchemaError
+from flashinfer_npu.attention.frontend import single_fp8_per_head_quant_spec
 
 
 def tensor(value, dtype="float32", device="cpu"):
@@ -53,6 +54,21 @@ def quantized(logical_shape, storage, scale, spec, zero_point=None):
 
 
 class QuantizedTensorContractTests(unittest.TestCase):
+    def test_fp8_per_head_reference_uses_decoded_storage_values(self):
+        spec = single_fp8_per_head_quant_spec("float8_e4m3fn", "NHD")
+        value = quantized(
+            (2, 2, 1),
+            tensor(
+                [[[1.0], [2.0]], [[-0.5], [4.0]]],
+                dtype="float8_e4m3fn",
+            ),
+            tensor([0.5, 0.25]),
+            spec,
+        )
+
+        self.assertEqual(value.scale_shape, (2,))
+        self.assertEqual(value.dequantize().data, (0.5, 0.5, -0.25, 1.0))
+
     def test_int8_per_tensor_dequantizes_without_materializing_kv(self):
         value = quantized(
             (2, 1, 2),

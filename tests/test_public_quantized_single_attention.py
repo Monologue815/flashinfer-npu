@@ -1,4 +1,5 @@
 import hashlib
+import math
 import unittest
 from dataclasses import replace
 
@@ -31,6 +32,7 @@ from flashinfer_npu.attention import (
 )
 from flashinfer_npu.decode import single_decode_with_kv_cache
 from flashinfer_npu.prefill import single_prefill_with_kv_cache
+from flashinfer_npu.attention.frontend import single_fp8_per_head_quant_spec
 from flashinfer_npu.runtime import KernelCapabilityBinding, QuantSpec, SchemaError
 from tests.test_attention_capability import (
     attention_artifact,
@@ -67,29 +69,47 @@ def single_quant_spec():
     )
 
 
-def single_quantized_case(mode, quant_spec):
+def single_quantized_case(
+    mode, quant_spec, *, q_dtype="float32", o_dtype="float32"
+):
     qo_len = 2 if mode == AttentionMode.SINGLE_PREFILL else 1
     q = (
         ReferenceTensor.from_nested(
-            [[[1.0], [0.5]], [[0.2], [0.4]]], dtype="float32"
+            [[[1.0], [0.5]], [[0.2], [0.4]]], dtype=q_dtype
         )
         if mode == AttentionMode.SINGLE_PREFILL
-        else ReferenceTensor.from_nested([[1.0], [0.5]], dtype="float32")
+        else ReferenceTensor.from_nested([[1.0], [0.5]], dtype=q_dtype)
     )
     logical_shape = (3, 1, 1)
     key = ReferenceQuantizedTensor(
         logical_shape,
-        ReferenceTensor.from_nested([[[1]], [[0]], [[2]]], dtype="int8"),
-        ReferenceTensor.from_nested(
-            [[[1.0]], [[1.0]], [[1.0]]], dtype="float32"
+        ReferenceTensor(
+            infer_quant_storage_shape(logical_shape, quant_spec),
+            (1.0, 0.0, 2.0),
+            dtype=quant_spec.storage_dtype,
+        ),
+        ReferenceTensor(
+            infer_quant_scale_shape(logical_shape, quant_spec),
+            (1.0,) * math.prod(
+                infer_quant_scale_shape(logical_shape, quant_spec)
+            ),
+            dtype=quant_spec.scale_dtype,
         ),
         quant_spec,
     )
     value = ReferenceQuantizedTensor(
         logical_shape,
-        ReferenceTensor.from_nested([[[2]], [[4]], [[1]]], dtype="int8"),
-        ReferenceTensor.from_nested(
-            [[[1.0]], [[1.0]], [[1.0]]], dtype="float32"
+        ReferenceTensor(
+            infer_quant_storage_shape(logical_shape, quant_spec),
+            (2.0, 4.0, 1.0),
+            dtype=quant_spec.storage_dtype,
+        ),
+        ReferenceTensor(
+            infer_quant_scale_shape(logical_shape, quant_spec),
+            (1.0,) * math.prod(
+                infer_quant_scale_shape(logical_shape, quant_spec)
+            ),
+            dtype=quant_spec.scale_dtype,
         ),
         quant_spec,
     )
@@ -98,7 +118,7 @@ def single_quantized_case(mode, quant_spec):
         num_kv_heads=1,
         head_dim_qk=1,
         head_dim_vo=1,
-        dtype="int8",
+        dtype=quant_spec.storage_dtype,
         layout=KVLayout.NHD,
         device="cpu",
         quant_spec=quant_spec,
@@ -110,10 +130,10 @@ def single_quantized_case(mode, quant_spec):
         head_dim_qk=1,
         head_dim_vo=1,
         kv_layout=KVLayout.NHD,
-        q_dtype="float32",
-        kv_dtype="int8",
+        q_dtype=q_dtype,
+        kv_dtype=quant_spec.storage_dtype,
         kv_quant_spec=quant_spec,
-        o_dtype="float32",
+        o_dtype=o_dtype,
     )
     trace = AttentionTrace.capture(
         spec=spec,
@@ -128,12 +148,21 @@ def single_quantized_case(mode, quant_spec):
     )
 
 
-def public_single_quantized_runtime(*, runtime_scales=True):
+def public_single_quantized_runtime(
+    *,
+    runtime_scales=True,
+    quant_spec=None,
+    q_dtype="float32",
+    o_dtype="float32",
+    modes=(AttentionMode.SINGLE_PREFILL, AttentionMode.SINGLE_DECODE),
+):
     values = bootstrap_components()
-    quant_spec = single_quant_spec()
+    quant_spec = single_quant_spec() if quant_spec is None else quant_spec
     cases = tuple(
-        single_quantized_case(mode, quant_spec)
-        for mode in (AttentionMode.SINGLE_PREFILL, AttentionMode.SINGLE_DECODE)
+        single_quantized_case(
+            mode, quant_spec, q_dtype=q_dtype, o_dtype=o_dtype
+        )
+        for mode in modes
     )
     corpus = AttentionTraceCorpus(
         "public-single-quantized-provider-v1",
@@ -201,24 +230,28 @@ def public_single_quantized_runtime(*, runtime_scales=True):
             "attention_single_prefill_quantized_test_entry"
         ),
     )
-    decode_rule = rules[1]
-    decode_descriptor = replace(
-        prefill_descriptor,
-        kernel_id="public_single_decode_quantized_910b_test_v1",
-        op="attention.%s" % AttentionMode.SINGLE_DECODE.value,
-        artifact=attention_artifact(
-            "artifacts/ascend910b/public_single_decode_quantized_test.o"
-        ),
-        launch_abi=attention_launch_abi(
-            "attention_single_decode_quantized_test_entry"
-        ),
-        capability_binding=KernelCapabilityBinding(
-            domain="attention",
-            profile_id=profile.profile_id,
-            rule_id=decode_rule.rule_id,
-            profile_fingerprint=profile.fingerprint,
-        ),
-    )
+    descriptors = [prefill_descriptor]
+    for rule in rules[1:]:
+        descriptors.append(
+            replace(
+                prefill_descriptor,
+                kernel_id="public_%s_quantized_910b_test_v1" % rule.modes[0].value,
+                op="attention.%s" % rule.modes[0].value,
+                artifact=attention_artifact(
+                    "artifacts/ascend910b/public_%s_quantized_test.o"
+                    % rule.modes[0].value
+                ),
+                launch_abi=attention_launch_abi(
+                    "attention_%s_quantized_test_entry" % rule.modes[0].value
+                ),
+                capability_binding=KernelCapabilityBinding(
+                    domain="attention",
+                    profile_id=profile.profile_id,
+                    rule_id=rule.rule_id,
+                    profile_fingerprint=profile.fingerprint,
+                ),
+            )
+        )
     original_binding = values["spec"].quantization_bindings[0]
     if runtime_scales:
         binding = replace(
@@ -257,7 +290,7 @@ def public_single_quantized_runtime(*, runtime_scales=True):
     runtime_spec = replace(
         values["spec"],
         profiles=(profile,),
-        descriptors=(prefill_descriptor, decode_descriptor),
+        descriptors=tuple(descriptors),
         observed_environment=profile.environment,
         quantization_bindings=(binding,),
         corpus=corpus,
@@ -451,6 +484,63 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
         with self.assertRaisesRegex(SchemaError, "rejects run-time k_scale"):
             single_decode_with_kv_cache(
                 decode_q, key, value, k_scale=1.5
+            )
+        self.assertEqual(package_attention.calls, [])
+
+    def test_bare_fp8_single_prefill_canonicalizes_public_head_scales(self):
+        quant_spec = single_fp8_per_head_quant_spec("float8_e4m3fn", "NHD")
+        self.assertEqual(quant_spec.axis, (1,))
+        self.assertEqual(
+            single_fp8_per_head_quant_spec("float8_e5m2", "HND").axis,
+            (0,),
+        )
+        values, _, registry = public_single_quantized_runtime(
+            quant_spec=quant_spec,
+            q_dtype="float8_e4m3fn",
+            o_dtype="float16",
+            modes=(AttentionMode.SINGLE_PREFILL,),
+        )
+        install_attention_operator_runtime_resolvers(
+            registry, operation_catalog=values["catalog"]
+        )
+        package_attention.calls[:] = []
+        q = FakeNpuTensor(
+            "q-fp8", (2, 2, 1), dtype="float8_e4m3fn"
+        )
+        k = metadata_tensor("k-fp8", (3, 1, 1), "float8_e4m3fn")
+        v = metadata_tensor("v-fp8", (3, 1, 1), "float8_e4m3fn")
+        q_scale = metadata_tensor("q-fp8-scale", (2,), "float32")
+        k_scale = metadata_tensor("k-fp8-scale", (1,), "float32")
+        v_scale = metadata_tensor("v-fp8-scale", (1,), "float32")
+
+        output = single_prefill_with_kv_cache(
+            q,
+            k,
+            v,
+            scale_q=q_scale,
+            scale_k=k_scale,
+            scale_v=v_scale,
+            o_dtype="float16",
+        )
+
+        self.assertEqual(output, "package-output:q-fp8")
+        call = package_attention.calls[0]
+        self.assertIs(call[1], k)
+        self.assertIs(call[2], v)
+        self.assertIs(call[6], k_scale)
+        self.assertIs(call[7], v_scale)
+        self.assertIs(call[12], q_scale)
+        self.assertEqual(call[13:15], (None, None))
+
+        package_attention.calls[:] = []
+        with self.assertRaisesRegex(NotImplementedError, "all per-head scales"):
+            single_prefill_with_kv_cache(
+                q,
+                k,
+                v,
+                scale_q=q_scale,
+                scale_k=k_scale,
+                o_dtype="float16",
             )
         self.assertEqual(package_attention.calls, [])
 

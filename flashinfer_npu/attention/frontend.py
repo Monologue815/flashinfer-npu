@@ -198,6 +198,26 @@ def canonicalize_kv_dtype(value, q_dtype: str) -> Tuple[str, Optional[QuantSpec]
     return (q_dtype if value is None else canonicalize_dtype_name(value)), None
 
 
+def single_fp8_per_head_quant_spec(
+    storage_dtype: str, kv_layout: str
+) -> QuantSpec:
+    """Canonical QuantSpec for FlashInfer single-prefill FP8 head scales."""
+
+    dtype = canonicalize_dtype_name(storage_dtype)
+    if dtype not in {"float8_e4m3fn", "float8_e5m2"}:
+        raise SchemaError("single-prefill FP8 storage dtype is unsupported")
+    layout = parse_kv_layout(kv_layout)
+    return QuantSpec(
+        scheme="symmetric",
+        storage_dtype=dtype,
+        compute_dtype="float32",
+        accumulator_dtype="float32",
+        scale_dtype="float32",
+        granularity="channel",
+        axis=(1 if layout == KVLayout.NHD else 0,),
+    )
+
+
 def canonicalize_dtype_name(value) -> str:
     """Normalize string and torch-style dtype objects without importing torch."""
 

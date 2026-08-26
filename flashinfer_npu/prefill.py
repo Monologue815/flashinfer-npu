@@ -25,6 +25,7 @@ from .attention.frontend import (
     parse_pos_encoding_mode,
     reference_index_values,
     require_reference_backend,
+    single_fp8_per_head_quant_spec,
 )
 from .attention.batch import (
     HostBatchReferenceWrapper,
@@ -86,21 +87,61 @@ def single_prefill_with_kv_cache(
             raise DispatchError(
                 "provider single prefill currently requires backend='auto'"
             )
+        provider_key = k
+        provider_value = v
+        provider_q_head_scale = scale_q
+        provider_k_head_scale = scale_k
+        provider_v_head_scale = scale_v
         adapted_provider = adapt_framework_single_qkv(
             q,
-            k,
-            v,
+            provider_key,
+            provider_value,
             mode=AttentionMode.SINGLE_PREFILL,
             kv_layout=kv_layout,
         )
-        if (
-            scale_q is not None
-            or scale_k is not None
-            or scale_v is not None
-        ) and adapted_provider.kv_quant_spec is None:
-            raise NotImplementedError(
-                "provider query-scale/per-head K/V scale binding requires quantized K/V"
+        head_scales = (scale_q, scale_k, scale_v)
+        if adapted_provider.kv_quant_spec is None and any(
+            value is not None for value in head_scales
+        ):
+            fp8_dtypes_match = (
+                adapted_provider.q_dtype == adapted_provider.kv_dtype
+                and adapted_provider.q_dtype
+                in {"float8_e4m3fn", "float8_e5m2"}
             )
+            if not fp8_dtypes_match:
+                raise NotImplementedError(
+                    "provider query-scale/per-head K/V scale binding requires "
+                    "quantized K/V"
+                )
+            if any(value is None for value in head_scales):
+                raise NotImplementedError(
+                    "provider bare FP8 Q/K/V requires all per-head scales until "
+                    "unit-scale materialization is installed"
+                )
+            fp8_quant_spec = single_fp8_per_head_quant_spec(
+                adapted_provider.kv_dtype, kv_layout
+            )
+            provider_key = AttentionOperatorQuantizedTensorInput(
+                quant_spec=fp8_quant_spec,
+                logical_shape=tuple(int(dim) for dim in k.shape),
+                storage=k,
+                scale=scale_k,
+            )
+            provider_value = AttentionOperatorQuantizedTensorInput(
+                quant_spec=fp8_quant_spec,
+                logical_shape=tuple(int(dim) for dim in v.shape),
+                storage=v,
+                scale=scale_v,
+            )
+            adapted_provider = adapt_framework_single_qkv(
+                q,
+                provider_key,
+                provider_value,
+                mode=AttentionMode.SINGLE_PREFILL,
+                kv_layout=kv_layout,
+            )
+            provider_k_head_scale = None
+            provider_v_head_scale = None
         if (
             k_scale is not None or v_scale is not None
         ) and adapted_provider.kv_quant_spec is None:
@@ -170,24 +211,28 @@ def single_prefill_with_kv_cache(
         )
         runtime.plan(spec, adapted_provider.metadata)
         if adapted_provider.kv_quant_spec is not None:
-            provider_kv_input = combine_attention_operator_quantized_kv_input(k, v)
+            provider_kv_input = combine_attention_operator_quantized_kv_input(
+                provider_key, provider_value
+            )
         else:
-            if isinstance(k, AttentionOperatorQuantizedTensorInput) or isinstance(
-                v, AttentionOperatorQuantizedTensorInput
+            if isinstance(
+                provider_key, AttentionOperatorQuantizedTensorInput
+            ) or isinstance(
+                provider_value, AttentionOperatorQuantizedTensorInput
             ):
                 raise SchemaError(
                     "dense provider plan cannot consume quantized tensor inputs"
                 )
-            provider_kv_input = (k, v)
+            provider_kv_input = (provider_key, provider_value)
         result = runtime.run(
             q,
             provider_kv_input,
             return_lse=bool(return_lse),
             k_scale=provider_k_scale,
             v_scale=provider_v_scale,
-            q_head_scale=scale_q,
-            k_head_scale=scale_k,
-            v_head_scale=scale_v,
+            q_head_scale=provider_q_head_scale,
+            k_head_scale=provider_k_head_scale,
+            v_head_scale=provider_v_head_scale,
             logits_soft_cap=spec.logits_soft_cap,
         )
         if return_lse:

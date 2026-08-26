@@ -87,7 +87,7 @@ KV 逻辑 shape：
 同一个 K/V `QuantSpec` 可以因 `qk_dim != vo_dim` 推导出不同的末维 scale shape；
 这是合法的，因为两者绑定不同的 scale tensor。
 
-## 5. INT8、UINT8 与 packed INT4
+## 5. INT8、UINT8、packed INT4 与 logical FP8
 
 当前 Host contract 支持：
 
@@ -97,6 +97,8 @@ KV 逻辑 shape：
 | `uint8` | `uint8` | `[0, 255]` |
 | `int4_packed` | `uint8` | `[-8, 7]` |
 | `uint4_packed` | `uint8` | `[0, 15]` |
+| `float8_e4m3fn` | `float8_e4m3fn` | 有限的已解码 FP8 值 |
+| `float8_e5m2` | `float8_e5m2` | 有限的已解码 FP8 值 |
 
 INT4 沿逻辑 tensor 的最后一维打包，物理末维为 `ceil(logical_last_dim / 2)`。
 `packing_order` 必须是：
@@ -107,6 +109,9 @@ INT4 沿逻辑 tensor 的最后一维打包，物理末维为 `ceil(logical_last
 有符号 INT4 使用 4-bit two's-complement 解码。逻辑末维为奇数时，最后一个 byte
 未使用的 nibble 必须为零；这使 checksum、缓存复用和后续设备 converter 的行为稳定。
 
+Host FP8 oracle 把 `ReferenceTensor` 中的数值视为已经按对应 FP8 格式解码的值，再应用
+逐头 scale；它定义 Attention/scale 语义，不模拟硬件 FP8 舍入、饱和或异常值编码。
+
 ## 6. Public facade 接入
 
 不增加或改写现有 FlashInfer 参数位置：
@@ -115,6 +120,10 @@ INT4 沿逻辑 tensor 的最后一维打包，物理末维为 `ceil(logical_last
   量化 oracle；真实 NPU tensor 路径在相同 K/V 参数位置传入两个
   `AttentionOperatorQuantizedTensorInput`。每个输入显式携带逻辑 shape、storage、scale、
   可选 zero-point 和完整 `QuantSpec`，facade 据此生成一次性 plan，再在内部组合 K/V。
+- single prefill 的裸 NPU FP8 Q/K/V 可以沿用上游接口同时传入
+  `scale_q`/`scale_k`/`scale_v`。框架把 K/V 与各自 scale canonicalize 为内部 per-head
+  `QuantSpec`，调用者不需要构造项目扩展 wrapper。当前必须显式提供三项 scale；缺省
+  scale=1 的设备 tensor materialization 尚未安装，因此部分缺省会显式失败。
 - batch prefill/decode 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；
   Host run 传入 `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
   `AttentionOperatorQuantizedKVInput`；ragged run 的分离 K/V 参数分别传入
@@ -137,6 +146,10 @@ softmax scale，不伪造额外 provider quant 参数。非量化 provider 路�
 语义证明的 scale。已授权的逐头 scale 还必须是 contiguous rank-1 tensor，Q 长度等于
 `num_qo_heads`，K/V 长度等于 `num_kv_heads`，dtype 等于绑定 `QuantSpec.scale_dtype`，且
 device 与 provider query 一致；这些检查先于 package callable。
+
+裸 FP8 canonicalization 中，`scale_k`/`scale_v` 成为内部 K/V quantized input 自带的
+`kv.key.scale`/`kv.value.scale`，不会再次注入 `run.k_head_scale`/`run.v_head_scale`；
+`scale_q` 仍作为 `run.q_head_scale`。这避免同一 scale 被 provider 应用两次。
 
 ragged prefill 的公开 `o_scale` 独立建模为 `run.o_scale`。它不是 K/V 反量化 scale，也不能
 仅凭 provider 参数名相似就转发。绑定除声明精确 catalog argument 外，还必须列出允许的
@@ -197,6 +210,6 @@ case 清单或执行结果。
    runtime Q/K/V/output scale 以及 single-prefill 逐头 Q/K/V scale 的独立来源；真实 Torch
    tensor metadata 与 package adapter 尚未接入。
 
-裸 FP8 tensor 的自动 `QuantSpec` 构造、NVFP4、MX、真实非逻辑 layout
+裸 FP8 的缺省 unit-scale device tensor materialization、NVFP4、MX、真实非逻辑 layout
 descriptor/converter、K/V 不同 `QuantSpec` 配置和量化 packed combined-KV allocation
 仍是显式 gap。
