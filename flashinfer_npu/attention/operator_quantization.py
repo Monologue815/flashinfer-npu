@@ -192,6 +192,7 @@ class AttentionOperatorQuantizedTensorInput:
     """One opaque quantized tensor for public APIs with separate K/V slots."""
 
     quant_spec: QuantSpec
+    logical_shape: Tuple[int, ...]
     storage: Any
     scale: Any
     zero_point: Any = None
@@ -202,6 +203,18 @@ class AttentionOperatorQuantizedTensorInput:
             raise SchemaError("unsupported Attention quantized tensor input version")
         if not isinstance(self.quant_spec, QuantSpec):
             raise TypeError("quant_spec must be QuantSpec")
+        try:
+            logical_shape = tuple(int(dim) for dim in self.logical_shape)
+        except (TypeError, ValueError) as error:
+            raise SchemaError(
+                "quantized tensor input logical_shape must contain integers"
+            ) from error
+        if not logical_shape or any(dim < 0 for dim in logical_shape):
+            raise SchemaError(
+                "quantized tensor input logical_shape must be non-empty and "
+                "non-negative"
+            )
+        object.__setattr__(self, "logical_shape", logical_shape)
         if self.storage is None or self.scale is None:
             raise SchemaError("quantized tensor input requires storage and scale")
         if self.quant_spec.has_zero_point and self.zero_point is None:
@@ -223,6 +236,8 @@ class AttentionOperatorQuantizedKVInput:
     value_scale: Any
     key_zero_point: Any = None
     value_zero_point: Any = None
+    key_logical_shape: Optional[Tuple[int, ...]] = None
+    value_logical_shape: Optional[Tuple[int, ...]] = None
     schema_version: int = ATTENTION_OPERATOR_QUANTIZATION_VERSION
 
     def __post_init__(self) -> None:
@@ -246,6 +261,28 @@ class AttentionOperatorQuantizedKVInput:
             raise SchemaError(
                 "symmetric quantized KV input cannot carry zero points"
             )
+        logical_shapes = (self.key_logical_shape, self.value_logical_shape)
+        if (logical_shapes[0] is None) != (logical_shapes[1] is None):
+            raise SchemaError(
+                "quantized KV input must declare both logical shapes or neither"
+            )
+        if logical_shapes[0] is not None:
+            normalized = []
+            for value in logical_shapes:
+                try:
+                    shape = tuple(int(dim) for dim in value)
+                except (TypeError, ValueError) as error:
+                    raise SchemaError(
+                        "quantized KV logical shapes must contain integers"
+                    ) from error
+                if not shape or any(dim < 0 for dim in shape):
+                    raise SchemaError(
+                        "quantized KV logical shapes must be non-empty and "
+                        "non-negative"
+                    )
+                normalized.append(shape)
+            object.__setattr__(self, "key_logical_shape", normalized[0])
+            object.__setattr__(self, "value_logical_shape", normalized[1])
 
 
 def combine_attention_operator_quantized_kv_input(
@@ -274,6 +311,8 @@ def combine_attention_operator_quantized_kv_input(
         value_scale=value.scale,
         key_zero_point=key.zero_point,
         value_zero_point=value.zero_point,
+        key_logical_shape=key.logical_shape,
+        value_logical_shape=value.logical_shape,
     )
 
 
@@ -433,6 +472,15 @@ def inspect_attention_operator_quantized_kv_input(
         physical_layout_descriptor,
     )
     key_shape, value_shape = cache_spec.expected_shapes
+    if value.key_logical_shape is not None:
+        if value.key_logical_shape != key_shape:
+            raise SchemaError(
+                "quantized key logical_shape does not match the active plan"
+            )
+        if value.value_logical_shape != value_shape:
+            raise SchemaError(
+                "quantized value logical_shape does not match the active plan"
+            )
     key = QuantizedTensorView(
         logical_shape=key_shape,
         storage=components["key_storage"],

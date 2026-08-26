@@ -190,8 +190,9 @@ def public_ragged_runtime():
     return values, case, registry
 
 
-def quantized_tensor_pair(quant_spec, *, value_quant_spec=None):
-    logical_shape = (1, 2, 1)
+def quantized_tensor_pair(
+    quant_spec, *, value_quant_spec=None, logical_shape=(1, 2, 1)
+):
     value_quant_spec = quant_spec if value_quant_spec is None else value_quant_spec
 
     def component(name, component_spec):
@@ -202,6 +203,7 @@ def quantized_tensor_pair(quant_spec, *, value_quant_spec=None):
         )
         return AttentionOperatorQuantizedTensorInput(
             quant_spec=component_spec,
+            logical_shape=logical_shape,
             storage=metadata_tensor(
                 name + "-storage",
                 infer_quant_storage_shape(logical_shape, component_spec),
@@ -296,6 +298,12 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
             wrapper.run("mismatched", key, value)
 
         self.assertEqual(package_attention.calls, [])
+        wrong_shape_key, wrong_shape_value = quantized_tensor_pair(
+            quant_spec, logical_shape=(1, 2, 2)
+        )
+        with self.assertRaisesRegex(SchemaError, "key logical_shape"):
+            wrapper.run("wrong-shape", wrong_shape_key, wrong_shape_value)
+        self.assertEqual(package_attention.calls, [])
         valid_key, valid_value = quantized_tensor_pair(quant_spec)
         self.assertEqual(
             wrapper.run("valid", valid_key, valid_value),
@@ -312,6 +320,7 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         with self.assertRaisesRegex(SchemaError, "requires zero_point"):
             AttentionOperatorQuantizedTensorInput(
                 asymmetric,
+                logical_shape=(1, 2, 1),
                 storage=object(),
                 scale=object(),
             )

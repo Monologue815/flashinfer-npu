@@ -112,12 +112,20 @@ INT4 沿逻辑 tensor 的最后一维打包，物理末维为 `ceil(logical_last
 不增加或改写现有 FlashInfer 参数位置：
 
 - single prefill/decode：K、V 传入两个 `ReferenceQuantizedTensor` 即显式选择 Host
-  量化 oracle。
+  量化 oracle；真实 NPU tensor 路径在相同 K/V 参数位置传入两个
+  `AttentionOperatorQuantizedTensorInput`。每个输入显式携带逻辑 shape、storage、scale、
+  可选 zero-point 和完整 `QuantSpec`，facade 据此生成一次性 plan，再在内部组合 K/V。
 - batch prefill/decode 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；
   Host run 传入 `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
   `AttentionOperatorQuantizedKVInput`；ragged run 的分离 K/V 参数分别传入
   `AttentionOperatorQuantizedTensorInput`，由 wrapper 内部组合。
 - `kv_cache_sf` 仍保留上游 NVFP4 含义，当前显式报未实现，不能借用该参数表达 INT8/INT4。
+
+single facade 不增加公开 plan handle。调用者仍只调用
+`single_prefill_with_kv_cache(q, k, v, ...)` 或
+`single_decode_with_kv_cache(q, k, v, ...)`；框架从 Q 与量化 K/V 描述生成 plan，按完整
+`QuantSpec`、shape、layout 和运行环境选择 provider。逻辑 shape 与实际 storage/scale shape
+会在进入外部 callable 前再次闭合验证。
 
 把 `QuantSpec` 对象作为 `kv_data_type` 是本项目的框架扩展：Python signature 与上游一致，
 但运行时类型契约不是 upstream exact parity。未来 Torch frontend 可以增加清晰命名的

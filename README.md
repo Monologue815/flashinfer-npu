@@ -60,13 +60,13 @@ catalog operation. Merely exposing quantization-named package parameters is
 not treated as runtime support.
 
 The unchanged paged/mixed `kv_cache` run slot can carry an
-`AttentionOperatorQuantizedKVInput` for a future provider integration. Ragged
-prefill keeps its upstream-style separate `k` and `v` positions; each carries
-an `AttentionOperatorQuantizedTensorInput`, and the wrapper combines them
-privately. The framework unwraps K/V storage and injects only the scale,
-zero-point and optional runtime multiplier arguments authorized by the
-selected exact binding; neither public input exposes a provider plan or
-callable handle.
+`AttentionOperatorQuantizedKVInput` for a future provider integration. Single
+prefill/decode and ragged prefill keep their upstream-style separate `k` and
+`v` positions; each carries an `AttentionOperatorQuantizedTensorInput` with an
+explicit logical shape, and the facade or wrapper combines them privately.
+The framework unwraps K/V storage and injects only the scale, zero-point and
+optional runtime multiplier arguments authorized by the selected exact
+binding; neither public input exposes a provider plan or callable handle.
 
 The documentation map and content policy are in
 [`docs/README.md`](docs/README.md). The authoritative design is in

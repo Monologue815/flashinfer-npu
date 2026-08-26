@@ -30,6 +30,10 @@ from .attention.jit_protocol import (
     upstream_kv_layout_code,
 )
 from .attention.schema import AttentionMode, AttentionPlanSpec, PagedKVMetadata
+from .attention.operator_quantization import (
+    AttentionOperatorQuantizedTensorInput,
+    combine_attention_operator_quantized_kv_input,
+)
 
 
 def single_decode_with_kv_cache(
@@ -77,6 +81,7 @@ def single_decode_with_kv_cache(
             pos_encoding_mode=parse_pos_encoding_mode(pos_encoding_mode),
             q_dtype=adapted_provider.q_dtype,
             kv_dtype=adapted_provider.kv_dtype,
+            kv_quant_spec=adapted_provider.kv_quant_spec,
             o_dtype=adapted_provider.q_dtype,
             sm_scale=(
                 1.0 / math.sqrt(adapted_provider.head_dim_qk)
@@ -105,9 +110,19 @@ def single_decode_with_kv_cache(
             mode=AttentionMode.SINGLE_DECODE,
         )
         runtime.plan(spec, adapted_provider.metadata)
+        if adapted_provider.kv_quant_spec is not None:
+            provider_kv_input = combine_attention_operator_quantized_kv_input(k, v)
+        else:
+            if isinstance(k, AttentionOperatorQuantizedTensorInput) or isinstance(
+                v, AttentionOperatorQuantizedTensorInput
+            ):
+                raise SchemaError(
+                    "dense provider plan cannot consume quantized tensor inputs"
+                )
+            provider_kv_input = (k, v)
         result = runtime.run(
             q,
-            (k, v),
+            provider_kv_input,
             return_lse=bool(return_lse),
             logits_soft_cap=spec.logits_soft_cap,
         )

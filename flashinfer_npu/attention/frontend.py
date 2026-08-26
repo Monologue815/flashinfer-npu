@@ -62,6 +62,7 @@ class FrameworkSingleQKVPlanInput:
     head_dim_vo: int
     q_dtype: str
     kv_dtype: str
+    kv_quant_spec: Optional[QuantSpec]
     device: str
 
 
@@ -94,8 +95,29 @@ def adapt_framework_single_qkv(
         raise SchemaError("framework single-QKV adapter requires a single mode")
     layout = parse_kv_layout(kv_layout)
     q_shape, q_dtype, q_device = _framework_tensor_facts(q, "q")
-    k_shape, k_dtype, k_device = _framework_tensor_facts(k, "k")
-    v_shape, v_dtype, v_device = _framework_tensor_facts(v, "v")
+    from .operator_quantization import AttentionOperatorQuantizedTensorInput
+
+    quantized_kv = isinstance(k, AttentionOperatorQuantizedTensorInput) or isinstance(
+        v, AttentionOperatorQuantizedTensorInput
+    )
+    if quantized_kv:
+        if not isinstance(k, AttentionOperatorQuantizedTensorInput) or not isinstance(
+            v, AttentionOperatorQuantizedTensorInput
+        ):
+            raise TypeError("quantized K and V must be provided together")
+        if k.quant_spec.fingerprint != v.quant_spec.fingerprint:
+            raise SchemaError("quantized K and V must use the same QuantSpec")
+        k_shape = k.logical_shape
+        v_shape = v.logical_shape
+        k_dtype = k.quant_spec.storage_dtype
+        v_dtype = v.quant_spec.storage_dtype
+        k_device = q_device
+        v_device = q_device
+        kv_quant_spec = k.quant_spec
+    else:
+        k_shape, k_dtype, k_device = _framework_tensor_facts(k, "k")
+        v_shape, v_dtype, v_device = _framework_tensor_facts(v, "v")
+        kv_quant_spec = None
     expected_q_rank = 2 if mode == AttentionMode.SINGLE_DECODE else 3
     if len(q_shape) != expected_q_rank:
         raise SchemaError("%s q must be rank %d" % (mode.value, expected_q_rank))
@@ -137,6 +159,7 @@ def adapt_framework_single_qkv(
         head_dim_vo=head_dim_vo,
         q_dtype=q_dtype,
         kv_dtype=k_dtype,
+        kv_quant_spec=kv_quant_spec,
         device=q_device,
     )
 

@@ -124,6 +124,7 @@ def single_prefill_with_kv_cache(
             pos_encoding_mode=parse_pos_encoding_mode(pos_encoding_mode),
             q_dtype=adapted_provider.q_dtype,
             kv_dtype=adapted_provider.kv_dtype,
+            kv_quant_spec=adapted_provider.kv_quant_spec,
             o_dtype=(
                 adapted_provider.q_dtype
                 if o_dtype is None
@@ -156,9 +157,19 @@ def single_prefill_with_kv_cache(
             mode=AttentionMode.SINGLE_PREFILL,
         )
         runtime.plan(spec, adapted_provider.metadata)
+        if adapted_provider.kv_quant_spec is not None:
+            provider_kv_input = combine_attention_operator_quantized_kv_input(k, v)
+        else:
+            if isinstance(k, AttentionOperatorQuantizedTensorInput) or isinstance(
+                v, AttentionOperatorQuantizedTensorInput
+            ):
+                raise SchemaError(
+                    "dense provider plan cannot consume quantized tensor inputs"
+                )
+            provider_kv_input = (k, v)
         result = runtime.run(
             q,
-            (k, v),
+            provider_kv_input,
             return_lse=bool(return_lse),
             logits_soft_cap=spec.logits_soft_cap,
         )
