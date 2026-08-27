@@ -88,6 +88,11 @@ If no rule matches, the same structure binds the policy fingerprint and the
 explicit default. Provider-level equal top scores remain ambiguous in the
 runtime resolver and fail before a plan is published.
 
+The complete resolution-report fingerprint is part of the immutable active-plan
+fingerprint. Execution and completion receipts bind that active-plan identity,
+so a stored run receipt and its `plan_selection` record form one auditable chain
+back to the exact scoring policy and selected rule.
+
 ## Side-effect boundary
 
 Policy evaluation reads only `AttentionFrameworkPlan`, `AttentionPlanSpec` and

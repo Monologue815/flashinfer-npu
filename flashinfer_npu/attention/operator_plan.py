@@ -14,7 +14,7 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
 
 
-ATTENTION_OPERATOR_PLAN_VERSION = 6
+ATTENTION_OPERATOR_PLAN_VERSION = 7
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -103,6 +103,7 @@ class AttentionOperatorActivePlan:
     dispatch_receipt: AttentionDispatchReceipt
     provider_selection: AttentionOperatorProviderSelection
     prepared_plan: AttentionPreparedOperatorPlan
+    runtime_resolution_fingerprint: Optional[str] = None
     jit_plan_binding_fingerprint: Optional[str] = None
     jit_artifact_binding_fingerprint: Optional[str] = None
     jit_module_binding_fingerprint: Optional[str] = None
@@ -150,6 +151,11 @@ class AttentionOperatorActivePlan:
             or prepared.framework_plan_generation != plan.generation
         ):
             raise SchemaError("prepared operator plan identity is stale")
+        if self.runtime_resolution_fingerprint is not None:
+            _require_hash(
+                "runtime_resolution_fingerprint",
+                self.runtime_resolution_fingerprint,
+            )
         if receipt.backend == Backend.ASCENDC_JIT:
             values = (
                 self.jit_plan_binding_fingerprint,
@@ -189,6 +195,9 @@ class AttentionOperatorActivePlan:
                 "dispatch_receipt_fingerprint": self.dispatch_receipt.fingerprint,
                 "provider_selection_fingerprint": self.provider_selection.fingerprint,
                 "prepared_plan_fingerprint": self.prepared_plan.fingerprint,
+                "runtime_resolution_fingerprint": (
+                    self.runtime_resolution_fingerprint
+                ),
                 "jit_plan_binding_fingerprint": self.jit_plan_binding_fingerprint,
                 "jit_artifact_binding_fingerprint": (
                     self.jit_artifact_binding_fingerprint
@@ -233,6 +242,7 @@ class AttentionOperatorPlanSession:
         jit_module_binding_fingerprint: Optional[str] = None,
         jit_planner_binding_fingerprint: Optional[str] = None,
         jit_executor_binding_fingerprint: Optional[str] = None,
+        runtime_resolution_fingerprint: Optional[str] = None,
     ) -> None:
         """Prepare then publish; a failed re-plan preserves the previous state."""
 
@@ -248,6 +258,7 @@ class AttentionOperatorPlanSession:
             dispatch_receipt=receipt,
             provider_selection=selection,
             prepared_plan=prepared,
+            runtime_resolution_fingerprint=runtime_resolution_fingerprint,
             jit_plan_binding_fingerprint=jit_plan_binding_fingerprint,
             jit_artifact_binding_fingerprint=jit_artifact_binding_fingerprint,
             jit_module_binding_fingerprint=jit_module_binding_fingerprint,

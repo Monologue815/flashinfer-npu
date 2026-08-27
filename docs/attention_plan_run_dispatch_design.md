@@ -332,6 +332,7 @@ transaction succeeds. It binds:
 
 - canonical framework-plan fingerprint;
 - registry snapshot and provider generation;
+- complete runtime-resolution report fingerprint, including provider scores;
 - implementation, catalog and operation identity;
 - package/runtime authority;
 - provider materialization and external plan identity;
@@ -448,6 +449,12 @@ operation and ordered return names must agree. Callable failure, completion
 failure and replanning all clear the previous atomic receipt, so “the selected
 callable ran” and “the returned tensors were accepted” form one auditable run
 fact rather than two unrelated observations.
+
+The active-plan fingerprint includes the runtime-resolution fingerprint. Every
+execution and completion receipt already binds the active-plan fingerprint, so
+a successful atomic run receipt transitively proves the exact scored provider
+decision used for execution. `plan_selection` publishes both fingerprints and
+rejects a resolution fingerprint that differs from the active plan.
 
 For JIT, the module/callable executor binding is necessarily created before the
 final active-plan runtime binding. `bind_runtime()` may then produce a different

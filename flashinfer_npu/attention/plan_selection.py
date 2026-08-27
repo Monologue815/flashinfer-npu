@@ -188,6 +188,13 @@ def build_provider_plan_selection(
         or active_plan.framework_plan.generation != plan.generation
     ):
         raise SchemaError("provider selection does not bind the wrapper plan")
+    if (
+        runtime_resolution_fingerprint
+        != active_plan.runtime_resolution_fingerprint
+    ):
+        raise SchemaError(
+            "provider selection runtime resolution differs from active plan"
+        )
     return AttentionPlanSelection(
         mode=plan.spec.mode,
         route="provider",

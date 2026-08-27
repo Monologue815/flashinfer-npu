@@ -926,6 +926,7 @@ class AttentionOperatorRuntime:
                 if resolved.jit_executor_binding is not None
                 else None
             ),
+            resolved.runtime_resolution_fingerprint,
         )
         candidate_workspace_contract = None
         if workspace_contract is not None:
@@ -962,6 +963,13 @@ class AttentionOperatorRuntime:
         candidate_runtime_resolution_fingerprint = (
             resolved.runtime_resolution_fingerprint
         )
+        if (
+            candidate_operator_session.active_plan.runtime_resolution_fingerprint
+            != candidate_runtime_resolution_fingerprint
+        ):
+            raise SchemaError(
+                "active plan did not freeze the runtime resolution identity"
+            )
         if candidate_jit_plan_binding is not None and (
             candidate_operator_session.active_plan.jit_plan_binding_fingerprint
             != candidate_jit_plan_binding.fingerprint
