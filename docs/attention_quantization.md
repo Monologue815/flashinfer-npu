@@ -130,12 +130,12 @@ per-head 或 per-tensor scale；它定义 Attention/scale 语义，不模拟硬�
   scalar virtual unit scale，`q_scale` 与 `k_scale` 只进入 canonical plan 的 softmax scale，
   `v_scale` 保持为输出倍率。provider 必须证明 K/V scale 参数省略等价于 1，调用者仍不需要
   构造项目扩展 wrapper。
-- batch prefill 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；Host run 传入
-  `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
+- batch ragged prefill 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；Host run
+  传入 `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
   `AttentionOperatorQuantizedKVInput`；ragged run 的分离 K/V 参数分别传入
   `AttentionOperatorQuantizedTensorInput`，由 wrapper 内部组合。
-- batch paged decode 的 NPU provider plan 还接受上游形式的 FP8 `kv_data_type`，并自动生成
-  per-tensor QuantSpec；Host oracle 继续直接读取 logical FP8 `ReferenceTensor`。
+- batch paged prefill/decode 的 NPU provider plan 还接受上游形式的 FP8 `kv_data_type`，并
+  自动生成 per-tensor QuantSpec；Host oracle 继续直接读取 logical FP8 `ReferenceTensor`。
   分离的裸 `(K, V)` cache 在内部获得 scalar virtual unit scale；provider 未声明参数省略
   等价于 1 时不能注册。合并 cache 需要经过验证的 slot-view binding，当前不会猜测或切片。
 - `kv_cache_sf` 仍保留上游 NVFP4 含义，当前显式报未实现，不能借用该参数表达 INT8/INT4。
@@ -158,7 +158,7 @@ batch paged/ragged 的 `q_scale` 则表示为 `run.q_scale`。只有所选 opera
 `num_qo_heads`，K/V 长度等于 `num_kv_heads`，dtype 等于绑定 `QuantSpec.scale_dtype`，且
 device 与 provider query 一致；这些检查先于 package callable。
 
-batch paged decode 的 plan 可跨多次 run 复用，因此 `q_scale/k_scale/v_scale` 数值不进入
+batch paged prefill/decode 的 plan 可跨多次 run 复用，因此 `q_scale/k_scale/v_scale` 数值不进入
 plan fingerprint；它们保持三个独立的运行来源，并由精确 provider binding 承接。缺省值
 不注入参数，语义为 1。裸 FP8 cache 的 K/V virtual unit scale 与这三个 calibration 值不是
 同一层概念，不能相乘后写回 cache scale。
@@ -168,7 +168,7 @@ plan fingerprint；它们保持三个独立的运行来源，并由精确 provid
 `scale_q` 仍作为 `run.q_head_scale`。这避免同一 scale 被 provider 应用两次。
 缺省项不会伪造设备地址或在 run 热路径临时分配 tensor：框架验证 virtual unit scale 的
 scalar/head shape、float32 dtype 和 device 后，按 `implicit_unit_scale_sources` 省略已获授权的
-provider 参数。未声明该语义的 FP8 provider 不能注册为完整 single-attention candidate。
+provider 参数。未声明该语义的 FP8 provider 不能注册为完整 public Attention candidate。
 
 ragged prefill 的公开 `o_scale` 独立建模为 `run.o_scale`。它不是 K/V 反量化 scale，也不能
 仅凭 provider 参数名相似就转发。绑定除声明精确 catalog argument 外，还必须列出允许的

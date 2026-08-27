@@ -773,6 +773,7 @@ def validate_attention_operator_quantization_bindings(
                         fp8_implicit_unit_modes.add(mode)
                     elif mode in {
                         AttentionMode.SINGLE_DECODE,
+                        AttentionMode.BATCH_PREFILL_PAGED,
                         AttentionMode.BATCH_DECODE_PAGED,
                     } and _is_canonical_fp8_per_tensor(binding.quant_spec):
                         fp8_implicit_unit_modes.add(mode)

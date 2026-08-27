@@ -152,7 +152,7 @@ scale；仅当 provider binding 明确声明省略相应参数等价于 scale=1 
 `k_scale` 乘入 plan softmax scale，`v_scale` 作为输出倍率进入精确 provider binding。
 provider 未证明省略 K/V scale 参数等价于 1 时，该候选在 bootstrap 阶段失败。
 
-Batch paged decode 的 NPU provider plan 在 `plan(..., kv_data_type=FP8)` 时同样生成
+Batch paged prefill/decode 的 NPU provider plan 在 `plan(..., kv_data_type=FP8)` 时同样生成
 per-tensor QuantSpec，但 plan 可复用，所以 `run()` 的 `q_scale/k_scale/v_scale` 保持动态
 provider 参数。Host oracle 仍直接读取 logical FP8 `ReferenceTensor`。分离的裸
 `(K, V)` cache 会被内部量化输入包装，scalar unit scale 仅在 provider 明确授权后省略。

@@ -116,7 +116,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "The public wrapper keeps backend='reference' as an explicit Host oracle and routes backend='auto' with an NPU workspace through a private, mode-bound provider runtime. No provider is enabled by default; unbound provider options fail before package invocation."
+      "notes": "The public wrapper keeps backend='reference' as an explicit Host oracle and routes backend='auto' with an NPU workspace through a private, mode-bound provider runtime. No provider is enabled by default; unbound provider options fail before package invocation. An FP8 kv_data_type becomes the canonical per-tensor provider QuantSpec; separate bare K/V use authorized virtual scalar unit scales, while combined provider storage remains fail-closed."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.workspace_size",
@@ -133,7 +133,8 @@
       "upstream_kind": "stable",
       "semantic_status": "compatible",
       "implementation_status": "reference",
-      "priority": "P0"
+      "priority": "P0",
+      "notes": "For an NPU provider plan, an FP8 kv_data_type is normalized into the canonical per-tensor QuantSpec before selection; the Host oracle continues to read logical FP8 ReferenceTensor inputs directly."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.run",
@@ -142,7 +143,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "The public signature includes current upstream q/k/v scales, caller-owned buffers, runtime window, attention sinks, NVFP4 scale factors, skip-softmax sparsity, FP16 softmax, and SP-compression controls. The Host oracle rejects enabled backend-specific features that it cannot represent."
+      "notes": "The public signature includes current upstream q/k/v scales, caller-owned buffers, runtime window, attention sinks, NVFP4 scale factors, skip-softmax sparsity, FP16 softmax, and SP-compression controls. The Host oracle rejects enabled backend-specific features that it cannot represent. Provider q_scale/k_scale/v_scale remain independent dynamic sources on the reusable plan; bare separate FP8 K/V are canonicalized internally only under exact implicit-unit authorization."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.reset_workspace_buffer",
