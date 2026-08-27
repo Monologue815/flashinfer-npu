@@ -53,11 +53,17 @@ class StrictResultPackageLoader(FakePackageLoader):
         return strict_package_attention
 
 
-def strict_runtime():
+def strict_runtime(*, access_policy=None):
     values = bootstrap_components()
     values["loader"] = StrictResultPackageLoader(values["events"])
     values["spec"] = replace(
-        values["spec"], validate_provider_results=True
+        values["spec"],
+        validate_provider_results=True,
+        tensor_access_policy=(
+            values["spec"].tensor_access_policy
+            if access_policy is None
+            else access_policy
+        ),
     )
     registry = build_attention_operator_runtime_resolvers(
         (values["spec"],),

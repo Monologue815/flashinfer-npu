@@ -49,7 +49,7 @@ from .tensor_contract import (
 )
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 8
+ATTENTION_OPERATOR_RUN_VERSION = 9
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
@@ -71,6 +71,9 @@ ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_VIEW_NAME = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$"
+)
 
 
 def _require_hash(name: str, value: str) -> None:
@@ -224,6 +227,7 @@ class AttentionLoweredOperatorCall:
     keyword_arguments: Tuple[Tuple[str, Any], ...] = ()
     return_names: Tuple[str, ...] = ("output",)
     mutable_argument_names: Tuple[str, ...] = ()
+    validated_input_views: Tuple[Tuple[str, TensorView], ...] = ()
     consumed_request_fields: Tuple[str, ...] = ()
     schema_version: int = ATTENTION_OPERATOR_RUN_VERSION
 
@@ -256,6 +260,21 @@ class AttentionLoweredOperatorCall:
             all_arguments
         ):
             raise SchemaError("mutable arguments must name unique call arguments")
+        try:
+            validated_inputs = tuple(
+                (str(name), view) for name, view in self.validated_input_views
+            )
+        except (TypeError, ValueError) as error:
+            raise SchemaError(
+                "validated input views must contain (name, TensorView) pairs"
+            ) from error
+        validated_names = tuple(name for name, _ in validated_inputs)
+        if (
+            len(set(validated_names)) != len(validated_names)
+            or any(not _VIEW_NAME.fullmatch(name) for name in validated_names)
+            or any(not isinstance(view, TensorView) for _, view in validated_inputs)
+        ):
+            raise SchemaError("validated input views are invalid")
         consumed = tuple(str(item) for item in self.consumed_request_fields)
         if len(set(consumed)) != len(consumed) or any(
             item not in ATTENTION_OPERATOR_RUN_REQUEST_FIELDS for item in consumed
@@ -267,6 +286,7 @@ class AttentionLoweredOperatorCall:
         object.__setattr__(self, "keyword_arguments", keyword)
         object.__setattr__(self, "return_names", returns)
         object.__setattr__(self, "mutable_argument_names", mutable)
+        object.__setattr__(self, "validated_input_views", validated_inputs)
         object.__setattr__(self, "consumed_request_fields", consumed)
 
 
@@ -562,7 +582,19 @@ class AttentionOperatorRunTensorValidationAdapter:
             output_views[1][1]
         ):
             raise SchemaError("out and lse cannot alias")
-        return self._base_adapter.lower(active_plan, request)
+        lowered = self._base_adapter.lower(active_plan, request)
+        if not isinstance(lowered, AttentionLoweredOperatorCall):
+            raise TypeError("base run adapter returned an invalid call description")
+        delegated_inputs = lowered.validated_input_views
+        if plan.spec.kv_quant_spec is None and delegated_inputs:
+            raise SchemaError(
+                "unquantized base adapter cannot supply validated input views"
+            )
+        combined_inputs = tuple(input_views) + delegated_inputs
+        combined_names = tuple(name for name, _ in combined_inputs)
+        if len(set(combined_names)) != len(combined_names):
+            raise SchemaError("validated input view names overlap")
+        return replace(lowered, validated_input_views=combined_inputs)
 
 
 class AttentionOperatorRunTensorValidationAdapterFactory:

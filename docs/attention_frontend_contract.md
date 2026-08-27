@@ -106,6 +106,12 @@ metadata contract 后才把结果交给公开 wrapper；失败不会返回结果
 也不会静默重试算子。replan 必须为新 active-plan fingerprint 重建 validator。JIT 与非 JIT
 共用此返回边界，且不会替换已有 callable/JIT executor identity。只有无 tensor metadata 的
 合成集成夹具才应显式关闭该默认验证，生产 provider registration 不应关闭。
+外层 run-tensor validator 还会把已接受的 input metadata view 冻结到 lowered call：dense
+路径包含 Q/K/V，量化路径包含 Q、K/V physical storage、scale、可选 zero-point，以及所有
+tensor 形式的 runtime/head scale。completion 必须看到 query evidence；除非同一份
+`AttentionTensorAccessPolicy` 明确允许 output/input alias，否则 output/LSE 不得与任何已冻结
+input view 重叠。receipt 同时记录 input 和 result view fingerprint，使 run admission 到公开
+结果发布形成完整 metadata 证据链。
 ragged prefill 继续公开 `q_scale/k_scale/v_scale/o_scale`。其中 `o_scale` 是输出 scale，
 只有选中 operation 的量化 binding 同时声明精确参数名和允许的 plan 输出 dtype 时才会传入；
 它不会改变 plan 选择，也不会被解释成 KV scale。

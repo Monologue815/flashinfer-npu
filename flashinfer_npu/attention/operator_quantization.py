@@ -1316,6 +1316,10 @@ class AttentionOperatorQuantizationRunAdapter:
         lowered = self._base_adapter.lower(active_plan, delegated_request)
         if not isinstance(lowered, AttentionLoweredOperatorCall):
             raise TypeError("base run adapter returned an invalid call description")
+        if lowered.validated_input_views:
+            raise SchemaError(
+                "quantization base adapter cannot supply validated input views"
+            )
         values_by_source = {
             "kv.key.scale": kv_input.key_scale,
             "kv.value.scale": kv_input.value_scale,
@@ -1358,6 +1362,7 @@ class AttentionOperatorQuantizationRunAdapter:
         return replace(
             lowered,
             keyword_arguments=lowered.keyword_arguments + injected,
+            validated_input_views=tuple(quant_input_views),
             consumed_request_fields=request.consumed_fields,
         )
 

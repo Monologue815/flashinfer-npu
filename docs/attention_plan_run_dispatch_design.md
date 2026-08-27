@@ -407,6 +407,17 @@ callable nor the JIT executor, so their existing identity bindings remain
 unchanged. A bootstrap spec can disable result validation only explicitly,
 which is intended for metadata-free synthetic integration fixtures rather than
 production provider registrations.
+The outer run-tensor validator also freezes the exact metadata views it has
+accepted into the lowered call. For dense paths these are Q/K/V; for quantized
+paths they include Q, physical key/value storage, scales, optional zero-points
+and every tensor-valued runtime/head scale. Provider-specific inner adapters
+cannot inject this evidence: the quantization validator must create its portion
+first and the outer validator then prepends the query view (and dense KV views).
+The completion validator requires that query evidence and, unless the one
+shared access policy explicitly permits output/input aliasing, rejects output
+or LSE overlap with every frozen input view. The completion receipt includes
+both input and result view fingerprints, closing the metadata chain from run
+admission through public result publication.
 
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.

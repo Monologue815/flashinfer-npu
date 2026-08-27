@@ -18,7 +18,7 @@ from .operator_run import (
 from .tensor_contract import AttentionTensorAccessPolicy, TensorView
 
 
-ATTENTION_OPERATOR_COMPLETION_VERSION = 1
+ATTENTION_OPERATOR_COMPLETION_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -47,6 +47,7 @@ class AttentionOperatorCompletionReceipt:
     operation_id: str
     expected_device: str
     return_names: Tuple[str, ...]
+    input_view_fingerprints: Tuple[Tuple[str, str], ...]
     result_view_fingerprints: Tuple[Tuple[str, str], ...]
     schema_version: int = ATTENTION_OPERATOR_COMPLETION_VERSION
 
@@ -63,17 +64,29 @@ class AttentionOperatorCompletionReceipt:
         if not self.provider_id or not self.operation_id or not self.expected_device:
             raise SchemaError("Attention completion identities must be non-empty")
         return_names = tuple(str(item) for item in self.return_names)
+        inputs = tuple(
+            (str(name), str(fingerprint))
+            for name, fingerprint in self.input_view_fingerprints
+        )
         views = tuple(
             (str(name), str(fingerprint))
             for name, fingerprint in self.result_view_fingerprints
         )
         if not return_names or len(set(return_names)) != len(return_names):
             raise SchemaError("Attention completion return names must be unique")
+        input_names = tuple(name for name, _ in inputs)
+        if (
+            not inputs
+            or len(set(input_names)) != len(input_names)
+            or "query" not in input_names
+        ):
+            raise SchemaError("Attention completion input views are invalid")
         if tuple(name for name, _ in views) != return_names:
             raise SchemaError("Attention completion result views are out of order")
-        for _, fingerprint in views:
+        for _, fingerprint in inputs + views:
             _require_hash("result view fingerprint", fingerprint)
         object.__setattr__(self, "return_names", return_names)
+        object.__setattr__(self, "input_view_fingerprints", inputs)
         object.__setattr__(self, "result_view_fingerprints", views)
 
     def to_dict(self):
@@ -87,6 +100,9 @@ class AttentionOperatorCompletionReceipt:
             "operation_id": self.operation_id,
             "expected_device": self.expected_device,
             "return_names": list(self.return_names),
+            "input_view_fingerprints": [
+                list(item) for item in self.input_view_fingerprints
+            ],
             "result_view_fingerprints": [list(item) for item in self.result_view_fingerprints],
         }
 
@@ -154,6 +170,12 @@ class AttentionOperatorCompletionValidator:
             raise SchemaError("completed Attention return names differ from operation")
         if any(name not in ("output", "softmax_lse") for name in call.return_names):
             raise SchemaError("unsupported public Attention completion result")
+        input_views = call.validated_input_views
+        input_names = tuple(name for name, _ in input_views)
+        if not input_views or "query" not in input_names:
+            raise SchemaError(
+                "completed Attention call has no validated query/input views"
+            )
 
         if len(call.return_names) == 1:
             if isinstance(result, (tuple, list)):
@@ -206,6 +228,13 @@ class AttentionOperatorCompletionValidator:
 
         if len(named_views) == 2 and named_views[0][1].overlaps(named_views[1][1]):
             raise SchemaError("output and softmax_lse results cannot alias")
+        if not self._access_policy.permit_output_input_alias:
+            for result_name, result_view in named_views:
+                for input_name, input_view in input_views:
+                    if result_view.overlaps(input_view):
+                        raise SchemaError(
+                            "%s result cannot alias %s" % (result_name, input_name)
+                        )
         return AttentionOperatorCompletionReceipt(
             active_plan_fingerprint=self._active_plan.fingerprint,
             framework_plan_fingerprint=plan.fingerprint,
@@ -215,6 +244,9 @@ class AttentionOperatorCompletionValidator:
             operation_id=self.operation_id,
             expected_device=self._expected_device,
             return_names=call.return_names,
+            input_view_fingerprints=tuple(
+                (name, view.fingerprint) for name, view in input_views
+            ),
             result_view_fingerprints=tuple(
                 (name, view.fingerprint) for name, view in named_views
             ),
