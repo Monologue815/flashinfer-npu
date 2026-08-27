@@ -233,3 +233,6 @@ fingerprint. A successful validated provider call copies the same four fields
 into `AttentionOperatorRunReceipt`, whose active-plan fingerprint already binds
 the resolution report. Completion failure publishes no receipt. Reference,
 legacy and custom-scored paths keep the optional manifest fields absent.
+
+Offline replay and cross-artifact verification are specified separately in
+[Attention plan scoring audit](attention_plan_scoring_audit.md).

@@ -487,7 +487,10 @@ plan 发布前还必须将 resolver score 的结构化 policy id/fingerprint 与
 manifest binding 精确比对，不能解析 source 文本充当权限。成功后 manifest/policy 身份
 同时进入只读 plan selection 与通过 completion gate 的 run receipt；失败调用不发布回执。
 完整契约见
-[Attention plan scoring policy](attention_plan_scoring_policy.md)。
+[Attention plan scoring policy](attention_plan_scoring_policy.md)；部署后使用
+[Attention plan scoring audit](attention_plan_scoring_audit.md) 在纯 Host 环境复算实际被
+scorer 评估的候选，并核对 plan、resolution、registry、declaration、selection 与可选 run
+receipt 的完整身份链。
 
 ### 11.3 Autotuning
 

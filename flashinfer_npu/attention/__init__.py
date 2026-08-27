@@ -418,6 +418,13 @@ from .operator_scoring import (
     AttentionOperatorPlanScoringPolicy,
     load_attention_operator_plan_scoring_manifest,
 )
+from .scoring_audit import (
+    ATTENTION_PLAN_SCORING_AUDIT_VERSION,
+    AttentionPlanScoringAuditCandidate,
+    AttentionPlanScoringAuditError,
+    AttentionPlanScoringAuditReport,
+    verify_attention_plan_scoring_chain,
+)
 from .operator_execution import (
     ATTENTION_OPERATOR_EXECUTION_VERSION,
     AttentionInjectedCallableExecutor,
@@ -582,6 +589,7 @@ __all__ = [
     "ATTENTION_OPERATOR_RESOLVER_VERSION",
     "ATTENTION_OPERATOR_SCORING_VERSION",
     "ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION",
+    "ATTENTION_PLAN_SCORING_AUDIT_VERSION",
     "ATTENTION_OPERATOR_PLAN_SCORE_MIN",
     "ATTENTION_OPERATOR_PLAN_SCORE_MAX",
     "ATTENTION_OPERATOR_EXECUTION_VERSION",
@@ -757,6 +765,9 @@ __all__ = [
     "AttentionOperatorPlanScoringManifestBinding",
     "AttentionOperatorPlanScoringManifestLimits",
     "AttentionOperatorPlanScoringPolicy",
+    "AttentionPlanScoringAuditCandidate",
+    "AttentionPlanScoringAuditError",
+    "AttentionPlanScoringAuditReport",
     "DEFAULT_ATTENTION_OPERATOR_PLAN_SCORING_MANIFEST_LIMITS",
     "AttentionOperatorRuntimeResolutionError",
     "AttentionOperatorRuntimeResolutionReport",
@@ -959,6 +970,7 @@ __all__ = [
     "load_attention_operator_physical_evidence_manifest",
     "load_attention_operator_plan_scoring_manifest",
     "verify_attention_operator_physical_evidence_results",
+    "verify_attention_plan_scoring_chain",
     "normalize_quant_axes",
     "plan_quant_layout_conversion",
     "normalize_attention_logits",
