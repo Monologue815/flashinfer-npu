@@ -22,6 +22,21 @@ being reported as a callable NPU implementation. It also prevents the low-level
 `*_with_jit_module` compatibility surface from being mistaken for the normal
 model-facing Attention interface.
 
+The packaged manifest is also bound to live Python objects by a read-only
+interface audit. It resolves every one-shot function and every wrapper
+constructor/`plan()`/`run()` method, freezes ordered parameter names, kinds and
+scalar defaults, rejects provider/plan/executable handles on model-facing
+callables, and verifies that advanced injected-module functions take
+`jit_module` as their first argument. Upstream-compatible `jit_args` and
+`jit_kwargs` configuration slots are not executable module handles and remain
+valid where the classic wrapper signature defines them. The resulting report
+has a deterministic fingerprint and does not instantiate a wrapper, inspect a
+device, import an operator package or run an Attention implementation.
+
+```bash
+python3 -m flashinfer_npu attention-interface
+```
+
 Render the manifest as a parity report with:
 
 ```bash

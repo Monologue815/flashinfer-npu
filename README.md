@@ -171,6 +171,7 @@ python3 -m flashinfer_npu show-config
 python3 -m flashinfer_npu parity-report --scope attention
 python3 -m flashinfer_npu list-kernels
 python3 -m flashinfer_npu attention-capabilities
+python3 -m flashinfer_npu attention-interface
 python3 -m flashinfer_npu attention-replay path/to/case.json
 python3 -m flashinfer_npu attention-coverage --replay --require-complete
 python3 -m flashinfer_npu attention-corpus --pretty

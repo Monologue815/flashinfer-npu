@@ -17,6 +17,7 @@ from .attention import (
     DEFAULT_ATTENTION_JSON_ENVELOPE_LIMITS,
     build_framework_attention_corpus,
     build_attention_accuracy_corpus,
+    audit_attention_public_interface,
     framework_attention_coverage_policy,
     load_attention_capability_manifest,
     validate_attention_kernel_bindings,
@@ -92,6 +93,16 @@ def _attention_capabilities(_args: argparse.Namespace) -> int:
                 len(profile.rules),
             )
         )
+    return 0
+
+
+def _attention_interface(_args: argparse.Namespace) -> int:
+    try:
+        report = audit_attention_public_interface()
+    except SchemaError as error:
+        print("attention interface audit failed: %s" % error, file=sys.stderr)
+        return 2
+    print(report.format())
     return 0
 
 
@@ -274,6 +285,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="list evidence-bearing Attention backend capability profiles",
     )
     capabilities.set_defaults(handler=_attention_capabilities)
+
+    interface = subparsers.add_parser(
+        "attention-interface",
+        help="audit the live model-facing Attention call interface",
+    )
+    interface.set_defaults(handler=_attention_interface)
 
     replay = subparsers.add_parser(
         "attention-replay", help="replay a versioned Host Attention trace"

@@ -7,6 +7,14 @@ from .holistic import (
     install_declared_attention_operator_runtime_resolvers,
     install_attention_operator_runtime_resolvers,
 )
+from .interface_audit import (
+    ATTENTION_PUBLIC_INTERFACE_AUDIT_VERSION,
+    AttentionCallableInterface,
+    AttentionParameterInterface,
+    AttentionPublicInterfaceAuditError,
+    AttentionPublicInterfaceAuditReport,
+    audit_attention_public_interface,
+)
 from .jit_protocol import (
     ATTENTION_SINGLE_JIT_TEMP_BYTES,
     ATTENTION_UPSTREAM_MASK_MODES,
@@ -516,6 +524,11 @@ from .storage_lease import (
 )
 
 __all__ = [
+    "ATTENTION_PUBLIC_INTERFACE_AUDIT_VERSION",
+    "AttentionCallableInterface",
+    "AttentionParameterInterface",
+    "AttentionPublicInterfaceAuditError",
+    "AttentionPublicInterfaceAuditReport",
     "ATTENTION_SCHEMA_VERSION",
     "ATTENTION_CORPUS_SCHEMA_VERSION",
     "ATTENTION_TRACE_SCHEMA_VERSION",
@@ -850,6 +863,7 @@ __all__ = [
     "WorkspaceRequirementUnknownError",
     "attention_metadata_from_dict",
     "attention_operator_runtime_registry_snapshot",
+    "audit_attention_public_interface",
     "attention_protocol_evidence_fingerprint",
     "attention_protocol_fingerprint",
     "attention_trace_features",
