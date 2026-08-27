@@ -97,7 +97,11 @@ def paged_decode_fp8_case():
     )
 
 
-def public_paged_decode_runtime(*, authorize_implicit_units=True):
+def public_paged_decode_runtime(
+    *,
+    authorize_implicit_units=True,
+    runtime_scale_input_kinds=("scalar",),
+):
     values = bootstrap_components()
     case = paged_decode_fp8_case()
     corpus = AttentionTraceCorpus(
@@ -181,6 +185,9 @@ def public_paged_decode_runtime(*, authorize_implicit_units=True):
         runtime_q_scale_policy="argument",
         runtime_k_scale_policy="argument",
         runtime_v_scale_policy="argument",
+        runtime_q_scale_input_kinds=runtime_scale_input_kinds,
+        runtime_k_scale_input_kinds=runtime_scale_input_kinds,
+        runtime_v_scale_input_kinds=runtime_scale_input_kinds,
         implicit_unit_scale_sources=(
             ("kv.key.scale", "kv.value.scale")
             if authorize_implicit_units

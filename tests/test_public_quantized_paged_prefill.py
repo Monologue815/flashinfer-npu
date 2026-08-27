@@ -57,19 +57,24 @@ class MetadataTensor:
         self.device = tensor_view.device
 
 
-def metadata_tensor(name, shape, dtype, *, device="npu:0"):
+def metadata_tensor(name, shape, dtype, *, device="npu:0", strides=None):
     shape = tuple(shape)
-    numel = 1
-    for dim in shape:
-        numel *= dim
+    strides = (
+        contiguous_strides(shape) if strides is None else tuple(strides)
+    )
+    storage_elements = (
+        0
+        if any(dim == 0 for dim in shape)
+        else 1 + sum((dim - 1) * stride for dim, stride in zip(shape, strides))
+    )
     return MetadataTensor(
         TensorView(
             shape=shape,
-            strides=contiguous_strides(shape),
+            strides=strides,
             dtype=dtype,
             device=device,
             storage_id="public-quantized-prefill:" + name,
-            storage_nbytes=numel * dtype_itemsize(dtype),
+            storage_nbytes=storage_elements * dtype_itemsize(dtype),
         )
     )
 
@@ -142,7 +147,9 @@ def public_prefill_profile():
     )
 
 
-def public_prefill_runtime():
+def public_prefill_runtime(
+    *, runtime_q_scale_input_kinds=("scalar", "head_tensor")
+):
     values = bootstrap_components()
     corpus, case = paged_prefill_case()
     profile = public_prefill_profile()
@@ -165,6 +172,7 @@ def public_prefill_runtime():
             ),
         ),
         runtime_q_scale_policy="argument",
+        runtime_q_scale_input_kinds=runtime_q_scale_input_kinds,
     )
     runtime_spec = replace(
         values["spec"],
@@ -321,6 +329,9 @@ def public_paged_prefill_fp8_runtime(*, authorize_implicit_units=True):
         runtime_q_scale_policy="argument",
         runtime_k_scale_policy="argument",
         runtime_v_scale_policy="argument",
+        runtime_q_scale_input_kinds=("scalar", "head_tensor"),
+        runtime_k_scale_input_kinds=("scalar", "head_tensor"),
+        runtime_v_scale_input_kinds=("scalar", "head_tensor"),
         implicit_unit_scale_sources=(
             ("kv.key.scale", "kv.value.scale")
             if authorize_implicit_units
@@ -440,7 +451,11 @@ class PublicQuantizedPagedPrefillTests(unittest.TestCase):
         wrapper = self.wrapper()
         self.assertIsNone(plan_public_wrapper(wrapper, self.case))
         kv_input = quantized_kv_input(self.case.trace.spec.kv_quant_spec)
-        query_scale = object()
+        query_scale = metadata_tensor(
+            "runtime-query-scale",
+            (self.case.trace.spec.num_qo_heads,),
+            self.case.trace.spec.kv_quant_spec.scale_dtype,
+        )
 
         output = wrapper.run("q", kv_input, q_scale=query_scale)
         output_lse = wrapper.run("q-lse", kv_input, return_lse=True)

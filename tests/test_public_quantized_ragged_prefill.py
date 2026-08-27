@@ -185,6 +185,8 @@ def public_ragged_runtime():
         ),
         runtime_q_scale_policy="argument",
         runtime_o_scale_policy="argument",
+        runtime_q_scale_input_kinds=("scalar",),
+        runtime_o_scale_input_kinds=("scalar",),
         runtime_o_scale_output_dtypes=("int8",),
     )
     runtime_spec = replace(
@@ -279,8 +281,8 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         wrapper = self.wrapper()
         self.assertIsNone(plan_public_wrapper(wrapper, self.case))
         key, value = quantized_tensor_pair(self.case.trace.spec.kv_quant_spec)
-        query_scale = object()
-        output_scale = object()
+        query_scale = 2.0
+        output_scale = 0.5
 
         output = wrapper.run(
             "q",

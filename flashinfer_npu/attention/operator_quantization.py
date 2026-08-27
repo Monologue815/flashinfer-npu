@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import dataclass, replace
+from numbers import Real
 from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import KernelDescriptor, QuantSpec, SchemaError
@@ -56,7 +58,7 @@ from .tensor_contract import (
 )
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 6
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 7
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -73,6 +75,13 @@ _QUANT_ARGUMENT_SOURCES = {
     "run.o_scale",
 }
 _RUNTIME_SCALE_POLICIES = {"reject", "argument"}
+_RUNTIME_SCALE_INPUT_KINDS = {"scalar", "head_tensor"}
+_RUNTIME_SCALE_INPUT_FIELDS = (
+    ("q_scale", "run.q_scale", "runtime_q_scale_input_kinds"),
+    ("k_scale", "run.k_scale", "runtime_k_scale_input_kinds"),
+    ("v_scale", "run.v_scale", "runtime_v_scale_input_kinds"),
+    ("o_scale", "run.o_scale", "runtime_o_scale_input_kinds"),
+)
 _IMPLICIT_UNIT_SCALE_SOURCES = {
     "kv.key.scale",
     "kv.value.scale",
@@ -208,6 +217,10 @@ class AttentionOperatorQuantizationBinding:
     runtime_k_head_scale_policy: str = "reject"
     runtime_v_head_scale_policy: str = "reject"
     runtime_o_scale_policy: str = "reject"
+    runtime_q_scale_input_kinds: Tuple[str, ...] = ()
+    runtime_k_scale_input_kinds: Tuple[str, ...] = ()
+    runtime_v_scale_input_kinds: Tuple[str, ...] = ()
+    runtime_o_scale_input_kinds: Tuple[str, ...] = ()
     runtime_o_scale_output_dtypes: Tuple[str, ...] = ()
     implicit_unit_scale_sources: Tuple[str, ...] = ()
     kv_input_contract: str = "separate_storage_scale_zero_point"
@@ -262,6 +275,26 @@ class AttentionOperatorQuantizationBinding:
                     "%s policy does not match its argument binding" % name
                 )
             object.__setattr__(self, name, policy)
+        for field_name, _source, kinds_field_name in _RUNTIME_SCALE_INPUT_FIELDS:
+            kinds = tuple(str(item) for item in getattr(self, kinds_field_name))
+            if (
+                any(item not in _RUNTIME_SCALE_INPUT_KINDS for item in kinds)
+                or len(set(kinds)) != len(kinds)
+            ):
+                raise SchemaError(
+                    "runtime %s input kinds are invalid" % field_name
+                )
+            policy = getattr(self, "runtime_%s_policy" % field_name)
+            if policy == "argument" and not kinds:
+                raise SchemaError(
+                    "runtime %s argument policy requires input kinds" % field_name
+                )
+            if policy == "reject" and kinds:
+                raise SchemaError(
+                    "runtime %s reject policy cannot declare input kinds"
+                    % field_name
+                )
+            object.__setattr__(self, kinds_field_name, tuple(sorted(kinds)))
         output_dtypes = tuple(str(item) for item in self.runtime_o_scale_output_dtypes)
         if any(not item for item in output_dtypes) or len(set(output_dtypes)) != len(
             output_dtypes
@@ -323,6 +356,18 @@ class AttentionOperatorQuantizationBinding:
             "runtime_k_head_scale_policy": self.runtime_k_head_scale_policy,
             "runtime_v_head_scale_policy": self.runtime_v_head_scale_policy,
             "runtime_o_scale_policy": self.runtime_o_scale_policy,
+            "runtime_q_scale_input_kinds": list(
+                self.runtime_q_scale_input_kinds
+            ),
+            "runtime_k_scale_input_kinds": list(
+                self.runtime_k_scale_input_kinds
+            ),
+            "runtime_v_scale_input_kinds": list(
+                self.runtime_v_scale_input_kinds
+            ),
+            "runtime_o_scale_input_kinds": list(
+                self.runtime_o_scale_input_kinds
+            ),
             "runtime_o_scale_output_dtypes": list(
                 self.runtime_o_scale_output_dtypes
             ),
@@ -537,6 +582,59 @@ def _validate_runtime_head_scale(
     return view
 
 
+def _public_runtime_scale_input_kinds(
+    source: str, modes: Sequence[AttentionMode]
+) -> Tuple[str, ...]:
+    """Return FlashInfer-compatible input kinds for one public run source."""
+
+    if source not in {item[1] for item in _RUNTIME_SCALE_INPUT_FIELDS}:
+        raise SchemaError("unknown Attention runtime scale source")
+    mode_values = tuple(modes)
+    if any(not isinstance(item, AttentionMode) for item in mode_values):
+        raise TypeError("modes must contain AttentionMode values")
+    kinds = {"scalar"}
+    if (
+        source in {"run.q_scale", "run.k_scale", "run.v_scale"}
+        and AttentionMode.BATCH_PREFILL_PAGED in mode_values
+    ):
+        kinds.add("head_tensor")
+    return tuple(sorted(kinds))
+
+
+def _validate_runtime_scale_input(
+    inspector: AttentionOperatorTensorMetadataInspector,
+    value: Any,
+    *,
+    name: str,
+    num_heads: int,
+    dtype: str,
+    device: str,
+) -> str:
+    """Classify and validate one provider-bound public run-time scale."""
+
+    if isinstance(value, Real) and not isinstance(value, bool):
+        if not math.isfinite(float(value)):
+            raise SchemaError("%s scalar must be finite" % name)
+        return "scalar"
+    try:
+        view = inspector.to_view(value, name="run." + name, writable=False)
+    except (AttributeError, TypeError, ValueError, SchemaError) as error:
+        raise SchemaError(
+            "%s must be a finite scalar or a per-head tensor" % name
+        ) from error
+    if not isinstance(view, TensorView):
+        raise TypeError("tensor metadata inspector must return TensorView")
+    if not view.is_contiguous:
+        raise SchemaError("%s must be contiguous for provider lowering" % name)
+    if view.shape != (num_heads,):
+        raise SchemaError("%s head tensor shape must be (%d,)" % (name, num_heads))
+    if view.dtype != dtype:
+        raise SchemaError("%s head tensor dtype must be %s" % (name, dtype))
+    if view.device != device:
+        raise SchemaError("%s head tensor device must match the provider query" % name)
+    return "head_tensor"
+
+
 def _quantized_kv_cache_spec(
     plan: AttentionFrameworkPlan,
     key_storage: TensorView,
@@ -734,6 +832,31 @@ def validate_attention_operator_quantization_bindings(
                 "quantization binding uses non-catalog argument %s"
                 % sorted(undeclared)[0]
             )
+        binding_modes = {
+            mode
+            for profile in profile_values
+            for rule in profile.rules
+            if any(
+                item.fingerprint == binding.quant_spec.fingerprint
+                for item in rule.quant_specs
+            )
+            for mode in rule.modes
+            if mode in operation.candidate_modes
+        }
+        for field_name, source, kinds_field_name in _RUNTIME_SCALE_INPUT_FIELDS:
+            if getattr(binding, "runtime_%s_policy" % field_name) != "argument":
+                continue
+            required_kinds = set(
+                _public_runtime_scale_input_kinds(source, binding_modes)
+            )
+            declared_kinds = set(getattr(binding, kinds_field_name))
+            missing_kinds = required_kinds.difference(declared_kinds)
+            if missing_kinds:
+                raise SchemaError(
+                    "runtime %s input kinds do not cover the public Attention "
+                    "contract: %s"
+                    % (field_name, sorted(missing_kinds)[0])
+                )
         supported_output_dtypes = {
             dtype_signature[2]
             for profile in profile_values
@@ -1088,6 +1211,37 @@ class AttentionOperatorQuantizationRunAdapter:
             if policy == "reject" and getattr(request, field_name) is not None:
                 raise SchemaError(
                     "quantization binding rejects run-time %s" % field_name
+                )
+        scale_head_counts = {
+            "q_scale": active_plan.framework_plan.spec.num_qo_heads,
+            "k_scale": active_plan.framework_plan.spec.num_kv_heads,
+            "v_scale": active_plan.framework_plan.spec.num_kv_heads,
+            "o_scale": active_plan.framework_plan.spec.num_qo_heads,
+        }
+        for field_name, source, kinds_field_name in _RUNTIME_SCALE_INPUT_FIELDS:
+            value = getattr(request, field_name)
+            if value is None:
+                continue
+            input_kind = _validate_runtime_scale_input(
+                self._tensor_metadata_inspector,
+                value,
+                name=field_name,
+                num_heads=scale_head_counts[field_name],
+                dtype=quant_spec.scale_dtype,
+                device=self._expected_device,
+            )
+            public_kinds = _public_runtime_scale_input_kinds(
+                source, (active_plan.framework_plan.spec.mode,)
+            )
+            if input_kind not in public_kinds:
+                raise SchemaError(
+                    "%s input kind %s is not accepted by the public Attention mode"
+                    % (field_name, input_kind)
+                )
+            if input_kind not in getattr(binding, kinds_field_name):
+                raise SchemaError(
+                    "quantization binding does not accept %s input kind %s"
+                    % (field_name, input_kind)
                 )
         for field_name, num_heads in (
             ("q_head_scale", active_plan.framework_plan.spec.num_qo_heads),

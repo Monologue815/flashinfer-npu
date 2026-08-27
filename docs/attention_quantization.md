@@ -163,6 +163,15 @@ plan fingerprint；它们保持三个独立的运行来源，并由精确 provid
 不注入参数，语义为 1。裸 FP8 cache 的 K/V virtual unit scale 与这三个 calibration 值不是
 同一层概念，不能相乘后写回 cache scale。
 
+`AttentionOperatorQuantizationBinding` 还必须为每个已绑定的 `run.q_scale/run.k_scale/`
+`run.v_scale/run.o_scale` 声明输入形态。`scalar` 表示有限 Host 标量；`head_tensor` 表示
+contiguous rank-1 Tensor，Q 长度为 `num_qo_heads`，K/V 长度为 `num_kv_heads`，dtype 等于
+`QuantSpec.scale_dtype`，device 与 provider query 一致。FlashInfer-compatible paged prefill
+的 Q/K/V scale 同时开放 `scalar` 和 `head_tensor`；paged decode、single decode、single
+prefill 的校准倍率以及 ragged prefill 的 Q/K/V/O scale 只开放 `scalar`。bootstrap 要求候选
+provider 覆盖某个 mode 的全部公开形态，run lowering 再按实际值校验形态和元数据；provider
+即使支持更宽输入，也不能扩大 public facade 的契约。
+
 裸 FP8 canonicalization 中，`scale_k`/`scale_v` 成为内部 K/V quantized input 自带的
 `kv.key.scale`/`kv.value.scale`，不会再次注入 `run.k_head_scale`/`run.v_head_scale`；
 `scale_q` 仍作为 `run.q_head_scale`。这避免同一 scale 被 provider 应用两次。

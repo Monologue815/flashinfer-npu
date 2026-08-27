@@ -165,6 +165,7 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
                 values["operation"],
                 arguments=arguments,
                 runtime_o_scale_policy="argument",
+                runtime_o_scale_input_kinds=("scalar",),
             )
 
     def test_implicit_unit_scale_requires_an_exact_argument_source(self):
@@ -199,6 +200,7 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
                         values["operation"],
                         arguments=arguments,
                         runtime_o_scale_policy="argument",
+                        runtime_o_scale_input_kinds=("scalar",),
                         runtime_o_scale_output_dtypes=("int8",),
                     ),
                 ),
@@ -213,6 +215,7 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
                     values["operation"],
                     arguments=arguments,
                     runtime_o_scale_policy="argument",
+                    runtime_o_scale_input_kinds=("scalar",),
                     runtime_o_scale_output_dtypes=("float32",),
                 ),
             ),

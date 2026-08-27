@@ -143,7 +143,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "The public signature includes current upstream q/k/v scales, caller-owned buffers, runtime window, attention sinks, NVFP4 scale factors, skip-softmax sparsity, FP16 softmax, and SP-compression controls. The Host oracle rejects enabled backend-specific features that it cannot represent. Provider q_scale/k_scale/v_scale remain independent dynamic sources on the reusable plan; bare separate FP8 K/V are canonicalized internally only under exact implicit-unit authorization."
+      "notes": "The public signature includes current upstream q/k/v scales, caller-owned buffers, runtime window, attention sinks, NVFP4 scale factors, skip-softmax sparsity, FP16 softmax, and SP-compression controls. The Host oracle rejects enabled backend-specific features that it cannot represent. Provider q_scale/k_scale/v_scale remain independent dynamic sources on the reusable plan and each accepts a finite scalar or an exact per-head tensor; provider bootstrap must cover both forms. Bare separate FP8 K/V are canonicalized internally only under exact implicit-unit authorization."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.reset_workspace_buffer",
@@ -196,7 +196,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Public wrapper covers ragged request segmentation, GQA, NHD/HND, masks, Q/K/V scale, output-scale and LSE semantics. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver. Provider output-scale forwarding requires an exact quant argument binding and an eligible planned output dtype."
+      "notes": "Public wrapper covers ragged request segmentation, GQA, NHD/HND, masks, scalar Q/K/V scale, scalar output-scale and LSE semantics. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver. Provider scale forwarding requires exact scalar input-kind declarations; output-scale also requires an eligible planned output dtype."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithRaggedKVCacheWrapper.plan",
@@ -307,7 +307,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "For provider execution, q_scale/k_scale/v_scale remain independent dynamic sources on the reusable plan. Bare separate FP8 K/V storage is canonicalized internally; implicit unit cache scales require exact provider authorization."
+      "notes": "For provider execution, q_scale/k_scale/v_scale remain independent dynamic scalar sources on the reusable plan. A provider accepting broader forms cannot widen the public decode contract. Bare separate FP8 K/V storage is canonicalized internally; implicit unit cache scales require exact provider authorization."
     },
     {
       "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper.reset_workspace_buffer",

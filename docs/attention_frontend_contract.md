@@ -244,6 +244,14 @@ canonical softmax scale，不占用 provider quant 参数来源，只有输出�
 ragged `o_scale` 是第四个独立来源；除精确 argument binding 外还受 plan `o_dtype` 白名单
 约束。未绑定、非量化或输出 dtype 不匹配的 provider 路径均在 package invocation 前失败。
 
+每个 runtime scale argument binding 同时声明 `scalar`/`head_tensor` 输入形态。固定上游基线中，
+paged prefill 的 Q/K/V scale 接受有限标量或按 head Tensor；paged decode、single decode 和
+ragged prefill 的对应参数是有限标量。按 head Tensor 必须连续、rank-1、使用
+`QuantSpec.scale_dtype`、位于 query device，且 Q/K/V 分别匹配 QO/KV/KV head count。
+provider 注册阶段必须覆盖该 mode 的完整上游输入集合；调用阶段会在解析外部 package callable
+之前校验实际输入。这样 plan 选择不会把合法的 Tensor scale 路由到仅支持标量的 operation，
+provider 自身支持的额外形态也不会改变 public API。
+
 昇腾 INT8/INT4 扩展不能通过修改 FlashInfer 参数含义实现。新增信息应放入明确的
 `backend_options`/quantized wrapper 或版本化 spec，并在 parity 中标记 compatible 而非 exact。
 

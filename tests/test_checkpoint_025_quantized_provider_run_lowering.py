@@ -210,15 +210,19 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
             runtime_k_scale_policy="argument",
             runtime_v_scale_policy="argument",
             runtime_o_scale_policy="argument",
+            runtime_q_scale_input_kinds=("scalar",),
+            runtime_k_scale_input_kinds=("scalar",),
+            runtime_v_scale_input_kinds=("scalar",),
+            runtime_o_scale_input_kinds=("scalar",),
             runtime_o_scale_output_dtypes=("float32",),
         )
         spec = replace(values["spec"], quantization_bindings=(extended,))
         plan, session = active_session(values, spec=spec)
         kv_input = quantized_input(plan.spec.kv_quant_spec)
-        runtime_q_scale = object()
-        runtime_k_scale = object()
-        runtime_v_scale = object()
-        runtime_o_scale = object()
+        runtime_q_scale = 2.0
+        runtime_k_scale = 1.5
+        runtime_v_scale = 0.5
+        runtime_o_scale = 0.25
 
         lowered = session.run(
             "query",
