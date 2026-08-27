@@ -99,6 +99,18 @@ class AttentionFrameworkPlan:
     def _expected_lse_shape(self) -> Tuple[int, ...]:
         return self._expected_query_shape()[:-1]
 
+    @property
+    def expected_output_shape(self) -> Tuple[int, ...]:
+        """Exact caller-owned output shape bound to this plan."""
+
+        return self._expected_output_shape()
+
+    @property
+    def expected_lse_shape(self) -> Tuple[int, ...]:
+        """Exact caller-owned log-sum-exp shape bound to this plan."""
+
+        return self._expected_lse_shape()
+
     def validate_run(
         self,
         q: TensorSpec,

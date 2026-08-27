@@ -19,7 +19,7 @@ from .operator_plan import AttentionOperatorActivePlan
 from .schema import AttentionMode
 
 
-ATTENTION_OPERATOR_OPERATION_CATALOG_VERSION = 1
+ATTENTION_OPERATOR_OPERATION_CATALOG_VERSION = 2
 
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _OPERATION_ID = re.compile(r"^[A-Za-z0-9_.@-]+$")
@@ -71,6 +71,8 @@ class AttentionOperatorOperationSpec:
     quant_arguments: Tuple[str, ...] = ()
     paged_table_argument: Optional[str] = None
     lse_control_argument: Optional[str] = None
+    output_buffer_argument: Optional[str] = None
+    lse_buffer_argument: Optional[str] = None
     source_url: str = ""
     schema_version: int = ATTENTION_OPERATOR_OPERATION_CATALOG_VERSION
 
@@ -112,10 +114,33 @@ class AttentionOperatorOperationSpec:
         ):
             if not set(values).issubset(all_arguments):
                 raise SchemaError("%s must name declared arguments" % name)
-        for name in ("paged_table_argument", "lse_control_argument"):
+        for name in (
+            "paged_table_argument",
+            "lse_control_argument",
+            "output_buffer_argument",
+            "lse_buffer_argument",
+        ):
             value = getattr(self, name)
             if value is not None and value not in all_arguments:
                 raise SchemaError("%s must name a declared argument" % name)
+        buffer_arguments = tuple(
+            value
+            for value in (
+                self.output_buffer_argument,
+                self.lse_buffer_argument,
+            )
+            if value is not None
+        )
+        if len(set(buffer_arguments)) != len(buffer_arguments):
+            raise SchemaError("output and LSE buffers must use different arguments")
+        if not set(buffer_arguments).issubset(mutable):
+            raise SchemaError("caller-owned buffer arguments must be mutable")
+        if not set(buffer_arguments).issubset(keyword):
+            raise SchemaError("caller-owned buffers must be keyword arguments")
+        if self.output_buffer_argument is not None and "output" not in returns:
+            raise SchemaError("output buffer operation must return output")
+        if self.lse_buffer_argument is not None and "softmax_lse" not in returns:
+            raise SchemaError("LSE buffer operation must return softmax_lse")
         if not str(self.source_url).startswith("https://"):
             raise SchemaError("operation source_url must be HTTPS")
         object.__setattr__(self, "operation_id", operation_id)
@@ -153,6 +178,8 @@ class AttentionOperatorOperationSpec:
             "quant_arguments": list(self.quant_arguments),
             "paged_table_argument": self.paged_table_argument,
             "lse_control_argument": self.lse_control_argument,
+            "output_buffer_argument": self.output_buffer_argument,
+            "lse_buffer_argument": self.lse_buffer_argument,
             "source_url": self.source_url,
         }
 

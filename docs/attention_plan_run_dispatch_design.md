@@ -199,6 +199,7 @@ surface. It maps a framework operation to an exact external API contract:
 - argument ownership and defaults;
 - supported modes, layouts and dtypes;
 - output and workspace conventions;
+- exact optional caller-owned `out`/`lse` argument names and mutability;
 - quantization parameter bindings;
 - provider-plan and run-time lowering rules.
 
@@ -350,16 +351,20 @@ usage.
 6. invokes the authorized executor once;
 7. normalizes output/LSE and completion ownership to the public contract.
 
-Every package-backed provider installs a common query-validation adapter before
-its operation-specific lowering. Bootstrap therefore requires a metadata-only
-tensor inspector and an explicit `AttentionTensorAccessPolicy`, even when the
-operation is not quantized. The adapter checks the exact mode-dependent query
-shape, planned Q dtype and provider device on every run. It also enforces the
-provider-declared Q alignment and `require_contiguous_q` policy. The original
-query object is forwarded unchanged after validation; this layer neither reads
-device data nor performs a hidden copy/cast. A provider that needs a conversion
-must declare a separate materialization path rather than weakening the run
-contract.
+Every package-backed provider installs a common run-tensor validation adapter
+before its operation-specific lowering. Bootstrap therefore requires a
+metadata-only tensor inspector and an explicit `AttentionTensorAccessPolicy`,
+even when the operation is not quantized. The adapter checks the exact
+mode-dependent query shape, planned Q dtype and provider device on every run.
+For optional caller-owned `out`/`lse`, it checks planned output/LSE shape,
+output dtype/FP32 LSE dtype, device, writable storage, alignment, provider
+contiguity policy and forbidden aliases. The catalog must explicitly name each
+buffer argument and mark it mutable; a separate generic adapter then injects
+only the provided buffers under those exact names. Operations without those
+declarations keep rejecting caller-owned buffers. Original tensor objects are
+forwarded unchanged after validation; this layer neither reads device data nor
+performs a hidden copy/cast. A provider that needs a conversion must declare a
+separate materialization path rather than weakening the run contract.
 
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.

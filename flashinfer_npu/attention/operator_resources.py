@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, Optional
 
 from flashinfer_npu.runtime import SchemaError
 
@@ -18,7 +18,7 @@ from .operator_run import AttentionOperatorRunRequest
 from .workspace import AttentionWorkspaceContract
 
 
-ATTENTION_OPERATOR_RESOURCE_VERSION = 1
+ATTENTION_OPERATOR_RESOURCE_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -46,6 +46,8 @@ class AttentionOperatorResourceBinding:
     required_int_workspace_bytes: int
     output_binding: str
     lse_binding: str
+    output_buffer_argument: Optional[str] = None
+    lse_buffer_argument: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_RESOURCE_VERSION
 
     def __post_init__(self) -> None:
@@ -75,21 +77,43 @@ class AttentionOperatorResourceBinding:
             raise SchemaError(
                 "package-managed operations cannot require wrapper workspace bytes"
             )
-        if self.output_binding != "returned":
+        if self.output_binding not in ("returned", "caller_optional"):
             raise SchemaError("unsupported Attention output binding")
-        if self.lse_binding not in ("returned", "unsupported"):
+        if self.lse_binding not in (
+            "returned",
+            "caller_optional",
+            "unsupported",
+        ):
             raise SchemaError("unsupported Attention LSE binding")
+        if (self.output_binding == "caller_optional") != (
+            self.output_buffer_argument is not None
+        ):
+            raise SchemaError("output buffer argument does not match its binding")
+        if (self.lse_binding == "caller_optional") != (
+            self.lse_buffer_argument is not None
+        ):
+            raise SchemaError("LSE buffer argument does not match its binding")
+        arguments = tuple(
+            item
+            for item in (
+                self.output_buffer_argument,
+                self.lse_buffer_argument,
+            )
+            if item is not None
+        )
+        if len(set(arguments)) != len(arguments):
+            raise SchemaError("resource buffer arguments must be distinct")
 
     def validate_request(self, request: AttentionOperatorRunRequest) -> None:
         if not isinstance(request, AttentionOperatorRunRequest):
             raise TypeError("request must be AttentionOperatorRunRequest")
         if request.active_plan_fingerprint != self.active_plan_fingerprint:
             raise SchemaError("resource binding does not match the active run plan")
-        if request.out is not None:
+        if request.out is not None and self.output_binding != "caller_optional":
             raise NotImplementedError(
                 "provider operation has no caller-owned output-buffer binding"
             )
-        if request.lse is not None:
+        if request.lse is not None and self.lse_binding != "caller_optional":
             raise NotImplementedError(
                 "provider operation has no caller-owned LSE-buffer binding"
             )
@@ -124,6 +148,8 @@ class AttentionOperatorResourceBinding:
             "required_int_workspace_bytes": self.required_int_workspace_bytes,
             "output_binding": self.output_binding,
             "lse_binding": self.lse_binding,
+            "output_buffer_argument": self.output_buffer_argument,
+            "lse_buffer_argument": self.lse_buffer_argument,
         }
 
     @property
@@ -168,9 +194,18 @@ def bind_attention_operator_resources(
         raise SchemaError(
             "operation workspace argument requires an explicit resource binder"
         )
-    if set(operation.mutable_arguments).intersection(
+    output_like_arguments = set(operation.mutable_arguments).intersection(
         {"out", "output", "lse", "softmax_lse"}
-    ):
+    )
+    declared_buffer_arguments = {
+        item
+        for item in (
+            operation.output_buffer_argument,
+            operation.lse_buffer_argument,
+        )
+        if item is not None
+    }
+    if output_like_arguments.difference(declared_buffer_arguments):
         raise SchemaError(
             "operation mutable output requires an explicit resource binder"
         )
@@ -184,8 +219,18 @@ def bind_attention_operator_resources(
         workspace_ownership="package_managed",
         required_float_workspace_bytes=0,
         required_int_workspace_bytes=0,
-        output_binding="returned",
-        lse_binding=("returned" if operation.supports_lse else "unsupported"),
+        output_binding=(
+            "caller_optional"
+            if operation.output_buffer_argument is not None
+            else "returned"
+        ),
+        lse_binding=(
+            "caller_optional"
+            if operation.lse_buffer_argument is not None
+            else ("returned" if operation.supports_lse else "unsupported")
+        ),
+        output_buffer_argument=operation.output_buffer_argument,
+        lse_buffer_argument=operation.lse_buffer_argument,
     )
 
 

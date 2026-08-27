@@ -68,15 +68,16 @@ from .operator_resolver import (
     AttentionOperatorRuntimeResolverRegistry,
 )
 from .operator_run import (
-    AttentionOperatorQueryValidationRunAdapterFactory,
+    AttentionOperatorCallerBufferRunAdapterFactory,
     AttentionOperatorRunAdapter,
     AttentionOperatorRunAdapterFactoryChain,
+    AttentionOperatorRunTensorValidationAdapterFactory,
     AttentionOperatorTensorMetadataInspector,
 )
 from .tensor_contract import AttentionTensorAccessPolicy
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 7
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 8
 
 
 @dataclass(frozen=True)
@@ -318,7 +319,10 @@ def build_attention_operator_package_runtime(
             )
         )
     run_adapter_factories.append(
-        AttentionOperatorQueryValidationRunAdapterFactory(
+        AttentionOperatorCallerBufferRunAdapterFactory(operation)
+    )
+    run_adapter_factories.append(
+        AttentionOperatorRunTensorValidationAdapterFactory(
             operation.provider_id,
             operation.operation_id,
             spec.tensor_metadata_inspector,

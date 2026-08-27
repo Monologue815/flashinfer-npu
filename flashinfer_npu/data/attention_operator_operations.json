@@ -1,9 +1,9 @@
 {
-  "schema_version": 1,
-  "name": "ascend-attention-documented-operations-v1",
+  "schema_version": 2,
+  "name": "ascend-attention-documented-operations-v2",
   "operations": [
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "cann.torch_npu.npu_fused_infer_attention_score@6.0.0",
       "provider_id": "cann",
       "package_name": "torch_npu",
@@ -35,10 +35,12 @@
       ],
       "paged_table_argument": "block_table",
       "lse_control_argument": "softmax_lse_flag",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://www.hiascend.com/document/detail/zh/Pytorch/600/apiref/apilist/ptaoplist_000144.html"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "cann.torch_npu.npu_fused_infer_attention_score_v2@7.3.0",
       "provider_id": "cann",
       "package_name": "torch_npu",
@@ -76,10 +78,12 @@
       ],
       "paged_table_argument": "block_table",
       "lse_control_argument": "return_softmax_lse",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://gitcode.com/Ascend/op-plugin/blob/7.3.0/docs/context/torch_npu-npu_fused_infer_attention_score_v2.md"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "flash_attention_npu.flash_attn_func@v2",
       "provider_id": "flash_attention_npu",
       "package_name": "flash-attention-npu",
@@ -94,10 +98,12 @@
       "quant_arguments": [],
       "paged_table_argument": null,
       "lse_control_argument": "return_attn_probs",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://github.com/MinghuasLab/flash-attention-npu/blob/main/README.md"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "flash_attention_npu.flash_attn_func@v3",
       "provider_id": "flash_attention_npu",
       "package_name": "flash-attention-npu",
@@ -112,10 +118,12 @@
       "quant_arguments": ["q_descale", "k_descale", "v_descale"],
       "paged_table_argument": null,
       "lse_control_argument": "return_attn_probs",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://github.com/MinghuasLab/flash-attention-npu/blob/main/README.md"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "flash_attention_npu.flash_attn_varlen_func@v2",
       "provider_id": "flash_attention_npu",
       "package_name": "flash-attention-npu",
@@ -130,10 +138,12 @@
       "quant_arguments": [],
       "paged_table_argument": "block_table",
       "lse_control_argument": "return_attn_probs",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://github.com/MinghuasLab/flash-attention-npu/blob/main/README.md"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "flash_attention_npu.flash_attn_varlen_func@v3",
       "provider_id": "flash_attention_npu",
       "package_name": "flash-attention-npu",
@@ -148,10 +158,12 @@
       "quant_arguments": ["q_descale", "k_descale", "v_descale"],
       "paged_table_argument": null,
       "lse_control_argument": "return_attn_probs",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://github.com/MinghuasLab/flash-attention-npu/blob/main/README.md"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "flash_attention_npu.flash_attn_varlen_func@v4",
       "provider_id": "flash_attention_npu",
       "package_name": "flash-attention-npu",
@@ -166,10 +178,12 @@
       "quant_arguments": [],
       "paged_table_argument": "page_table",
       "lse_control_argument": "return_lse",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://github.com/MinghuasLab/flash-attention-npu/blob/main/README.md"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "flash_attention_npu.flash_attn_with_kvcache@v2",
       "provider_id": "flash_attention_npu",
       "package_name": "flash-attention-npu",
@@ -184,10 +198,12 @@
       "quant_arguments": [],
       "paged_table_argument": "block_table",
       "lse_control_argument": null,
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://github.com/MinghuasLab/flash-attention-npu/blob/main/README.md"
     },
     {
-      "schema_version": 1,
+      "schema_version": 2,
       "operation_id": "flash_attention_npu.flash_attn_with_kvcache@v3",
       "provider_id": "flash_attention_npu",
       "package_name": "flash-attention-npu",
@@ -202,6 +218,8 @@
       "quant_arguments": ["q_descale", "k_descale", "v_descale"],
       "paged_table_argument": "page_table",
       "lse_control_argument": "return_softmax_lse",
+      "output_buffer_argument": null,
+      "lse_buffer_argument": null,
       "source_url": "https://github.com/MinghuasLab/flash-attention-npu/blob/main/README.md"
     }
   ]
