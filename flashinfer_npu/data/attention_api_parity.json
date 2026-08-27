@@ -279,7 +279,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Public wrapper covers packed/separate paged KV, graph lifecycle, scalar scales, output/LSE buffers, and multi-token causal decode. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver."
+      "notes": "Public wrapper covers packed/separate paged KV, graph lifecycle, scalar scales, output/LSE buffers, and multi-token causal decode. Host reference is explicit; an NPU workspace owns a private mode-bound provider resolver. An FP8 kv_data_type canonicalizes into a per-tensor QuantSpec. Separate bare FP8 K/V provider inputs use virtual scalar unit scales only under an exact omission declaration; combined provider storage remains fail-closed until a verified zero-copy slot-view binding exists."
     },
     {
       "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper.workspace_size",
@@ -296,7 +296,8 @@
       "upstream_kind": "stable",
       "semantic_status": "compatible",
       "implementation_status": "reference",
-      "priority": "P0"
+      "priority": "P0",
+      "notes": "For an NPU provider plan, an FP8 kv_data_type is normalized into the canonical per-tensor QuantSpec before selection; the Host oracle continues to read logical FP8 ReferenceTensor inputs directly."
     },
     {
       "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper.run",
@@ -304,7 +305,8 @@
       "upstream_kind": "stable",
       "semantic_status": "compatible",
       "implementation_status": "reference",
-      "priority": "P0"
+      "priority": "P0",
+      "notes": "For provider execution, q_scale/k_scale/v_scale remain independent dynamic sources on the reusable plan. Bare separate FP8 K/V storage is canonicalized internally; implicit unit cache scales require exact provider authorization."
     },
     {
       "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper.reset_workspace_buffer",

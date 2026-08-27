@@ -14,8 +14,8 @@
 3. Attention 在什么位置反量化 K/V。
 4. plan、run、workload fingerprint 如何保证使用同一个量化语义。
 
-本阶段不声称支持 CANN、torch_npu、FP8、NVFP4、MX、设备 swizzle 或任何 NPU
-性能结果。Host oracle 是 correctness contract，不是生产 fallback。
+本阶段不声称支持 CANN、torch_npu、设备级 FP8 编码或执行、NVFP4、MX、设备 swizzle，
+也不声称任何 NPU 性能结果。Host logical FP8 oracle 是 correctness contract，不是生产 fallback。
 
 ## 2. 分层模型
 
@@ -110,7 +110,8 @@ INT4 沿逻辑 tensor 的最后一维打包，物理末维为 `ceil(logical_last
 未使用的 nibble 必须为零；这使 checksum、缓存复用和后续设备 converter 的行为稳定。
 
 Host FP8 oracle 把 `ReferenceTensor` 中的数值视为已经按对应 FP8 格式解码的值，再应用
-逐头 scale；它定义 Attention/scale 语义，不模拟硬件 FP8 舍入、饱和或异常值编码。
+per-head 或 per-tensor scale；它定义 Attention/scale 语义，不模拟硬件 FP8 舍入、饱和或
+异常值编码。
 
 ## 6. Public facade 接入
 
@@ -129,10 +130,14 @@ Host FP8 oracle 把 `ReferenceTensor` 中的数值视为已经按对应 FP8 格�
   scalar virtual unit scale，`q_scale` 与 `k_scale` 只进入 canonical plan 的 softmax scale，
   `v_scale` 保持为输出倍率。provider 必须证明 K/V scale 参数省略等价于 1，调用者仍不需要
   构造项目扩展 wrapper。
-- batch prefill/decode 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；
-  Host run 传入 `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
+- batch prefill 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；Host run 传入
+  `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
   `AttentionOperatorQuantizedKVInput`；ragged run 的分离 K/V 参数分别传入
   `AttentionOperatorQuantizedTensorInput`，由 wrapper 内部组合。
+- batch paged decode 的 NPU provider plan 还接受上游形式的 FP8 `kv_data_type`，并自动生成
+  per-tensor QuantSpec；Host oracle 继续直接读取 logical FP8 `ReferenceTensor`。
+  分离的裸 `(K, V)` cache 在内部获得 scalar virtual unit scale；provider 未声明参数省略
+  等价于 1 时不能注册。合并 cache 需要经过验证的 slot-view binding，当前不会猜测或切片。
 - `kv_cache_sf` 仍保留上游 NVFP4 含义，当前显式报未实现，不能借用该参数表达 INT8/INT4。
 
 single facade 不增加公开 plan handle。调用者仍只调用
@@ -152,6 +157,11 @@ batch paged/ragged 的 `q_scale` 则表示为 `run.q_scale`。只有所选 opera
 尚无独立语义证明的 scale。已授权的逐头 scale 还必须是 contiguous rank-1 tensor，Q 长度等于
 `num_qo_heads`，K/V 长度等于 `num_kv_heads`，dtype 等于绑定 `QuantSpec.scale_dtype`，且
 device 与 provider query 一致；这些检查先于 package callable。
+
+batch paged decode 的 plan 可跨多次 run 复用，因此 `q_scale/k_scale/v_scale` 数值不进入
+plan fingerprint；它们保持三个独立的运行来源，并由精确 provider binding 承接。缺省值
+不注入参数，语义为 1。裸 FP8 cache 的 K/V virtual unit scale 与这三个 calibration 值不是
+同一层概念，不能相乘后写回 cache scale。
 
 裸 FP8 canonicalization 中，`scale_k`/`scale_v` 成为内部 K/V quantized input 自带的
 `kv.key.scale`/`kv.value.scale`，不会再次注入 `run.k_head_scale`/`run.v_head_scale`；

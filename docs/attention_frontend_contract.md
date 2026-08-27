@@ -12,9 +12,9 @@ vendor-specific 开关进入显式 capability translation，并在无法等价�
 
 上游签名依据：
 
-- [single/batch prefill 源码](https://github.com/flashinfer-ai/flashinfer/blob/main/flashinfer/prefill.py)
-- [single/batch decode 源码](https://github.com/flashinfer-ai/flashinfer/blob/main/flashinfer/decode.py)
-- [BatchAttention 源码](https://github.com/flashinfer-ai/flashinfer/blob/main/flashinfer/attention/_core.py)
+- [single/batch prefill 源码](https://github.com/flashinfer-ai/flashinfer/blob/919a24e5b1d971d50c97a3cd38862f801527eab5/flashinfer/prefill.py)
+- [single/batch decode 源码](https://github.com/flashinfer-ai/flashinfer/blob/919a24e5b1d971d50c97a3cd38862f801527eab5/flashinfer/decode.py)
+- [BatchAttention 源码](https://github.com/flashinfer-ai/flashinfer/blob/919a24e5b1d971d50c97a3cd38862f801527eab5/flashinfer/attention/_core.py)
 
 ## 2. Frontend 分层
 
@@ -151,6 +151,13 @@ scale；仅当 provider binding 明确声明省略相应参数等价于 scale=1 
 裸 K/V；内部 scalar virtual unit scale 只描述逻辑值 1，不持有设备地址。`q_scale` 与
 `k_scale` 乘入 plan softmax scale，`v_scale` 作为输出倍率进入精确 provider binding。
 provider 未证明省略 K/V scale 参数等价于 1 时，该候选在 bootstrap 阶段失败。
+
+Batch paged decode 的 NPU provider plan 在 `plan(..., kv_data_type=FP8)` 时同样生成
+per-tensor QuantSpec，但 plan 可复用，所以 `run()` 的 `q_scale/k_scale/v_scale` 保持动态
+provider 参数。Host oracle 仍直接读取 logical FP8 `ReferenceTensor`。分离的裸
+`(K, V)` cache 会被内部量化输入包装，scalar unit scale 仅在 provider 明确授权后省略。
+合并 cache 的 K/V slot view 尚无跨 tensor framework 的零拷贝证明，本阶段在 package 调用前
+明确拒绝，不能用隐式切片伪装成等价支持。
 
 ## 6. CUDA 名称的兼容策略
 

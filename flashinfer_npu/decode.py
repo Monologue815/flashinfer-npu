@@ -12,8 +12,11 @@ from .attention.frontend import (
     adapt_framework_single_qkv,
     adapt_paged_kv_data,
     adapt_single_qkv,
+    canonicalize_dtype_name,
+    canonicalize_framework_paged_fp8_kv_input,
     canonicalize_kv_dtype,
     finite_scalar,
+    fp8_per_tensor_quant_spec,
     optional_finite_scalar,
     parse_kv_layout,
     parse_pos_encoding_mode,
@@ -619,9 +622,19 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             q_data_type = data_type
             if kv_data_type is None:
                 kv_data_type = data_type
-        q_dtype = str(q_data_type)
+        q_dtype = canonicalize_dtype_name(q_data_type)
         kv_dtype, kv_quant_spec = canonicalize_kv_dtype(kv_data_type, q_dtype)
-        o_dtype = q_dtype if o_data_type is None else str(o_data_type)
+        if (
+            self._operator_runtime is not None
+            and kv_quant_spec is None
+            and kv_dtype in {"float8_e4m3fn", "float8_e5m2"}
+        ):
+            kv_quant_spec = fp8_per_tensor_quant_spec(kv_dtype)
+        o_dtype = (
+            q_dtype
+            if o_data_type is None
+            else canonicalize_dtype_name(o_data_type)
+        )
         index_reader = (
             framework_index_values
             if self._operator_runtime is not None
@@ -754,9 +767,25 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 raise NotImplementedError(
                     "provider skip-softmax run binding is not implemented"
                 )
+            provider_kv_cache = paged_kv_cache
+            quant_spec = plan.spec.kv_quant_spec
+            if (
+                quant_spec is not None
+                and quant_spec.storage_dtype
+                in {"float8_e4m3fn", "float8_e5m2"}
+                and quant_spec.fingerprint
+                == fp8_per_tensor_quant_spec(
+                    quant_spec.storage_dtype
+                ).fingerprint
+            ):
+                provider_kv_cache = canonicalize_framework_paged_fp8_kv_input(
+                    paged_kv_cache,
+                    quant_spec,
+                    device=self._float_workspace_buffer.device,
+                )
             result = self._operator_runtime.run(
                 q,
-                paged_kv_cache,
+                provider_kv_cache,
                 return_lse=bool(return_lse) or lse is not None,
                 out=out,
                 lse=lse,

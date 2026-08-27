@@ -38,6 +38,7 @@ from .quant_physical_layout import (
 )
 from .schema import (
     AttentionMode,
+    KVLayout,
     MixedPagedKVMetadata,
     PagedKVCacheSpec,
     PagedKVMetadata,
@@ -79,6 +80,42 @@ _IMPLICIT_UNIT_SCALE_SOURCES = {
     "run.k_head_scale",
     "run.v_head_scale",
 }
+
+
+def _is_canonical_fp8_base(quant_spec: QuantSpec) -> bool:
+    return (
+        quant_spec.scheme == "symmetric"
+        and quant_spec.storage_dtype in {"float8_e4m3fn", "float8_e5m2"}
+        and quant_spec.compute_dtype == "float32"
+        and quant_spec.accumulator_dtype == "float32"
+        and quant_spec.scale_dtype == "float32"
+        and not quant_spec.has_zero_point
+        and quant_spec.physical_layout == "logical"
+        and quant_spec.packing_order is None
+    )
+
+
+def _is_canonical_fp8_per_tensor(quant_spec: QuantSpec) -> bool:
+    return (
+        _is_canonical_fp8_base(quant_spec)
+        and quant_spec.granularity == "tensor"
+        and quant_spec.axis is None
+        and quant_spec.group_size is None
+    )
+
+
+def _is_canonical_fp8_prefill_head_scale(
+    quant_spec: QuantSpec, layouts: Sequence[KVLayout]
+) -> bool:
+    expected_axes = {
+        (1,) if layout == KVLayout.NHD else (0,) for layout in layouts
+    }
+    return (
+        _is_canonical_fp8_base(quant_spec)
+        and quant_spec.granularity == "channel"
+        and quant_spec.axis in expected_axes
+        and quant_spec.group_size is None
+    )
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -716,32 +753,43 @@ def validate_attention_operator_quantization_bindings(
                 "runtime o_scale output dtype has no capability rule: %s"
                 % sorted(undeclared_output_dtypes)[0]
             )
-        fp8_single_modes = {
-            mode
-            for profile in profile_values
-            for rule in profile.rules
-            if any(
-                item.fingerprint == binding.quant_spec.fingerprint
-                for item in rule.quant_specs
-            )
-            for mode in rule.modes
-            if mode in operation.candidate_modes
-            and mode in {AttentionMode.SINGLE_PREFILL, AttentionMode.SINGLE_DECODE}
-        }
+        fp8_implicit_unit_modes = set()
+        for profile in profile_values:
+            for rule in profile.rules:
+                if not any(
+                    item.fingerprint == binding.quant_spec.fingerprint
+                    for item in rule.quant_specs
+                ):
+                    continue
+                for mode in rule.modes:
+                    if mode not in operation.candidate_modes:
+                        continue
+                    if (
+                        mode == AttentionMode.SINGLE_PREFILL
+                        and _is_canonical_fp8_prefill_head_scale(
+                            binding.quant_spec, rule.kv_layouts
+                        )
+                    ):
+                        fp8_implicit_unit_modes.add(mode)
+                    elif mode in {
+                        AttentionMode.SINGLE_DECODE,
+                        AttentionMode.BATCH_DECODE_PAGED,
+                    } and _is_canonical_fp8_per_tensor(binding.quant_spec):
+                        fp8_implicit_unit_modes.add(mode)
         required_unit_sources = set()
         if (
             binding.quant_spec.storage_dtype
             in {"float8_e4m3fn", "float8_e5m2"}
-            and fp8_single_modes
+            and fp8_implicit_unit_modes
         ):
             required_unit_sources.update(("kv.key.scale", "kv.value.scale"))
-            if AttentionMode.SINGLE_PREFILL in fp8_single_modes:
+            if AttentionMode.SINGLE_PREFILL in fp8_implicit_unit_modes:
                 required_unit_sources.add("run.q_head_scale")
         if required_unit_sources and not required_unit_sources.issubset(
             binding.implicit_unit_scale_sources
         ):
             raise SchemaError(
-                "FP8 single-attention binding must authorize implicit unit scales"
+                "FP8 public Attention binding must authorize implicit unit scales"
             )
     profile_quant_specs = {
         quant_spec.fingerprint: quant_spec

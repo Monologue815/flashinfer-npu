@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Sequence, Tuple, Union
 
 from flashinfer_npu.runtime import DispatchError, QuantSpec, SchemaError
 
@@ -218,12 +218,12 @@ def single_fp8_per_head_quant_spec(
     )
 
 
-def single_fp8_per_tensor_quant_spec(storage_dtype: str) -> QuantSpec:
-    """Canonical QuantSpec for FlashInfer single-decode FP8 calibration."""
+def fp8_per_tensor_quant_spec(storage_dtype: str) -> QuantSpec:
+    """Canonical per-tensor QuantSpec for FlashInfer FP8 calibration."""
 
     dtype = canonicalize_dtype_name(storage_dtype)
     if dtype not in {"float8_e4m3fn", "float8_e5m2"}:
-        raise SchemaError("single-decode FP8 storage dtype is unsupported")
+        raise SchemaError("FP8 per-tensor storage dtype is unsupported")
     return QuantSpec(
         scheme="symmetric",
         storage_dtype=dtype,
@@ -231,6 +231,58 @@ def single_fp8_per_tensor_quant_spec(storage_dtype: str) -> QuantSpec:
         accumulator_dtype="float32",
         scale_dtype="float32",
         granularity="tensor",
+    )
+
+
+def single_fp8_per_tensor_quant_spec(storage_dtype: str) -> QuantSpec:
+    """Canonical QuantSpec for FlashInfer single-decode FP8 calibration."""
+
+    return fp8_per_tensor_quant_spec(storage_dtype)
+
+
+def canonicalize_framework_paged_fp8_kv_input(
+    value: Any,
+    quant_spec: QuantSpec,
+    *,
+    device: str,
+):
+    """Wrap a separate bare FP8 paged cache without allocating scale tensors."""
+
+    from .operator_quantization import (
+        AttentionOperatorImplicitUnitScale,
+        AttentionOperatorQuantizedKVInput,
+    )
+
+    if not isinstance(quant_spec, QuantSpec):
+        raise TypeError("quant_spec must be QuantSpec")
+    canonical = fp8_per_tensor_quant_spec(quant_spec.storage_dtype)
+    if quant_spec.fingerprint != canonical.fingerprint:
+        raise SchemaError("paged FP8 canonicalization requires per-tensor QuantSpec")
+    if isinstance(value, AttentionOperatorQuantizedKVInput):
+        return value
+    if not isinstance(value, (tuple, list)) or len(value) != 2:
+        raise SchemaError(
+            "bare FP8 paged KV cache requires a separate (key, value) pair"
+        )
+    device = str(device)
+    if not device:
+        raise SchemaError("paged FP8 canonicalization requires a device")
+    return AttentionOperatorQuantizedKVInput(
+        quant_spec=quant_spec,
+        key_storage=value[0],
+        value_storage=value[1],
+        key_scale=AttentionOperatorImplicitUnitScale(
+            source="kv.key.scale",
+            shape=(),
+            dtype=quant_spec.scale_dtype,
+            device=device,
+        ),
+        value_scale=AttentionOperatorImplicitUnitScale(
+            source="kv.value.scale",
+            shape=(),
+            dtype=quant_spec.scale_dtype,
+            device=device,
+        ),
     )
 
 
