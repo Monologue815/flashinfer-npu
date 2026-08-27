@@ -154,6 +154,8 @@ output contiguous policy；默认禁止与 Q 和已验证的未量化 KV 重叠�
 量化 provider path 在完成 QuantSpec 与 physical-layout 验证后，把 K/V storage、scale 和可选
 zero-point 纳入同一 output/input alias gate，并执行 provider alignment policy。只有不对应真实
 设备 tensor 的 implicit-unit scale 可以跳过地址对齐；这不会放宽实际量化 tensor 的检查。
+运行时 scale 若采用允许的 per-head tensor 形式，也会保留其 metadata view、执行 provider
+alignment 并禁止与 out/LSE 重叠；有限 scalar scale 不产生虚构的 storage identity。
 
 single prefill 的 `scale_q`/`scale_k`/`scale_v` 属于逐头量化 scale；同一接口中的
 `k_scale`/`v_scale` 属于校准倍率。provider lowering 必须保持两组来源独立，并为每个非空

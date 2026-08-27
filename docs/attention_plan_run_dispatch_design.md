@@ -368,9 +368,8 @@ alignment requirement.
 For optional caller-owned `out`/`lse`, it checks planned output/LSE shape,
 output dtype/FP32 LSE dtype, device, writable storage, alignment, provider
 contiguity policy and forbidden aliases against Q and every validated KV
-component. The
-catalog must explicitly name each
-buffer argument and mark it mutable; a separate generic adapter then injects
+component. The catalog must explicitly name each buffer argument and mark it
+mutable; a separate generic adapter then injects
 only the provided buffers under those exact names. Operations without those
 declarations keep rejecting caller-owned buffers. Original tensor objects are
 forwarded unchanged after validation; this layer neither reads device data nor
@@ -382,8 +381,12 @@ bindings, stale receipts or identity drift are hard errors.
 
 The internal run request carries `return_lse` as a required boolean semantic and
 keeps `q_scale`, `k_scale`, `v_scale` and ragged-prefill `o_scale` as four
-independent optional sources;
-none is a provider handle or alters plan selection.
+independent optional sources; none is a provider handle or alters plan
+selection.
+When one of these sources or a dedicated Q/K/V head scale is a tensor, the
+quantization adapter retains its validated metadata view, enforces provider
+alignment, and includes it in the output/input alias gate. Finite scalar forms
+remain value-only inputs and therefore have no storage identity.
 Paged/ragged wrappers set it from the public flag. A provider adapter must map
 that intent to the selected operation's exact LSE-control argument and return
 schema. The holistic `BatchAttention` contract always requests LSE because its

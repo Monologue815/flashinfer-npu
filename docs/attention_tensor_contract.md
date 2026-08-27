@@ -86,6 +86,9 @@ inspector。通用 run adapter 始终闭合 Q 的 mode-specific shape、计划 d
 创建替代 tensor。量化 KV 继续由 QuantSpec/physical-layout adapter 负责，workspace 由
 resource binding 负责；量化 storage/scale/zero-point 同样执行 provider alignment，并进入
 out/LSE alias gate。虚拟 implicit-unit scale 不对应设备地址，因此不执行地址对齐检查。
+运行时 per-head Q/K/V/output scale tensor 和专用 head-scale tensor 在验证 shape、dtype、device、
+contiguous 后，同样执行 provider alignment 并作为只读输入进入 out/LSE alias gate；有限标量
+scale 没有 storage identity。
 未接通的对应 access-policy 字段不能宣称生效。
 
 ## 4. 量化 view

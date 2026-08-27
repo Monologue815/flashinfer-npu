@@ -60,7 +60,7 @@ from .tensor_contract import (
 )
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 8
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 9
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -596,13 +596,13 @@ def _validate_runtime_scale_input(
     num_heads: int,
     dtype: str,
     device: str,
-) -> str:
+) -> Tuple[str, Optional[TensorView]]:
     """Classify and validate one provider-bound public run-time scale."""
 
     if isinstance(value, Real) and not isinstance(value, bool):
         if not math.isfinite(float(value)):
             raise SchemaError("%s scalar must be finite" % name)
-        return "scalar"
+        return "scalar", None
     try:
         view = inspector.to_view(value, name="run." + name, writable=False)
     except (AttributeError, TypeError, ValueError, SchemaError) as error:
@@ -619,7 +619,7 @@ def _validate_runtime_scale_input(
         raise SchemaError("%s head tensor dtype must be %s" % (name, dtype))
     if view.device != device:
         raise SchemaError("%s head tensor device must match the provider query" % name)
-    return "head_tensor"
+    return "head_tensor", view
 
 
 def _quantized_kv_cache_spec(
@@ -1147,31 +1147,12 @@ class AttentionOperatorQuantizationRunAdapter:
             self._expected_device,
             descriptor,
         )
-        for name, view in kv_view.named_component_views:
+        quant_input_views = list(kv_view.named_component_views)
+        for name, view in quant_input_views:
             if not str(view.storage_id).startswith("implicit-unit-scale:"):
                 view.require_alignment(
                     self._tensor_access_policy.required_alignment, name
                 )
-        if not self._tensor_access_policy.permit_output_input_alias:
-            output_views = []
-            for name, value in (("out", request.out), ("lse", request.lse)):
-                if value is None:
-                    continue
-                output_view = self._tensor_metadata_inspector.to_view(
-                    value, name=name, writable=True
-                )
-                if not isinstance(output_view, TensorView):
-                    raise TypeError(
-                        "tensor metadata inspector must return TensorView"
-                    )
-                output_views.append((name, output_view))
-            for output_name, output_view in output_views:
-                for input_name, input_view in kv_view.named_component_views:
-                    if output_view.overlaps(input_view):
-                        raise SchemaError(
-                            "%s cannot alias %s"
-                            % (output_name, input_name)
-                        )
         if descriptor is not None:
             receipt = active_plan.dispatch_receipt
             profile = next(
@@ -1240,7 +1221,7 @@ class AttentionOperatorQuantizationRunAdapter:
             value = getattr(request, field_name)
             if value is None:
                 continue
-            input_kind = _validate_runtime_scale_input(
+            input_kind, input_view = _validate_runtime_scale_input(
                 self._tensor_metadata_inspector,
                 value,
                 name=field_name,
@@ -1248,6 +1229,12 @@ class AttentionOperatorQuantizationRunAdapter:
                 dtype=quant_spec.scale_dtype,
                 device=self._expected_device,
             )
+            if input_view is not None:
+                input_view.require_alignment(
+                    self._tensor_access_policy.required_alignment,
+                    "run." + field_name,
+                )
+                quant_input_views.append(("run." + field_name, input_view))
             public_kinds = _public_runtime_scale_input_kinds(
                 source, (active_plan.framework_plan.spec.mode,)
             )
@@ -1268,7 +1255,7 @@ class AttentionOperatorQuantizationRunAdapter:
         ):
             value = getattr(request, field_name)
             if value is not None:
-                _validate_runtime_head_scale(
+                input_view = _validate_runtime_head_scale(
                     self._tensor_metadata_inspector,
                     value,
                     name=field_name,
@@ -1276,6 +1263,36 @@ class AttentionOperatorQuantizationRunAdapter:
                     dtype=quant_spec.scale_dtype,
                     device=self._expected_device,
                 )
+                if not str(input_view.storage_id).startswith(
+                    "implicit-unit-scale:"
+                ):
+                    input_view.require_alignment(
+                        self._tensor_access_policy.required_alignment,
+                        "run." + field_name,
+                    )
+                    quant_input_views.append(
+                        ("run." + field_name, input_view)
+                    )
+        if not self._tensor_access_policy.permit_output_input_alias:
+            output_views = []
+            for name, value in (("out", request.out), ("lse", request.lse)):
+                if value is None:
+                    continue
+                output_view = self._tensor_metadata_inspector.to_view(
+                    value, name=name, writable=True
+                )
+                if not isinstance(output_view, TensorView):
+                    raise TypeError(
+                        "tensor metadata inspector must return TensorView"
+                    )
+                output_views.append((name, output_view))
+            for output_name, output_view in output_views:
+                for input_name, input_view in quant_input_views:
+                    if output_view.overlaps(input_view):
+                        raise SchemaError(
+                            "%s cannot alias %s"
+                            % (output_name, input_name)
+                        )
         if (
             request.o_scale is not None
             and active_plan.framework_plan.spec.o_dtype
