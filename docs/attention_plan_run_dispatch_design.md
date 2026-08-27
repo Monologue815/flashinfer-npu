@@ -360,10 +360,15 @@ For an unquantized plan it also normalizes FlashInfer's packed paged KV tensor
 or separate `(K, V)` pair into a metadata-only `KVCacheView`. NHD/HND shape,
 page capacity, planned KV dtype, device, alignment, provider KV contiguity
 policy and separate K/V overlap are closed before provider-specific lowering.
-Quantized KV remains on the exact QuantSpec/physical-layout validation path.
+Quantized KV remains on the exact QuantSpec/physical-layout validation path;
+its physical storage, scale and optional zero-point views also obey provider
+alignment and participate in the same output/input alias gate. Virtual implicit
+unit scales are logical omissions and therefore have no device-address
+alignment requirement.
 For optional caller-owned `out`/`lse`, it checks planned output/LSE shape,
 output dtype/FP32 LSE dtype, device, writable storage, alignment, provider
-contiguity policy and forbidden aliases against Q and validated dense KV. The
+contiguity policy and forbidden aliases against Q and every validated KV
+component. The
 catalog must explicitly name each
 buffer argument and mark it mutable; a separate generic adapter then injects
 only the provided buffers under those exact names. Operations without those

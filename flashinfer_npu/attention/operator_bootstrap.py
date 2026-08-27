@@ -77,7 +77,7 @@ from .operator_run import (
 from .tensor_contract import AttentionTensorAccessPolicy
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 9
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 10
 
 
 @dataclass(frozen=True)
@@ -311,6 +311,7 @@ def build_attention_operator_package_runtime(
                 operation,
                 quantization_bindings,
                 spec.tensor_metadata_inspector,
+                spec.tensor_access_policy,
                 spec.quant_physical_layout_catalog,
                 spec.profiles,
                 spec.descriptors,

@@ -84,7 +84,9 @@ inspector。通用 run adapter 始终闭合 Q 的 mode-specific shape、计划 d
 `require_contiguous_output` 约束 `out`。operation/resource binding 只有在 catalog
 明确给出 mutable buffer argument 后才允许并注入该对象。该 adapter 不访问 tensor 内容，也不
 创建替代 tensor。量化 KV 继续由 QuantSpec/physical-layout adapter 负责，workspace 由
-resource binding 负责；未接通的对应 access-policy 字段不能宣称生效。
+resource binding 负责；量化 storage/scale/zero-point 同样执行 provider alignment，并进入
+out/LSE alias gate。虚拟 implicit-unit scale 不对应设备地址，因此不执行地址对齐检查。
+未接通的对应 access-policy 字段不能宣称生效。
 
 ## 4. 量化 view
 

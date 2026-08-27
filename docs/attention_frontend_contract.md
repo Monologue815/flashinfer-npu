@@ -151,6 +151,10 @@ output contiguous policy；默认禁止与 Q 和已验证的未量化 KV 重叠�
 `.contiguous()`、cast 或搬运。需要转换的 provider 必须以后续显式 materialization plan
 表达其 workspace、生命周期和成本。
 
+量化 provider path 在完成 QuantSpec 与 physical-layout 验证后，把 K/V storage、scale 和可选
+zero-point 纳入同一 output/input alias gate，并执行 provider alignment policy。只有不对应真实
+设备 tensor 的 implicit-unit scale 可以跳过地址对齐；这不会放宽实际量化 tensor 的检查。
+
 single prefill 的 `scale_q`/`scale_k`/`scale_v` 属于逐头量化 scale；同一接口中的
 `k_scale`/`v_scale` 属于校准倍率。provider lowering 必须保持两组来源独立，并为每个非空
 来源声明精确参数绑定；不能因为名称相近而合并或覆盖。

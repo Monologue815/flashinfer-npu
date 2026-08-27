@@ -51,6 +51,7 @@ from .schema import (
     SingleAttentionMetadata,
 )
 from .tensor_contract import (
+    AttentionTensorAccessPolicy,
     KVCacheView,
     QuantizedTensorView,
     TensorView,
@@ -59,7 +60,7 @@ from .tensor_contract import (
 )
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 7
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 8
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -1032,6 +1033,7 @@ class AttentionOperatorQuantizationRunAdapter:
         operation: AttentionOperatorOperationSpec,
         bindings: Sequence[AttentionOperatorQuantizationBinding],
         tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+        tensor_access_policy: AttentionTensorAccessPolicy,
         expected_device: str,
         physical_layout_catalog: QuantPhysicalLayoutCatalog,
         profiles: Sequence[AttentionBackendCapabilityProfile],
@@ -1053,6 +1055,10 @@ class AttentionOperatorQuantizationRunAdapter:
             raise TypeError(
                 "tensor_metadata_inspector must implement "
                 "AttentionOperatorTensorMetadataInspector"
+            )
+        if not isinstance(tensor_access_policy, AttentionTensorAccessPolicy):
+            raise TypeError(
+                "tensor_access_policy must be AttentionTensorAccessPolicy"
             )
         if not str(expected_device):
             raise SchemaError("quantization run expected_device must be non-empty")
@@ -1099,6 +1105,7 @@ class AttentionOperatorQuantizationRunAdapter:
             item.quant_spec.fingerprint: item for item in values
         }
         self._tensor_metadata_inspector = tensor_metadata_inspector
+        self._tensor_access_policy = tensor_access_policy
         self._expected_device = str(expected_device)
         self._physical_layout_catalog = physical_layout_catalog
         self._profiles = profile_values
@@ -1140,6 +1147,31 @@ class AttentionOperatorQuantizationRunAdapter:
             self._expected_device,
             descriptor,
         )
+        for name, view in kv_view.named_component_views:
+            if not str(view.storage_id).startswith("implicit-unit-scale:"):
+                view.require_alignment(
+                    self._tensor_access_policy.required_alignment, name
+                )
+        if not self._tensor_access_policy.permit_output_input_alias:
+            output_views = []
+            for name, value in (("out", request.out), ("lse", request.lse)):
+                if value is None:
+                    continue
+                output_view = self._tensor_metadata_inspector.to_view(
+                    value, name=name, writable=True
+                )
+                if not isinstance(output_view, TensorView):
+                    raise TypeError(
+                        "tensor metadata inspector must return TensorView"
+                    )
+                output_views.append((name, output_view))
+            for output_name, output_view in output_views:
+                for input_name, input_view in kv_view.named_component_views:
+                    if output_view.overlaps(input_view):
+                        raise SchemaError(
+                            "%s cannot alias %s"
+                            % (output_name, input_name)
+                        )
         if descriptor is not None:
             receipt = active_plan.dispatch_receipt
             profile = next(
@@ -1321,6 +1353,7 @@ class AttentionOperatorQuantizationRunAdapterFactory:
         operation: AttentionOperatorOperationSpec,
         bindings: Sequence[AttentionOperatorQuantizationBinding],
         tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+        tensor_access_policy: AttentionTensorAccessPolicy,
         physical_layout_catalog: QuantPhysicalLayoutCatalog,
         profiles: Sequence[AttentionBackendCapabilityProfile],
         descriptors: Sequence[KernelDescriptor],
@@ -1350,11 +1383,16 @@ class AttentionOperatorQuantizationRunAdapterFactory:
                 "tensor_metadata_inspector must implement "
                 "AttentionOperatorTensorMetadataInspector"
             )
+        if not isinstance(tensor_access_policy, AttentionTensorAccessPolicy):
+            raise TypeError(
+                "tensor_access_policy must be AttentionTensorAccessPolicy"
+            )
         self.provider_id = operation.provider_id
         self.operation_id = operation.operation_id
         self._operation = operation
         self._bindings = values
         self._tensor_metadata_inspector = tensor_metadata_inspector
+        self._tensor_access_policy = tensor_access_policy
         self._physical_layout_catalog = validate_attention_operator_quant_physical_layouts(
             values, physical_layout_catalog
         )
@@ -1373,6 +1411,7 @@ class AttentionOperatorQuantizationRunAdapterFactory:
             self._operation,
             self._bindings,
             self._tensor_metadata_inspector,
+            self._tensor_access_policy,
             str(device),
             self._physical_layout_catalog,
             self._profiles,
