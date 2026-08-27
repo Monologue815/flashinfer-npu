@@ -3,6 +3,7 @@ from dataclasses import replace
 
 from flashinfer_npu.attention import (
     AttentionFrameworkSession,
+    AttentionOperatorImplicitUnitScale,
     AttentionOperatorQuantArgumentBinding,
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizationPlanGate,
@@ -55,6 +56,24 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
             {"kv.key.scale": "key_scale", "kv.value.scale": "value_scale"},
         )
         self.assertEqual(len(first.fingerprint), 64)
+
+    def test_implicit_unit_scale_has_canonical_logical_identity(self):
+        scale = AttentionOperatorImplicitUnitScale(
+            source="run.q_head_scale",
+            shape=(8,),
+            dtype="float32",
+            device="npu:0",
+        )
+
+        self.assertEqual(scale.to_dict()["shape"], [8])
+        self.assertEqual(len(scale.fingerprint), 64)
+        with self.assertRaisesRegex(SchemaError, "unknown.*source"):
+            AttentionOperatorImplicitUnitScale(
+                source="run.unknown_scale",
+                shape=(8,),
+                dtype="float32",
+                device="npu:0",
+            )
 
     def test_asymmetric_binding_requires_independent_key_and_value_zero_points(self):
         values = bootstrap_components()
@@ -132,6 +151,18 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
                 values["operation"],
                 arguments=arguments,
                 runtime_o_scale_policy="argument",
+            )
+
+    def test_implicit_unit_scale_requires_an_exact_argument_source(self):
+        values = bootstrap_components()
+        quant_spec = functional_profile().rules[0].quant_specs[0]
+        with self.assertRaisesRegex(
+            SchemaError, "requires an argument binding"
+        ):
+            binding_for(
+                quant_spec,
+                values["operation"],
+                implicit_unit_scale_sources=("run.q_head_scale",),
             )
 
     def test_runtime_output_scale_dtype_must_have_capability_rule(self):

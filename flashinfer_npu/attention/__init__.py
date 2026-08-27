@@ -421,6 +421,7 @@ from .operator_bootstrap import (
 )
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
+    AttentionOperatorImplicitUnitScale,
     AttentionOperatorQuantArgumentBinding,
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizationPlanGate,
@@ -696,6 +697,7 @@ __all__ = [
     "AttentionEvidenceOperatorRuntimeAuthorityResolver",
     "AttentionOperatorPackageRuntimeSpec",
     "AttentionOperatorQuantArgumentBinding",
+    "AttentionOperatorImplicitUnitScale",
     "AttentionOperatorQuantizationBinding",
     "AttentionOperatorQuantizationPlanGate",
     "AttentionOperatorQuantizationRunAdapter",

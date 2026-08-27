@@ -284,6 +284,16 @@ def public_single_quantized_runtime(
             runtime_q_head_scale_policy="argument",
             runtime_k_head_scale_policy="argument",
             runtime_v_head_scale_policy="argument",
+            implicit_unit_scale_sources=(
+                (
+                    "kv.key.scale",
+                    "kv.value.scale",
+                    "run.q_head_scale",
+                )
+                if quant_spec.storage_dtype
+                in {"float8_e4m3fn", "float8_e5m2"}
+                else ()
+            ),
         )
     else:
         binding = replace(original_binding, quant_spec=quant_spec)
@@ -494,6 +504,16 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
             single_fp8_per_head_quant_spec("float8_e5m2", "HND").axis,
             (0,),
         )
+        with self.assertRaisesRegex(
+            SchemaError, "must authorize implicit unit scales"
+        ):
+            public_single_quantized_runtime(
+                runtime_scales=False,
+                quant_spec=quant_spec,
+                q_dtype="float8_e4m3fn",
+                o_dtype="float16",
+                modes=(AttentionMode.SINGLE_PREFILL,),
+            )
         values, _, registry = public_single_quantized_runtime(
             quant_spec=quant_spec,
             q_dtype="float8_e4m3fn",
@@ -533,16 +553,26 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
         self.assertEqual(call[13:15], (None, None))
 
         package_attention.calls[:] = []
-        with self.assertRaisesRegex(NotImplementedError, "all per-head scales"):
-            single_prefill_with_kv_cache(
-                q,
-                k,
-                v,
-                scale_q=q_scale,
-                scale_k=k_scale,
-                o_dtype="float16",
-            )
-        self.assertEqual(package_attention.calls, [])
+        partial_output = single_prefill_with_kv_cache(
+            q,
+            k,
+            v,
+            scale_q=q_scale,
+            scale_k=k_scale,
+            o_dtype="float16",
+        )
+        implicit_output = single_prefill_with_kv_cache(
+            q, k, v, o_dtype="float16"
+        )
+
+        self.assertEqual(partial_output, "package-output:q-fp8")
+        self.assertEqual(implicit_output, "package-output:q-fp8")
+        partial_call, implicit_call = package_attention.calls
+        self.assertIs(partial_call[6], k_scale)
+        self.assertIsNone(partial_call[7])
+        self.assertIs(partial_call[12], q_scale)
+        self.assertEqual(implicit_call[6:8], (None, None))
+        self.assertIsNone(implicit_call[12])
 
 if __name__ == "__main__":
     unittest.main()

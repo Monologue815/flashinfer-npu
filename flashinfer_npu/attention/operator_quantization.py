@@ -37,6 +37,7 @@ from .quant_physical_layout import (
     QuantPhysicalLayoutDescriptor,
 )
 from .schema import (
+    AttentionMode,
     MixedPagedKVMetadata,
     PagedKVCacheSpec,
     PagedKVMetadata,
@@ -45,10 +46,16 @@ from .schema import (
     RaggedKVMetadata,
     SingleAttentionMetadata,
 )
-from .tensor_contract import KVCacheView, QuantizedTensorView, TensorView
+from .tensor_contract import (
+    KVCacheView,
+    QuantizedTensorView,
+    TensorView,
+    contiguous_strides,
+    dtype_itemsize,
+)
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 4
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 5
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -65,6 +72,13 @@ _QUANT_ARGUMENT_SOURCES = {
     "run.o_scale",
 }
 _RUNTIME_SCALE_POLICIES = {"reject", "argument"}
+_IMPLICIT_UNIT_SCALE_SOURCES = {
+    "kv.key.scale",
+    "kv.value.scale",
+    "run.q_head_scale",
+    "run.k_head_scale",
+    "run.v_head_scale",
+}
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -103,6 +117,44 @@ class AttentionOperatorQuantArgumentBinding:
 
 
 @dataclass(frozen=True)
+class AttentionOperatorImplicitUnitScale:
+    """Virtual unit-scale tensor accepted only by an exact provider binding."""
+
+    source: str
+    shape: Tuple[int, ...]
+    dtype: str
+    device: str
+    schema_version: int = ATTENTION_OPERATOR_QUANTIZATION_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_QUANTIZATION_VERSION:
+            raise SchemaError("unsupported Attention implicit unit-scale version")
+        if self.source not in _IMPLICIT_UNIT_SCALE_SOURCES:
+            raise SchemaError("unknown Attention implicit unit-scale source")
+        shape = tuple(int(item) for item in self.shape)
+        if len(shape) != 1 or shape[0] <= 0:
+            raise SchemaError("implicit unit scale must be a non-empty rank-1 tensor")
+        if not str(self.dtype) or not str(self.device):
+            raise SchemaError("implicit unit scale dtype/device must be non-empty")
+        object.__setattr__(self, "shape", shape)
+        object.__setattr__(self, "dtype", str(self.dtype))
+        object.__setattr__(self, "device", str(self.device))
+
+    def to_dict(self):
+        return {
+            "schema_version": self.schema_version,
+            "source": self.source,
+            "shape": list(self.shape),
+            "dtype": self.dtype,
+            "device": self.device,
+        }
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_hash(self.to_dict())
+
+
+@dataclass(frozen=True)
 class AttentionOperatorQuantizationBinding:
     """Exact KV quant semantics authorized for one provider operation."""
 
@@ -118,6 +170,7 @@ class AttentionOperatorQuantizationBinding:
     runtime_v_head_scale_policy: str = "reject"
     runtime_o_scale_policy: str = "reject"
     runtime_o_scale_output_dtypes: Tuple[str, ...] = ()
+    implicit_unit_scale_sources: Tuple[str, ...] = ()
     kv_input_contract: str = "separate_storage_scale_zero_point"
     schema_version: int = ATTENTION_OPERATOR_QUANTIZATION_VERSION
 
@@ -188,6 +241,19 @@ class AttentionOperatorQuantizationBinding:
         object.__setattr__(
             self, "runtime_o_scale_output_dtypes", tuple(sorted(output_dtypes))
         )
+        implicit_sources = tuple(str(item) for item in self.implicit_unit_scale_sources)
+        if (
+            any(item not in _IMPLICIT_UNIT_SCALE_SOURCES for item in implicit_sources)
+            or len(set(implicit_sources)) != len(implicit_sources)
+        ):
+            raise SchemaError("implicit unit-scale sources are invalid")
+        if not set(implicit_sources).issubset(sources):
+            raise SchemaError(
+                "implicit unit-scale source requires an argument binding"
+            )
+        object.__setattr__(
+            self, "implicit_unit_scale_sources", tuple(sorted(implicit_sources))
+        )
         if self.kv_input_contract != "separate_storage_scale_zero_point":
             raise SchemaError("unsupported Attention quantized KV input contract")
         object.__setattr__(self, "provider_id", str(self.provider_id))
@@ -221,6 +287,7 @@ class AttentionOperatorQuantizationBinding:
             "runtime_o_scale_output_dtypes": list(
                 self.runtime_o_scale_output_dtypes
             ),
+            "implicit_unit_scale_sources": list(self.implicit_unit_scale_sources),
             "kv_input_contract": self.kv_input_contract,
         }
 
@@ -386,6 +453,30 @@ def _inspect_quant_component(
     return view
 
 
+def _inspect_quant_scale(
+    inspector: AttentionOperatorTensorMetadataInspector,
+    value: Any,
+    name: str,
+    *,
+    source: Optional[str] = None,
+) -> TensorView:
+    if isinstance(value, AttentionOperatorImplicitUnitScale):
+        if value.source != (name if source is None else source):
+            raise SchemaError("implicit unit scale is bound to the wrong source")
+        numel = 1
+        for dimension in value.shape:
+            numel *= dimension
+        return TensorView(
+            shape=value.shape,
+            strides=contiguous_strides(value.shape),
+            dtype=value.dtype,
+            device=value.device,
+            storage_id="implicit-unit-scale:" + value.fingerprint,
+            storage_nbytes=numel * dtype_itemsize(value.dtype),
+        )
+    return _inspect_quant_component(inspector, value, name)
+
+
 def _validate_runtime_head_scale(
     inspector: AttentionOperatorTensorMetadataInspector,
     value: Any,
@@ -395,7 +486,9 @@ def _validate_runtime_head_scale(
     dtype: str,
     device: str,
 ) -> TensorView:
-    view = _inspect_quant_component(inspector, value, name)
+    view = _inspect_quant_scale(
+        inspector, value, name, source="run." + name
+    )
     if view.shape != (num_heads,):
         raise SchemaError("%s shape must be (%d,)" % (name, num_heads))
     if view.dtype != dtype:
@@ -512,10 +605,10 @@ def inspect_attention_operator_quantized_kv_input(
         "value_storage": _inspect_quant_component(
             inspector, value.value_storage, "kv.value.storage"
         ),
-        "key_scale": _inspect_quant_component(
+        "key_scale": _inspect_quant_scale(
             inspector, value.key_scale, "kv.key.scale"
         ),
-        "value_scale": _inspect_quant_component(
+        "value_scale": _inspect_quant_scale(
             inspector, value.value_scale, "kv.value.scale"
         ),
     }
@@ -620,6 +713,30 @@ def validate_attention_operator_quantization_bindings(
             raise SchemaError(
                 "runtime o_scale output dtype has no capability rule: %s"
                 % sorted(undeclared_output_dtypes)[0]
+            )
+        fp8_single_prefill = (
+            binding.quant_spec.storage_dtype
+            in {"float8_e4m3fn", "float8_e5m2"}
+            and any(
+                AttentionMode.SINGLE_PREFILL in rule.modes
+                and any(
+                    item.fingerprint == binding.quant_spec.fingerprint
+                    for item in rule.quant_specs
+                )
+                for profile in profile_values
+                for rule in profile.rules
+            )
+        )
+        required_unit_sources = {
+            "kv.key.scale",
+            "kv.value.scale",
+            "run.q_head_scale",
+        }
+        if fp8_single_prefill and not required_unit_sources.issubset(
+            binding.implicit_unit_scale_sources
+        ):
+            raise SchemaError(
+                "FP8 single-prefill binding must authorize implicit unit scales"
             )
     profile_quant_specs = {
         quant_spec.fingerprint: quant_spec
@@ -969,10 +1086,24 @@ class AttentionOperatorQuantizationRunAdapter:
             "run.v_head_scale": request.v_head_scale,
             "run.o_scale": request.o_scale,
         }
+        for source, value in values_by_source.items():
+            if isinstance(value, AttentionOperatorImplicitUnitScale):
+                if value.source != source:
+                    raise SchemaError(
+                        "implicit unit scale is bound to the wrong source"
+                    )
+                if source not in binding.implicit_unit_scale_sources:
+                    raise SchemaError(
+                        "quantization binding rejects implicit unit scale for %s"
+                        % source
+                    )
         injected = tuple(
             (item.argument_name, values_by_source[item.source])
             for item in binding.argument_bindings
             if values_by_source[item.source] is not None
+            and not isinstance(
+                values_by_source[item.source], AttentionOperatorImplicitUnitScale
+            )
         )
         existing_names = {name for name, _ in lowered.keyword_arguments}
         collision = existing_names.intersection(name for name, _ in injected)
@@ -1060,6 +1191,7 @@ class AttentionOperatorQuantizationRunAdapterFactory:
 __all__ = [
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "AttentionOperatorQuantArgumentBinding",
+    "AttentionOperatorImplicitUnitScale",
     "AttentionOperatorQuantizationBinding",
     "AttentionOperatorQuantizationPlanGate",
     "AttentionOperatorQuantizationRunAdapter",

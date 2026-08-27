@@ -50,6 +50,7 @@ from .attention.schema import (
     RaggedKVMetadata,
 )
 from .attention.operator_quantization import (
+    AttentionOperatorImplicitUnitScale,
     AttentionOperatorQuantizedTensorInput,
     combine_attention_operator_quantized_kv_input,
 )
@@ -100,38 +101,56 @@ def single_prefill_with_kv_cache(
             kv_layout=kv_layout,
         )
         head_scales = (scale_q, scale_k, scale_v)
-        if adapted_provider.kv_quant_spec is None and any(
-            value is not None for value in head_scales
-        ):
-            fp8_dtypes_match = (
-                adapted_provider.q_dtype == adapted_provider.kv_dtype
-                and adapted_provider.q_dtype
-                in {"float8_e4m3fn", "float8_e5m2"}
-            )
-            if not fp8_dtypes_match:
-                raise NotImplementedError(
-                    "provider query-scale/per-head K/V scale binding requires "
-                    "quantized K/V"
-                )
-            if any(value is None for value in head_scales):
-                raise NotImplementedError(
-                    "provider bare FP8 Q/K/V requires all per-head scales until "
-                    "unit-scale materialization is installed"
-                )
+        fp8_dtypes_match = (
+            adapted_provider.q_dtype == adapted_provider.kv_dtype
+            and adapted_provider.q_dtype
+            in {"float8_e4m3fn", "float8_e5m2"}
+        )
+        if adapted_provider.kv_quant_spec is None and fp8_dtypes_match:
             fp8_quant_spec = single_fp8_per_head_quant_spec(
                 adapted_provider.kv_dtype, kv_layout
+            )
+            provider_q_head_scale = (
+                scale_q
+                if scale_q is not None
+                else AttentionOperatorImplicitUnitScale(
+                    source="run.q_head_scale",
+                    shape=(adapted_provider.num_qo_heads,),
+                    dtype=fp8_quant_spec.scale_dtype,
+                    device=adapted_provider.device,
+                )
+            )
+            key_quant_scale = (
+                scale_k
+                if scale_k is not None
+                else AttentionOperatorImplicitUnitScale(
+                    source="kv.key.scale",
+                    shape=(adapted_provider.num_kv_heads,),
+                    dtype=fp8_quant_spec.scale_dtype,
+                    device=adapted_provider.device,
+                )
+            )
+            value_quant_scale = (
+                scale_v
+                if scale_v is not None
+                else AttentionOperatorImplicitUnitScale(
+                    source="kv.value.scale",
+                    shape=(adapted_provider.num_kv_heads,),
+                    dtype=fp8_quant_spec.scale_dtype,
+                    device=adapted_provider.device,
+                )
             )
             provider_key = AttentionOperatorQuantizedTensorInput(
                 quant_spec=fp8_quant_spec,
                 logical_shape=tuple(int(dim) for dim in k.shape),
                 storage=k,
-                scale=scale_k,
+                scale=key_quant_scale,
             )
             provider_value = AttentionOperatorQuantizedTensorInput(
                 quant_spec=fp8_quant_spec,
                 logical_shape=tuple(int(dim) for dim in v.shape),
                 storage=v,
-                scale=scale_v,
+                scale=value_quant_scale,
             )
             adapted_provider = adapt_framework_single_qkv(
                 q,
@@ -142,6 +161,13 @@ def single_prefill_with_kv_cache(
             )
             provider_k_head_scale = None
             provider_v_head_scale = None
+        elif adapted_provider.kv_quant_spec is None and any(
+            value is not None for value in head_scales
+        ):
+            raise NotImplementedError(
+                "provider query-scale/per-head K/V scale binding requires "
+                "quantized K/V"
+            )
         if (
             k_scale is not None or v_scale is not None
         ) and adapted_provider.kv_quant_spec is None:

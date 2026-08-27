@@ -141,10 +141,11 @@ single prefill 的 `scale_q`/`scale_k`/`scale_v` 属于逐头量化 scale；同�
 `k_scale`/`v_scale` 属于校准倍率。provider lowering 必须保持两组来源独立，并为每个非空
 来源声明精确参数绑定；不能因为名称相近而合并或覆盖。
 
-当 Q/K/V 是同一种 FP8 dtype 且三项逐头 scale 均显式提供时，single prefill facade 会把
+当 Q/K/V 是同一种 FP8 dtype 时，single prefill facade 会把
 裸 K/V tensor canonicalize 为内部 per-head `QuantSpec` 输入；用户仍使用原始 FlashInfer
-参数位置，不接触项目扩展的 plan 或 provider wrapper。部分缺省 scale 不会猜测或分配设备
-tensor，而是在 provider resolution 前明确失败。
+参数位置，不接触项目扩展的 plan 或 provider wrapper。任一缺省 scale 采用 virtual unit
+scale；仅当 provider binding 明确声明省略相应参数等价于 scale=1 时允许该路径，不会猜测
+设备 tensor 或在 run 热路径临时分配。
 
 ## 6. CUDA 名称的兼容策略
 

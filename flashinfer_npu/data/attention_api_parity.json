@@ -98,7 +98,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. backend='reference' explicitly selects the oracle; backend='auto' with NPU tensors owns an ephemeral provider resolver. Explicit quantized K/V logical shapes drive the plan. Bare FP8 Q/K/V with all three per-head scales canonicalize into the same internal QuantSpec route without exposing a plan wrapper. Per-head scale_q/scale_k/scale_v and calibration k_scale/v_scale remain distinct sources and each requires an exact provider argument binding. Implicit unit-scale materialization and NVFP4 kv_cache_sf remain explicit gaps."
+      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. backend='reference' explicitly selects the oracle; backend='auto' with NPU tensors owns an ephemeral provider resolver. Explicit quantized K/V logical shapes drive the plan. Bare FP8 Q/K/V canonicalize into the same internal QuantSpec route without exposing a plan wrapper; omitted per-head scales use virtual unit semantics only when the provider binding certifies argument omission as scale=1. Per-head scale_q/scale_k/scale_v and calibration k_scale/v_scale remain distinct sources and each requires an exact provider argument binding. NVFP4 kv_cache_sf remains an explicit gap."
     },
     {
       "upstream": "flashinfer.prefill.single_prefill_with_kv_cache_with_jit_module",
