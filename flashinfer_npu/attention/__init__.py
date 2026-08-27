@@ -407,10 +407,15 @@ from .operator_resolver import (
     AttentionResolvedOperatorRuntime,
 )
 from .operator_scoring import (
+    ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION,
     ATTENTION_OPERATOR_SCORING_VERSION,
+    DEFAULT_ATTENTION_OPERATOR_PLAN_SCORING_MANIFEST_LIMITS,
     AttentionOperatorPlanScoreRule,
     AttentionOperatorPlanScoringError,
+    AttentionOperatorPlanScoringManifest,
+    AttentionOperatorPlanScoringManifestLimits,
     AttentionOperatorPlanScoringPolicy,
+    load_attention_operator_plan_scoring_manifest,
 )
 from .operator_execution import (
     ATTENTION_OPERATOR_EXECUTION_VERSION,
@@ -574,6 +579,7 @@ __all__ = [
     "ATTENTION_PROVIDER_ADAPTER_VERSION",
     "ATTENTION_OPERATOR_RESOLVER_VERSION",
     "ATTENTION_OPERATOR_SCORING_VERSION",
+    "ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION",
     "ATTENTION_OPERATOR_PLAN_SCORE_MIN",
     "ATTENTION_OPERATOR_PLAN_SCORE_MAX",
     "ATTENTION_OPERATOR_EXECUTION_VERSION",
@@ -745,7 +751,10 @@ __all__ = [
     "AttentionOperatorRuntimePlanScorer",
     "AttentionOperatorPlanScoreRule",
     "AttentionOperatorPlanScoringError",
+    "AttentionOperatorPlanScoringManifest",
+    "AttentionOperatorPlanScoringManifestLimits",
     "AttentionOperatorPlanScoringPolicy",
+    "DEFAULT_ATTENTION_OPERATOR_PLAN_SCORING_MANIFEST_LIMITS",
     "AttentionOperatorRuntimeResolutionError",
     "AttentionOperatorRuntimeResolutionReport",
     "AttentionOperatorRuntimeResolver",
@@ -944,6 +953,7 @@ __all__ = [
     "inspect_attention_operator_quantized_kv_input",
     "select_attention_operator_physical_layout_dispatch",
     "load_attention_operator_physical_evidence_manifest",
+    "load_attention_operator_plan_scoring_manifest",
     "verify_attention_operator_physical_evidence_results",
     "normalize_quant_axes",
     "plan_quant_layout_conversion",

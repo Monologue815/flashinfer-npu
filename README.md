@@ -71,7 +71,11 @@ imports, device probes and operator calls are forbidden during scoring.
 Provider preferences can be supplied as a versioned declarative policy rather
 than custom selection code. Exact workload tuning records and broader mode,
 layout, dtype, QuantSpec, page-size or token-range buckets use explicit
-precedence and fail closed on overlap. See
+precedence and fail closed on overlap. Reviewed policies may be grouped in a
+canonical JSON manifest whose loader applies bounded bytes, structure, rule and
+predicate limits before constructing scorer objects. It performs exact
+provider-operation lookup and never imports a provider package or probes a
+device. See
 [Attention plan scoring policy](docs/attention_plan_scoring_policy.md).
 
 Quantized provider candidates have an additional admission boundary: every

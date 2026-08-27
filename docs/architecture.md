@@ -474,7 +474,11 @@ scorer 是纯 Host 策略：不得导入 CANN/flash-attention-npu、探测 NPU�
 能力之间自动选择，同时决策仍可复现、可解释并绑定到具体 provider operation。
 provider 偏好可使用版本化的声明式规则表达；精确 workload tuning record 的
 precedence 高于 mode/layout/dtype/QuantSpec/page-size/token-range heuristic，同层规则
-重叠必须失败封闭。完整契约见
+重叠必须失败封闭。部署侧可通过 bounded JSON manifest 注入这些规则：通用 envelope
+先限制 bytes/depth/nodes/container/string，再在对象构造前限制 policy、rule 及 predicate
+value 数量；每个 `(provider_id, operation_id)` 最多一份 policy，bootstrap 必须按 exact
+identity 取值。manifest 加载过程不读取路径、不导入 provider package、不探测设备。
+完整契约见
 [Attention plan scoring policy](attention_plan_scoring_policy.md)。
 
 ### 11.3 Autotuning

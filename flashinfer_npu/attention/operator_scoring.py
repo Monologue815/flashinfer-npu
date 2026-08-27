@@ -5,11 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 from flashinfer_npu.runtime import SchemaError
 
+from .json_envelope import (
+    DEFAULT_ATTENTION_JSON_ENVELOPE_LIMITS,
+    AttentionJsonEnvelopeLimits,
+    AttentionJsonEnvelopeUsage,
+    decode_attention_json,
+)
 from .operator_resolver import (
     ATTENTION_OPERATOR_PLAN_SCORE_MAX,
     ATTENTION_OPERATOR_PLAN_SCORE_MIN,
@@ -20,11 +26,24 @@ from .schema import AttentionMode, KVLayout
 
 
 ATTENTION_OPERATOR_SCORING_VERSION = 1
+ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION = 1
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _QUANTIZATION_KINDS = {"any", "dense", "quantized"}
+_RULE_SEQUENCE_FIELDS = (
+    "modes",
+    "kv_layouts",
+    "dtype_signatures",
+    "quant_spec_fingerprints",
+    "page_sizes",
+    "head_dim_qk_values",
+    "head_dim_vo_values",
+    "gqa_group_sizes",
+    "causal_values",
+    "workload_fingerprints",
+)
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -479,9 +498,251 @@ class AttentionOperatorPlanScoringPolicy:
         return _canonical_hash(self.to_dict())
 
 
+@dataclass(frozen=True)
+class AttentionOperatorPlanScoringManifestLimits:
+    """Semantic construction limits layered over the generic JSON envelope."""
+
+    max_policies: int = 64
+    max_rules_per_policy: int = 2048
+    max_total_rules: int = 8192
+    max_values_per_predicate: int = 4096
+    max_total_predicate_values: int = 262144
+    schema_version: int = ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION:
+            raise SchemaError("unsupported Attention scoring manifest limits version")
+        for name in self.__dataclass_fields__:
+            if name == "schema_version":
+                continue
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                raise SchemaError("%s must be a positive integer" % name)
+
+
+DEFAULT_ATTENTION_OPERATOR_PLAN_SCORING_MANIFEST_LIMITS = (
+    AttentionOperatorPlanScoringManifestLimits()
+)
+
+
+def _validate_manifest_shape(
+    value: Mapping[str, Any],
+    limits: AttentionOperatorPlanScoringManifestLimits,
+) -> None:
+    policies = value.get("policies")
+    if not isinstance(policies, list):
+        raise SchemaError("Attention scoring manifest policies must be an array")
+    if len(policies) > limits.max_policies:
+        raise SchemaError(
+            "Attention scoring manifest policies exceed limit %d"
+            % limits.max_policies
+        )
+    total_rules = 0
+    total_predicate_values = 0
+    for policy_index, policy in enumerate(policies):
+        if not isinstance(policy, Mapping):
+            raise SchemaError(
+                "Attention scoring manifest policy %d must be an object"
+                % policy_index
+            )
+        rules = policy.get("rules")
+        if not isinstance(rules, list):
+            raise SchemaError(
+                "Attention scoring manifest policy rules must be an array"
+            )
+        if len(rules) > limits.max_rules_per_policy:
+            raise SchemaError(
+                "Attention scoring policy rules exceed per-policy limit %d"
+                % limits.max_rules_per_policy
+            )
+        total_rules += len(rules)
+        if total_rules > limits.max_total_rules:
+            raise SchemaError(
+                "Attention scoring manifest rules exceed total limit %d"
+                % limits.max_total_rules
+            )
+        for rule_index, rule in enumerate(rules):
+            if not isinstance(rule, Mapping):
+                raise SchemaError(
+                    "Attention scoring rule %d must be an object" % rule_index
+                )
+            for field_name in _RULE_SEQUENCE_FIELDS:
+                values = rule.get(field_name)
+                if not isinstance(values, list):
+                    raise SchemaError(
+                        "Attention scoring rule %s must be an array" % field_name
+                    )
+                if len(values) > limits.max_values_per_predicate:
+                    raise SchemaError(
+                        "Attention scoring predicate %s exceeds limit %d"
+                        % (field_name, limits.max_values_per_predicate)
+                    )
+                total_predicate_values += len(values)
+                if (
+                    total_predicate_values
+                    > limits.max_total_predicate_values
+                ):
+                    raise SchemaError(
+                        "Attention scoring predicate values exceed total limit %d"
+                        % limits.max_total_predicate_values
+                    )
+
+
+@dataclass(frozen=True)
+class AttentionOperatorPlanScoringManifest:
+    """Bounded collection with at most one policy per provider operation."""
+
+    manifest_id: str
+    policies: Tuple[AttentionOperatorPlanScoringPolicy, ...]
+    schema_version: int = ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION
+    kind: str = field(
+        default="attention_operator_plan_scoring_manifest",
+        init=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION:
+            raise SchemaError("unsupported Attention plan scoring manifest version")
+        if self.kind != "attention_operator_plan_scoring_manifest":
+            raise SchemaError("Attention plan scoring manifest kind is invalid")
+        if not _IDENTIFIER.fullmatch(str(self.manifest_id)):
+            raise SchemaError("invalid Attention plan scoring manifest_id")
+        policies = tuple(self.policies)
+        if not policies or any(
+            not isinstance(item, AttentionOperatorPlanScoringPolicy)
+            for item in policies
+        ):
+            raise TypeError("Attention scoring manifest must contain policies")
+        policy_ids = tuple(item.policy_id for item in policies)
+        identities = tuple(
+            (item.provider_id, item.operation_id) for item in policies
+        )
+        if len(set(policy_ids)) != len(policy_ids):
+            raise SchemaError("Attention scoring manifest policy_id values duplicate")
+        if len(set(identities)) != len(identities):
+            raise SchemaError(
+                "Attention scoring manifest provider operation identities duplicate"
+            )
+        object.__setattr__(self, "manifest_id", str(self.manifest_id))
+        object.__setattr__(
+            self,
+            "policies",
+            tuple(
+                sorted(
+                    policies,
+                    key=lambda item: (
+                        item.provider_id,
+                        item.operation_id,
+                        item.policy_id,
+                    ),
+                )
+            ),
+        )
+
+    @property
+    def policy_ids(self) -> Tuple[str, ...]:
+        return tuple(item.policy_id for item in self.policies)
+
+    def get(
+        self, provider_id: str, operation_id: str
+    ) -> AttentionOperatorPlanScoringPolicy:
+        identity = (str(provider_id), str(operation_id))
+        for policy in self.policies:
+            if (policy.provider_id, policy.operation_id) == identity:
+                return policy
+        raise SchemaError(
+            "unknown Attention scoring policy identity %r" % (identity,)
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "kind": self.kind,
+            "manifest_id": self.manifest_id,
+            "policies": [item.to_dict() for item in self.policies],
+        }
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: Mapping[str, Any],
+        *,
+        limits: AttentionOperatorPlanScoringManifestLimits = (
+            DEFAULT_ATTENTION_OPERATOR_PLAN_SCORING_MANIFEST_LIMITS
+        ),
+    ) -> "AttentionOperatorPlanScoringManifest":
+        if not isinstance(limits, AttentionOperatorPlanScoringManifestLimits):
+            raise TypeError(
+                "limits must be AttentionOperatorPlanScoringManifestLimits"
+            )
+        data = dict(value)
+        if set(data) != set(cls.__dataclass_fields__):
+            raise SchemaError("Attention plan scoring manifest fields are invalid")
+        if data.pop("kind") != "attention_operator_plan_scoring_manifest":
+            raise SchemaError("Attention plan scoring manifest kind is invalid")
+        _validate_manifest_shape(data, limits)
+        try:
+            data["policies"] = tuple(
+                AttentionOperatorPlanScoringPolicy.from_dict(item)
+                for item in data["policies"]
+            )
+            return cls(**data)
+        except (TypeError, ValueError) as error:
+            raise SchemaError(
+                "Attention plan scoring manifest fields are invalid"
+            ) from error
+
+    def to_json(self, *, indent: Optional[int] = None) -> str:
+        return json.dumps(
+            self.to_dict(),
+            sort_keys=True,
+            separators=(",", ":") if indent is None else None,
+            ensure_ascii=True,
+            allow_nan=False,
+            indent=indent,
+        )
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_hash(self.to_dict())
+
+
+def load_attention_operator_plan_scoring_manifest(
+    value: str,
+    *,
+    limits: AttentionJsonEnvelopeLimits = DEFAULT_ATTENTION_JSON_ENVELOPE_LIMITS,
+    manifest_limits: AttentionOperatorPlanScoringManifestLimits = (
+        DEFAULT_ATTENTION_OPERATOR_PLAN_SCORING_MANIFEST_LIMITS
+    ),
+) -> Tuple[AttentionOperatorPlanScoringManifest, AttentionJsonEnvelopeUsage]:
+    """Decode bounded strict JSON before constructing policy/rule objects."""
+
+    if not isinstance(
+        manifest_limits, AttentionOperatorPlanScoringManifestLimits
+    ):
+        raise TypeError(
+            "manifest_limits must be AttentionOperatorPlanScoringManifestLimits"
+        )
+    decoded, usage = decode_attention_json(value, limits=limits)
+    if not isinstance(decoded, Mapping):
+        raise SchemaError("Attention scoring manifest root must be an object")
+    return (
+        AttentionOperatorPlanScoringManifest.from_dict(
+            decoded,
+            limits=manifest_limits,
+        ),
+        usage,
+    )
+
+
 __all__ = [
+    "ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION",
     "ATTENTION_OPERATOR_SCORING_VERSION",
+    "DEFAULT_ATTENTION_OPERATOR_PLAN_SCORING_MANIFEST_LIMITS",
     "AttentionOperatorPlanScoreRule",
     "AttentionOperatorPlanScoringError",
+    "AttentionOperatorPlanScoringManifest",
+    "AttentionOperatorPlanScoringManifestLimits",
     "AttentionOperatorPlanScoringPolicy",
+    "load_attention_operator_plan_scoring_manifest",
 ]

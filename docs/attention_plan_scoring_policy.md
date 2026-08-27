@@ -37,6 +37,37 @@ Unknown, missing or version-mismatched fields fail closed. Sequence-valued
 predicates are canonicalized so declaration order does not change the policy
 fingerprint.
 
+## Bounded manifest ingestion
+
+Deployments may group reviewed policies in an
+`AttentionOperatorPlanScoringManifest`. A manifest has its own stable
+`manifest_id` and fingerprint, contains at most one policy for each exact
+`(provider_id, operation_id)` identity, and is canonicalized independently of
+input policy order. `manifest.get(provider_id, operation_id)` performs exact
+identity lookup; it never selects by provider name alone or substitutes another
+operation version.
+
+`load_attention_operator_plan_scoring_manifest()` is the only JSON ingestion
+boundary. It first applies the shared strict JSON envelope, which rejects
+duplicate object keys, non-finite numbers and inputs exceeding configured byte,
+depth, node, string or container limits. Before constructing policy and rule
+objects, it then enforces Attention-specific limits for:
+
+- policies per manifest;
+- rules per policy and total rules;
+- values per sequence predicate and total predicate values.
+
+All limits are explicit through `AttentionJsonEnvelopeLimits` and
+`AttentionOperatorPlanScoringManifestLimits`. Unknown fields, malformed array
+shapes, duplicate policy ids and duplicate provider-operation identities fail
+closed. The loader returns both the immutable manifest and measured envelope
+usage so the bootstrap owner can audit the accepted input size.
+
+The loader accepts JSON text, not a path, URL or package name. Reading files,
+verifying signatures and choosing which reviewed manifest to trust belong to
+the deployment/bootstrap layer. Loading and looking up a manifest therefore
+performs no filesystem access, provider import, device probe or operator call.
+
 ## Rule model
 
 Each `AttentionOperatorPlanScoreRule` contains:
@@ -148,3 +179,10 @@ The policy is internal bootstrap data. It is not added to the model-facing
 `plan()` signature. After successful planning, callers may inspect only the
 selected score, source, reason and resolution fingerprint through
 `attention.plan_selection`.
+
+When policies are supplied as JSON, bootstrap first loads the bounded manifest,
+looks up the exact package runtime identity, and assigns that returned policy as
+`plan_scorer`. Runtime declaration v2 records the selected policy fingerprint,
+not the manifest location. Packaging, signature and rollout metadata may change
+without changing runtime identity; any policy-content change still produces a
+new fingerprint and requires a matching reviewed declaration.
