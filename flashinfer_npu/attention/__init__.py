@@ -482,6 +482,12 @@ from .operator_declaration import (
     describe_attention_operator_package_runtime,
     load_attention_operator_package_runtime_declaration,
 )
+from .provider_bundle import (
+    ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION,
+    AttentionOperatorProviderIntegrationBundle,
+    AttentionOperatorProviderIntegrationBundleBinding,
+    install_attention_operator_provider_integration_bundle,
+)
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
     AttentionOperatorImplicitUnitScale,
@@ -600,6 +606,7 @@ __all__ = [
     "ATTENTION_OPERATOR_AUTHORITY_VERSION",
     "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
     "ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION",
+    "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION",
     "ATTENTION_OPERATOR_EVIDENCE_MANIFEST_VERSION",
@@ -800,6 +807,8 @@ __all__ = [
     "AttentionOperatorPackageRuntimeDeclaration",
     "AttentionOperatorRuntimeComponentDeclaration",
     "AttentionOperatorRuntimeDeclarationBinding",
+    "AttentionOperatorProviderIntegrationBundle",
+    "AttentionOperatorProviderIntegrationBundleBinding",
     "bind_attention_operator_plan_scoring_manifest",
     "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",
@@ -943,6 +952,7 @@ __all__ = [
     "decode_attention_json",
     "infer_quant_scale_shape",
     "install_declared_attention_operator_runtime_resolvers",
+    "install_attention_operator_provider_integration_bundle",
     "install_attention_operator_runtime_resolvers",
     "infer_logical_quant_storage_shape",
     "infer_quant_storage_shape",

@@ -44,6 +44,9 @@ from .operator_scoring import (
     AttentionOperatorPlanScoringManifest,
     AttentionOperatorPlanScoringManifestBinding,
 )
+from .provider_bundle import (
+    AttentionOperatorProviderIntegrationBundleBinding,
+)
 from .reference import ReferenceAttentionExecutor, ReferenceTensor
 from .schema import AttentionMode, AttentionPlanSpec, MixedPagedKVMetadata
 from .workspace import AttentionWorkspaceContract
@@ -56,6 +59,7 @@ _operator_runtime_resolvers = build_default_attention_operator_runtime_resolvers
 _operator_runtime_operation_catalog = load_packaged_attention_operator_catalog()
 _operator_runtime_declarations = ()
 _operator_runtime_plan_scoring_manifest_binding = None
+_operator_runtime_provider_integration_bundle_binding = None
 _operator_runtime_resolvers_generation = 0
 _operator_runtime_resolvers_lock = RLock()
 
@@ -75,6 +79,9 @@ class AttentionOperatorRuntimeRegistrySnapshot:
     runtime_declarations: tuple = ()
     plan_scoring_manifest_binding: Optional[
         AttentionOperatorPlanScoringManifestBinding
+    ] = None
+    provider_integration_bundle_binding: Optional[
+        AttentionOperatorProviderIntegrationBundleBinding
     ] = None
 
     def __post_init__(self):
@@ -135,6 +142,58 @@ class AttentionOperatorRuntimeRegistrySnapshot:
                 raise SchemaError(
                     "scoring manifest binding differs from runtime declarations"
                 )
+        bundle_binding = self.provider_integration_bundle_binding
+        if bundle_binding is not None:
+            if not isinstance(
+                bundle_binding,
+                AttentionOperatorProviderIntegrationBundleBinding,
+            ):
+                raise TypeError(
+                    "provider_integration_bundle_binding has the wrong type"
+                )
+            if not declarations:
+                raise SchemaError(
+                    "provider integration bundle binding requires runtime "
+                    "declarations"
+                )
+            if scoring_binding is None:
+                raise SchemaError(
+                    "provider integration bundle binding requires a scoring "
+                    "manifest binding"
+                )
+            if (
+                bundle_binding.catalog_name != catalog.name
+                or bundle_binding.catalog_fingerprint != catalog.fingerprint
+            ):
+                raise SchemaError(
+                    "provider integration bundle binding differs from operation "
+                    "catalog"
+                )
+            if (
+                bundle_binding.scoring_manifest_id
+                != scoring_binding.manifest_id
+                or bundle_binding.scoring_manifest_fingerprint
+                != scoring_binding.manifest_fingerprint
+            ):
+                raise SchemaError(
+                    "provider integration bundle binding differs from scoring "
+                    "manifest"
+                )
+            declaration_bindings = tuple(
+                sorted(
+                    (
+                        item.provider_id,
+                        item.operation_id,
+                        item.declaration_fingerprint,
+                    )
+                    for item in declarations
+                )
+            )
+            if bundle_binding.registration_bindings != declaration_bindings:
+                raise SchemaError(
+                    "provider integration bundle binding differs from runtime "
+                    "declarations"
+                )
         object.__setattr__(self, "device_types", device_types)
         object.__setattr__(
             self,
@@ -156,6 +215,16 @@ class AttentionOperatorRuntimeRegistrySnapshot:
     def plan_scoring_manifest_fingerprint(self):
         binding = self.plan_scoring_manifest_binding
         return None if binding is None else binding.manifest_fingerprint
+
+    @property
+    def provider_integration_bundle_id(self):
+        binding = self.provider_integration_bundle_binding
+        return None if binding is None else binding.bundle_id
+
+    @property
+    def provider_integration_bundle_fingerprint(self):
+        binding = self.provider_integration_bundle_binding
+        return None if binding is None else binding.bundle_fingerprint
 
     def declaration_fingerprint(self, provider_id: str, operation_id: str):
         """Return the reviewed declaration for one selected operation, if any."""
@@ -187,6 +256,7 @@ def attention_operator_runtime_registry_snapshot(
         operation_catalog = _operator_runtime_operation_catalog
         runtime_declarations = _operator_runtime_declarations
         scoring_binding = _operator_runtime_plan_scoring_manifest_binding
+        bundle_binding = _operator_runtime_provider_integration_bundle_binding
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
         generation=generation,
@@ -195,6 +265,7 @@ def attention_operator_runtime_registry_snapshot(
         operation_catalog=operation_catalog,
         runtime_declarations=runtime_declarations,
         plan_scoring_manifest_binding=scoring_binding,
+        provider_integration_bundle_binding=bundle_binding,
     )
 
 
@@ -204,6 +275,7 @@ def _install_attention_operator_runtime_resolvers(
     operation_catalog: AttentionOperatorOperationCatalog,
     runtime_declarations=(),
     plan_scoring_manifest_binding=None,
+    provider_integration_bundle_binding=None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     device_types = tuple(item[0] for item in registry.resolvers)
@@ -222,11 +294,15 @@ def _install_attention_operator_runtime_resolvers(
         operation_catalog=operation_catalog,
         runtime_declarations=tuple(runtime_declarations),
         plan_scoring_manifest_binding=plan_scoring_manifest_binding,
+        provider_integration_bundle_binding=(
+            provider_integration_bundle_binding
+        ),
     )
     global _operator_runtime_resolvers
     global _operator_runtime_operation_catalog
     global _operator_runtime_declarations
     global _operator_runtime_plan_scoring_manifest_binding
+    global _operator_runtime_provider_integration_bundle_binding
     global _operator_runtime_resolvers_generation
     with _operator_runtime_resolvers_lock:
         if (
@@ -240,6 +316,9 @@ def _install_attention_operator_runtime_resolvers(
         _operator_runtime_plan_scoring_manifest_binding = (
             candidate.plan_scoring_manifest_binding
         )
+        _operator_runtime_provider_integration_bundle_binding = (
+            candidate.provider_integration_bundle_binding
+        )
         _operator_runtime_resolvers_generation += 1
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
@@ -250,6 +329,9 @@ def _install_attention_operator_runtime_resolvers(
         runtime_declarations=candidate.runtime_declarations,
         plan_scoring_manifest_binding=(
             candidate.plan_scoring_manifest_binding
+        ),
+        provider_integration_bundle_binding=(
+            candidate.provider_integration_bundle_binding
         ),
     )
 
@@ -277,7 +359,7 @@ def install_attention_operator_runtime_resolvers(
     )
 
 
-def install_declared_attention_operator_runtime_resolvers(
+def _install_declared_attention_operator_runtime_resolvers(
     registrations,
     *,
     operation_catalog: AttentionOperatorOperationCatalog = None,
@@ -285,9 +367,10 @@ def install_declared_attention_operator_runtime_resolvers(
     plan_scoring_manifest: Optional[
         AttentionOperatorPlanScoringManifest
     ] = None,
+    provider_integration_bundle_binding=None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
-    """Atomically install declaration-bound external integrations."""
+    """Internal install root shared by declared and bundled integrations."""
 
     values = tuple(registrations)
     if any(
@@ -314,6 +397,30 @@ def install_declared_attention_operator_runtime_resolvers(
             if plan_scoring_manifest is not None
             else None
         ),
+        provider_integration_bundle_binding=(
+            provider_integration_bundle_binding
+        ),
+        expected_generation=expected_generation,
+    )
+
+
+def install_declared_attention_operator_runtime_resolvers(
+    registrations,
+    *,
+    operation_catalog: AttentionOperatorOperationCatalog = None,
+    package_loader=None,
+    plan_scoring_manifest: Optional[
+        AttentionOperatorPlanScoringManifest
+    ] = None,
+    expected_generation=None,
+) -> AttentionOperatorRuntimeRegistrySnapshot:
+    """Atomically install declaration-bound external integrations."""
+
+    return _install_declared_attention_operator_runtime_resolvers(
+        registrations,
+        operation_catalog=operation_catalog,
+        package_loader=package_loader,
+        plan_scoring_manifest=plan_scoring_manifest,
         expected_generation=expected_generation,
     )
 

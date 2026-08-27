@@ -166,11 +166,16 @@ registration = AttentionDeclaredOperatorPackageRuntimeSpec(
     declaration=declaration,
     runtime_spec=spec,
 )
-installed = install_declared_attention_operator_runtime_resolvers(
-    (registration,),
+
+bundle = AttentionOperatorProviderIntegrationBundle(
+    bundle_id=bundle_id,
     operation_catalog=operation_catalog,
+    registrations=(registration,),
+    scoring_manifest=scoring_manifest,
     package_loader=package_loader,
-    plan_scoring_manifest=scoring_manifest,
+)
+installed = install_attention_operator_provider_integration_bundle(
+    bundle,
     expected_generation=current_generation,
 )
 ```
@@ -187,14 +192,19 @@ callable 解析和 registry 发布之前失败。多 provider 安装时一次传
 declaration 只证明“集成配置的身份可审计且没有漂移”，不证明包已安装、callable 可解析、
 capability 可运行或设备结果正确。后续 metadata probe、authority、callable binding、plan
 和 completion gate 仍按既定顺序失败关闭。低层
-`build_attention_operator_runtime_resolvers()` 保留给框架组合与合成检查；真实 provider
-bootstrap 使用 declared installer，避免审计声明被绕过。
+`build_attention_operator_runtime_resolvers()` 和
+`install_declared_attention_operator_runtime_resolvers()` 保留给框架组合、兼容路径与合成
+检查；真实 provider bootstrap 使用完整 bundle 与单一 bundle installer，
+避免 catalog、声明、评分 manifest 或 loader 身份被分开替换。完整 bundle 契约见
+[Attention provider 集成包](attention_provider_integration_bundle.md)。
 
-declared installer 将 resolver、operation catalog 和每个
+bundle installer 将 resolver、operation catalog 和每个
 `(provider_id, operation_id, declaration_fingerprint)` 作为同一 registry generation 原子
 发布；传入的 scoring manifest 同时压缩为只含 manifest/policy fingerprints 的非执行
-binding，并进入同一快照。installer 要求 registration 已在 declaration 生成前绑定同一
-manifest，不会在安装时重写未审核的 spec。新建 wrapper 捕获这一不可变快照；成功
+binding，bundle 自身也压缩为包含 catalog、manifest、loader type/id 和 registration
+fingerprints 的非执行 binding，并进入同一快照。installer 要求 registration 已在
+declaration 生成前绑定同一 manifest，不会在安装时重写未审核的 spec。新建 wrapper
+捕获这一不可变快照；成功
 `plan()` 后，`plan_selection` 的只读
 `runtime_declaration_fingerprint` 指向所选 operation 的审核声明。旧 wrapper 不随之后的
 安装变化，legacy/合成 registry 则明确返回 `None`，不能伪装成 declaration-bound 集成。

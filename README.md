@@ -55,11 +55,17 @@ resolver. The packaged declaration set is intentionally empty today: no real
 CANN or flash-attention-npu package is imported or called until a separately
 verified integration is installed.
 
-Provider integrations are installed atomically at process bootstrap. Each NPU
+Production provider integrations are assembled as one strict bundle containing
+the scoped operation catalog, complete reviewed runtime declarations, scoring
+manifest, and package-loader identity. The bundle is installed atomically at
+process bootstrap. Each NPU
 `BatchAttention` instance captures one immutable resolver generation when it is
 constructed, so a later integration update cannot change an already-created
 wrapper's plan/run authority. This bootstrap control remains separate from the
-model-facing API.
+model-facing API. Bundle construction and installation do not observe package
+versions, import providers, resolve callables, probe devices, or execute an
+operator; those checks remain plan-time gates. See
+[Attention provider integration bundle](docs/attention_provider_integration_bundle.md).
 
 Within the highest accepted deployment-priority tier, an integration may
 declare a pure plan scorer. It uses only canonical plan metadata and injected,
@@ -121,6 +127,8 @@ CANN/flash-attention-npu provider selection boundary are documented in
 [`docs/attention_plan_run_dispatch_design.md`](docs/attention_plan_run_dispatch_design.md).
 The procedure for adding a version-pinned external Attention provider is in
 [`docs/attention_provider_onboarding.md`](docs/attention_provider_onboarding.md).
+The complete production bootstrap unit and its atomic snapshot binding are in
+[`docs/attention_provider_integration_bundle.md`](docs/attention_provider_integration_bundle.md).
 The executable Host contract for INT8/UINT8/packed-INT4 KV Cache is documented
 in [`docs/attention_quantization.md`](docs/attention_quantization.md).
 Versioned correctness trace and replay semantics are documented in

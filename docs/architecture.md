@@ -492,6 +492,16 @@ manifest binding 精确比对，不能解析 source 文本充当权限。成功�
 scorer 评估的候选，并核对 plan、resolution、registry、declaration、selection 与可选 run
 receipt 的完整身份链。
 
+生产 bootstrap 不再把 catalog、registrations、scoring manifest 和 package loader 作为
+互不关联的安装参数处理。它们必须先组成一个
+`AttentionOperatorProviderIntegrationBundle`：catalog、declaration registrations 与
+manifest 的 provider-operation identity 集合完全相等，registration 已在生成 declaration
+之前绑定同一 policy，loader 的稳定类型和 `loader_id` 也进入 bundle fingerprint。单一
+bundle installer 将 resolver、catalog、declarations、manifest binding、bundle binding 与
+generation 原子发布；stale generation 不能部分覆盖。bundle 构建和安装均不观察 package、
+不解析 callable、不探测设备，真实 package/operation 检查仍发生在 plan 阶段。详见
+[Attention provider integration bundle](attention_provider_integration_bundle.md)。
+
 ### 11.3 Autotuning
 
 - 离线 tuning 是主要模式，结果随 wheel 发布。

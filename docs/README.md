@@ -31,8 +31,9 @@
 4. [`attention_frontend_contract.md`](attention_frontend_contract.md)：公开 API 与参数归属。
 5. [`attention_plan_run_dispatch_design.md`](attention_plan_run_dispatch_design.md)：wrapper
    持有的 `plan()` / `run()` 生命周期与自动 provider 选择。
-6. [`attention_provider_onboarding.md`](attention_provider_onboarding.md)：将精确版本的
-   CANN 或 flash-attention-npu Attention 能力接入自动路由的流程与门禁。
+6. [`attention_provider_onboarding.md`](attention_provider_onboarding.md) 与
+   [`attention_provider_integration_bundle.md`](attention_provider_integration_bundle.md)：
+   将精确版本的 CANN 或 flash-attention-npu Attention 能力组成完整审核包并原子接入自动路由。
 7. [`attention_plan_scoring_policy.md`](attention_plan_scoring_policy.md) 与
    [`attention_plan_scoring_audit.md`](attention_plan_scoring_audit.md)：声明式 provider
    评分、manifest 绑定和离线选择证据复核。
