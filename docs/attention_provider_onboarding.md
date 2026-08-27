@@ -117,7 +117,14 @@ logical run adapter 只把已经验证的 lowered call 映射到外部 callable 
 
 ### 4.6 构建并安装 registry
 
-集成模块在进程 bootstrap 阶段构建 resolver，并原子安装：
+在构建 resolver 前，集成模块先用
+`describe_attention_operator_package_runtime()` 从 runtime spec 生成
+`AttentionOperatorPackageRuntimeDeclaration`。这是纯数据审计快照，包含 operation/catalog、
+包版本、环境、profile、kernel descriptor、量化/physical-layout evidence、结果校验开关和
+适配组件类型身份，但不包含 callable、opaque plan 或 tensor。声明的创建、JSON 加载和
+`validate_runtime_spec()` 漂移校验均不得查询外部包、导入 provider 或访问 device。
+
+声明通过评审后，集成模块在进程 bootstrap 阶段构建 resolver，并原子安装：
 
 ```python
 # 示意代码：所有对象都必须由具体集成模块按本指南提供。
@@ -138,6 +145,15 @@ spec = AttentionOperatorPackageRuntimeSpec(
     quantization_bindings=quantization_bindings,
 )
 
+declaration = describe_attention_operator_package_runtime(
+    spec,
+    operation_catalog=operation_catalog,
+)
+declaration.validate_runtime_spec(
+    spec,
+    operation_catalog=operation_catalog,
+)
+
 registry = build_attention_operator_runtime_resolvers(
     (spec,),
     operation_catalog=operation_catalog,
@@ -152,6 +168,10 @@ install_attention_operator_runtime_resolvers(
 
 安装完成后，模型侧代码仍然只调用公开 Attention API。不得为了接入方便而增加
 `provider="cann"`、`kernel_id=...` 或 callable 参数。
+
+declaration 只证明“集成配置的身份可审计且没有漂移”，不证明包已安装、callable 可解析、
+capability 可运行或设备结果正确。后续 metadata probe、authority、callable binding、plan
+和 completion gate 仍按既定顺序失败关闭。
 
 ## 5. CANN 与 flash-attention-npu 的独立性
 

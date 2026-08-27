@@ -439,6 +439,13 @@ from .operator_bootstrap import (
     build_attention_operator_runtime_resolvers,
     build_default_attention_operator_runtime_resolvers,
 )
+from .operator_declaration import (
+    ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION,
+    AttentionOperatorPackageRuntimeDeclaration,
+    AttentionOperatorRuntimeComponentDeclaration,
+    describe_attention_operator_package_runtime,
+    load_attention_operator_package_runtime_declaration,
+)
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
     AttentionOperatorImplicitUnitScale,
@@ -546,6 +553,7 @@ __all__ = [
     "ATTENTION_OPERATOR_INTEGRATION_VERSION",
     "ATTENTION_OPERATOR_AUTHORITY_VERSION",
     "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
+    "ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION",
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION",
     "ATTENTION_OPERATOR_EVIDENCE_MANIFEST_VERSION",
@@ -730,6 +738,10 @@ __all__ = [
     "AttentionOperatorRuntimeAuthorityResolver",
     "AttentionEvidenceOperatorRuntimeAuthorityResolver",
     "AttentionOperatorPackageRuntimeSpec",
+    "AttentionOperatorPackageRuntimeDeclaration",
+    "AttentionOperatorRuntimeComponentDeclaration",
+    "describe_attention_operator_package_runtime",
+    "load_attention_operator_package_runtime_declaration",
     "AttentionOperatorQuantArgumentBinding",
     "AttentionOperatorImplicitUnitScale",
     "AttentionOperatorQuantizationBinding",

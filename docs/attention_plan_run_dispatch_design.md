@@ -496,12 +496,13 @@ level it is added in this order:
 2. add catalog entries for only the supported Attention operations;
 3. implement pure plan gates and structured rejection reasons;
 4. declare package/bootstrap metadata without import-time side effects;
-5. implement lazy package and callable resolution;
-6. implement tensor/metadata materialization and physical-layout evidence;
-7. bind quantization parameters exactly;
-8. implement provider planning and callable execution;
-9. connect completion, stream, workspace and error ownership;
-10. enable the provider in a versioned runtime registry declaration.
+5. publish a data-only runtime declaration and reject spec/catalog drift;
+6. implement lazy package and callable resolution;
+7. implement tensor/metadata materialization and physical-layout evidence;
+8. bind quantization parameters exactly;
+9. implement provider planning and callable execution;
+10. connect completion, stream, workspace and error ownership;
+11. enable the provider in a versioned runtime registry declaration.
 
 Unsupported combinations stay ineligible. They are not approximated merely to
 increase the reported capability surface.
