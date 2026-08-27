@@ -33,10 +33,23 @@ from .operator_callable import (
 )
 from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
-from .tensor_contract import AttentionTensorAccessPolicy, TensorView
+from .schema import (
+    MixedPagedKVMetadata,
+    PagedKVCacheSpec,
+    PagedKVMetadata,
+    PagedPrefillMetadata,
+    RaggedKVCacheSpec,
+    RaggedKVMetadata,
+    SingleAttentionMetadata,
+)
+from .tensor_contract import (
+    AttentionTensorAccessPolicy,
+    KVCacheView,
+    TensorView,
+)
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 7
+ATTENTION_OPERATOR_RUN_VERSION = 8
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
@@ -294,6 +307,110 @@ class AttentionOperatorTensorMetadataInspector(Protocol):
         """Return a zero-copy metadata view for ``tensor``."""
 
 
+def inspect_attention_operator_dense_kv_input(
+    plan: AttentionFrameworkPlan,
+    value: Any,
+    inspector: AttentionOperatorTensorMetadataInspector,
+    expected_device: str,
+) -> KVCacheView:
+    """Close one unquantized public KV input against the active plan.
+
+    Paged inputs may use FlashInfer's packed tensor or separate ``(K, V)``
+    representation. Ragged and single inputs use separate tensors. The
+    returned view contains metadata only; the original provider tensors are
+    never copied or replaced.
+    """
+
+    if not isinstance(plan, AttentionFrameworkPlan):
+        raise TypeError("plan must be AttentionFrameworkPlan")
+    if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+        raise TypeError(
+            "inspector must implement AttentionOperatorTensorMetadataInspector"
+        )
+    if not str(expected_device):
+        raise SchemaError("expected provider tensor device must be non-empty")
+    if plan.spec.kv_quant_spec is not None:
+        raise SchemaError("dense KV metadata validation requires an unquantized plan")
+
+    if isinstance(value, (tuple, list)):
+        if len(value) != 2 or value[0] is None or value[1] is None:
+            raise SchemaError(
+                "separate provider KV input requires exactly (key, value)"
+            )
+        tensors = tuple(value)
+        names = ("kv.key", "kv.value")
+        packed = False
+    else:
+        if value is None:
+            raise SchemaError("provider KV input must be provided")
+        tensors = (value,)
+        names = ("kv.packed",)
+        packed = True
+
+    views = []
+    for tensor, name in zip(tensors, names):
+        view = inspector.to_view(tensor, name=name, writable=False)
+        if not isinstance(view, TensorView):
+            raise TypeError("tensor metadata inspector must return TensorView")
+        views.append(view)
+
+    metadata = plan.metadata
+    common = {
+        "num_kv_heads": plan.spec.num_kv_heads,
+        "head_dim_qk": plan.spec.head_dim_qk,
+        "head_dim_vo": int(plan.spec.head_dim_vo),
+        "dtype": str(plan.spec.kv_dtype),
+        "layout": plan.spec.kv_layout,
+        "device": str(expected_device),
+    }
+    if isinstance(
+        metadata,
+        (PagedKVMetadata, PagedPrefillMetadata, MixedPagedKVMetadata),
+    ):
+        paged = (
+            metadata.paged_kv
+            if isinstance(metadata, PagedPrefillMetadata)
+            else metadata
+        )
+        if not views[0].shape:
+            raise SchemaError("provider KV input must expose a page dimension")
+        num_pages = views[0].shape[0]
+        if num_pages <= paged.max_page_index:
+            raise SchemaError(
+                "provider KV input does not contain every referenced page"
+            )
+        cache_spec = PagedKVCacheSpec(
+            num_pages=num_pages,
+            page_size=paged.page_size,
+            structure="packed" if packed else "separate",
+            **common,
+        )
+    else:
+        if packed:
+            raise SchemaError(
+                "ragged or single provider KV input requires separate (key, value)"
+            )
+        if isinstance(metadata, RaggedKVMetadata):
+            total_kv_tokens = metadata.total_kv_tokens
+        elif isinstance(metadata, SingleAttentionMetadata):
+            total_kv_tokens = metadata.kv_len
+        else:  # guarded by the framework plan schema; retained for future modes
+            raise SchemaError("unsupported metadata for provider KV validation")
+        cache_spec = RaggedKVCacheSpec(
+            total_kv_tokens=total_kv_tokens,
+            **common,
+        )
+
+    if packed:
+        return KVCacheView(
+            cache_spec,
+            views[0],
+            views[0],
+            packed=True,
+        )
+    return KVCacheView(cache_spec, views[0], views[1])
+
+
 class AttentionOperatorRunTensorValidationAdapter:
     """Close caller-owned run tensors against the immutable framework plan."""
 
@@ -355,6 +472,26 @@ class AttentionOperatorRunTensorValidationAdapter:
             and not query_view.is_contiguous
         ):
             raise SchemaError("query must be contiguous for provider lowering")
+        input_views = [("query", query_view)]
+        if plan.spec.kv_quant_spec is None:
+            kv_view = inspect_attention_operator_dense_kv_input(
+                plan,
+                request.kv_cache,
+                self._inspector,
+                self._expected_device,
+            )
+            for name, view in kv_view.named_component_views:
+                view.require_alignment(
+                    self._access_policy.required_alignment, name
+                )
+                if (
+                    self._access_policy.require_contiguous_kv
+                    and not view.is_contiguous
+                ):
+                    raise SchemaError(
+                        "%s must be contiguous for provider lowering" % name
+                    )
+                input_views.append((name, view))
         output_views = []
         if request.out is not None:
             out_view = self._inspector.to_view(
@@ -416,8 +553,11 @@ class AttentionOperatorRunTensorValidationAdapter:
             output_views.append(("lse", lse_view))
         if not self._access_policy.permit_output_input_alias:
             for name, output_view in output_views:
-                if output_view.overlaps(query_view):
-                    raise SchemaError("%s cannot alias query" % name)
+                for input_name, input_view in input_views:
+                    if output_view.overlaps(input_view):
+                        raise SchemaError(
+                            "%s cannot alias %s" % (name, input_name)
+                        )
         if len(output_views) == 2 and output_views[0][1].overlaps(
             output_views[1][1]
         ):
@@ -894,6 +1034,7 @@ __all__ = [
     "AttentionOperatorRunRequest",
     "AttentionOperatorTensorMetadataInspector",
     "AttentionOperatorWrapperSession",
+    "inspect_attention_operator_dense_kv_input",
     "lower_attention_operator_run",
     "validate_attention_lowered_operator_call",
 ]

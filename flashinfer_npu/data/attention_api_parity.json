@@ -89,7 +89,8 @@
       "upstream_kind": "stable",
       "semantic_status": "compatible",
       "implementation_status": "reference",
-      "priority": "P0"
+      "priority": "P0",
+      "notes": "Package-backed runs validate Q and unquantized packed/separate KV metadata against the active plan before provider lowering; quantized KV stays on its exact QuantSpec and physical-layout path."
     },
     {
       "upstream": "flashinfer.prefill.single_prefill_with_kv_cache",
@@ -143,7 +144,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "The public signature includes current upstream q/k/v scales, caller-owned buffers, runtime window, attention sinks, NVFP4 scale factors, skip-softmax sparsity, FP16 softmax, and SP-compression controls. The Host oracle rejects enabled backend-specific features that it cannot represent. Provider q_scale/k_scale/v_scale remain independent dynamic sources on the reusable plan and each accepts a finite scalar or an exact per-head tensor; provider bootstrap must cover both forms. Caller-owned out/lse require exact mutable buffer arguments in the operation catalog and otherwise fail closed. Bare separate FP8 K/V are canonicalized internally only under exact implicit-unit authorization."
+      "notes": "The public signature includes current upstream q/k/v scales, caller-owned buffers, runtime window, attention sinks, NVFP4 scale factors, skip-softmax sparsity, FP16 softmax, and SP-compression controls. The Host oracle rejects enabled backend-specific features that it cannot represent. Provider q_scale/k_scale/v_scale remain independent dynamic sources on the reusable plan and each accepts a finite scalar or an exact per-head tensor; provider bootstrap must cover both forms. Unquantized packed/separate KV is metadata-validated for layout, shape, page capacity, dtype, device, access policy and aliases before lowering. Caller-owned out/lse require exact mutable buffer arguments in the operation catalog and otherwise fail closed. Bare separate FP8 K/V are canonicalized internally only under exact implicit-unit authorization."
     },
     {
       "upstream": "flashinfer.prefill.BatchPrefillWithPagedKVCacheWrapper.reset_workspace_buffer",
@@ -308,7 +309,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "For provider execution, q_scale/k_scale/v_scale remain independent dynamic scalar sources on the reusable plan. A provider accepting broader forms cannot widen the public decode contract. Caller-owned out/lse require exact mutable catalog arguments and validated buffer metadata. Bare separate FP8 K/V storage is canonicalized internally; implicit unit cache scales require exact provider authorization."
+      "notes": "For provider execution, q_scale/k_scale/v_scale remain independent dynamic scalar sources on the reusable plan. A provider accepting broader forms cannot widen the public decode contract. Unquantized packed/separate KV is metadata-validated against the planned layout, shape, page capacity, dtype, device and access policy. Caller-owned out/lse require exact mutable catalog arguments and validated buffer metadata, including forbidden aliases with dense KV. Bare separate FP8 K/V storage is canonicalized internally; implicit unit cache scales require exact provider authorization."
     },
     {
       "upstream": "flashinfer.decode.BatchDecodeWithPagedKVCacheWrapper.reset_workspace_buffer",

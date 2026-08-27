@@ -140,8 +140,11 @@ Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
 所有 package-backed provider（包括非量化路径）在 bootstrap 时必须提供只读 tensor metadata
 inspector 和显式 `AttentionTensorAccessPolicy`。每次 `run()` 都在 provider-specific lowering
 之前验证 Q 的 mode-specific shape、plan `q_dtype` 与 provider device，并执行 provider 声明的
-Q alignment/contiguous policy。caller-owned `out`/`lse` 还要匹配 plan output/LSE shape、
-`o_dtype`/FP32、device、writable、alignment 和 output contiguous policy；默认禁止与 Q 重叠，
+Q alignment/contiguous policy。未量化 paged KV 的 packed/separate 表示在同一边界验证
+NHD/HND shape、page capacity、plan `kv_dtype`、device、K/V overlap 以及 KV
+alignment/contiguous policy；ragged/single KV 要求 separate `(K, V)`。caller-owned
+`out`/`lse` 还要匹配 plan output/LSE shape、`o_dtype`/FP32、device、writable、alignment 和
+output contiguous policy；默认禁止与 Q 和已验证的未量化 KV 重叠，
 `out` 与 `lse` 始终不能互相重叠。operation catalog 必须分别声明确切 buffer argument 并将其
 标为 mutable，resource binding 才允许传入并由通用 lowering 注入；未声明的 operation 继续
 失败关闭。验证后原 tensor 对象原样进入 operation adapter；框架不会在热路径隐式

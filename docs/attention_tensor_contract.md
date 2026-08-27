@@ -76,12 +76,15 @@ workspace 和 trace event。
 
 Package provider 的 bootstrap 直接绑定一份 `AttentionTensorAccessPolicy` 和 metadata-only
 inspector。通用 run adapter 始终闭合 Q 的 mode-specific shape、计划 dtype 与 provider device；
-只有当 policy 的 `require_contiguous_q` 为真时才拒绝非连续 Q，并按 `required_alignment`
-检查地址对齐。可选 caller-owned `out`/`lse` 同时验证 shape、dtype、device、writable、alignment
-和 alias；`require_contiguous_output` 约束 `out`。operation/resource binding 只有在 catalog
+未量化 KV 在同一边界把 paged packed tensor 或 separate `(K, V)` 规范化为 metadata-only
+`KVCacheView`，验证 NHD/HND shape、page capacity、计划 dtype、device、alignment、K/V overlap
+以及 `require_contiguous_kv`。只有当 policy 的 `require_contiguous_q` 为真时才拒绝非连续 Q，
+所有已检查 view 都按 `required_alignment` 检查地址对齐。可选 caller-owned `out`/`lse` 同时
+验证 shape、dtype、device、writable、alignment 和与 Q/未量化 KV 的 alias；
+`require_contiguous_output` 约束 `out`。operation/resource binding 只有在 catalog
 明确给出 mutable buffer argument 后才允许并注入该对象。该 adapter 不访问 tensor 内容，也不
-创建替代 tensor。KV 与 workspace 继续由各自的量化和 resource binding 负责；对应
-access-policy 字段必须在这些边界接通后才能宣称生效。
+创建替代 tensor。量化 KV 继续由 QuantSpec/physical-layout adapter 负责，workspace 由
+resource binding 负责；未接通的对应 access-policy 字段不能宣称生效。
 
 ## 4. 量化 view
 

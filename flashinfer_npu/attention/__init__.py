@@ -327,6 +327,7 @@ from .operator_run import (
     AttentionOperatorRunRequest,
     AttentionOperatorTensorMetadataInspector,
     AttentionOperatorWrapperSession,
+    inspect_attention_operator_dense_kv_input,
     lower_attention_operator_run,
     validate_attention_lowered_operator_call,
 )
@@ -671,6 +672,7 @@ __all__ = [
     "AttentionOperatorCallerBufferRunAdapter",
     "AttentionOperatorCallerBufferRunAdapterFactory",
     "AttentionOperatorWrapperSession",
+    "inspect_attention_operator_dense_kv_input",
     "AttentionOperatorResourceBinding",
     "AttentionOperatorOperationBinding",
     "AttentionOperatorOperationCatalog",
