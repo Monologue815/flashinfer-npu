@@ -234,9 +234,10 @@ case 清单或执行结果。
 5. accuracy report 必须绑定 launch packet、成功 provider completion、lifecycle trace 与可信 runner attestation。
 6. package runtime bootstrap 已要求 capability `QuantSpec` 与 catalog quant arguments 完全闭合；
    真实 CANN/flash-attention-npu binding 仍需逐参数语义与版本证据，不能由参数名称推断。
-7. 通用 provider quantized-KV input 与非执行 run lowering 已冻结 storage/scale/zero-point/
-   runtime Q/K/V/output scale 以及 single-prefill 逐头 Q/K/V scale 的独立来源；真实 Torch
-   tensor metadata 与 package adapter 尚未接入。
+7. 通用 provider quantized-KV input、run lowering、tensor metadata inspector 与 package
+   adapter composition 已接入框架路径，冻结 storage/scale/zero-point/runtime Q/K/V/output
+   scale 以及 single-prefill 逐头 Q/K/V scale 的独立来源；仍缺少绑定到精确外部包版本和
+   真实昇腾 tensor 的 CANN/flash-attention-npu runtime spec。
 
 需要实际 unit-scale tensor、而不是参数缺省语义的 provider 尚需增加 plan-owned
 materialization；NVFP4、MX、真实非逻辑 layout descriptor/converter、K/V 不同

@@ -166,9 +166,10 @@ span 后产生错误 alias 判断。Quantized KV 当前只允许 separate K/V，
 1. storage/access：stride、bounds、alignment、alias、writable、device/stream。
 2. semantic plan：Q/KV/out/LSE shape、dtype、layout、quant spec、metadata capacity。
 
-现有 batch prefill/decode 和 mixed `BatchAttention` Host facade 已接入这条路径；single
-facade 仍由相同 reference tensor 构造器和 plan validator覆盖，后续统一 Torch adapter 时
-共享此 contract。
+现有 single prefill/decode、batch prefill/decode、ragged 与 mixed `BatchAttention` facade
+都通过同一 plan/run tensor contract 进入 reference 或 provider 路径。provider 的真实
+Torch/torch_npu tensor 接受规则由所安装 runtime spec 的 metadata inspector、materializer
+和 access policy 共同决定；仓库默认不推断任何外部包已经满足该契约。
 
 ## 9. Torch/torch_npu adapter 门禁
 

@@ -29,11 +29,13 @@
 3. [`attention_frontend_contract.md`](attention_frontend_contract.md)：公开 API 与参数归属。
 4. [`attention_plan_run_dispatch_design.md`](attention_plan_run_dispatch_design.md)：wrapper
    持有的 `plan()` / `run()` 生命周期与自动 provider 选择。
-5. [`attention_quantization.md`](attention_quantization.md)：量化 KV Cache 语义。
-6. [`attention_workspace.md`](attention_workspace.md)：workspace 查询、容量和所有权。
-7. [`attention_capability_profile.md`](attention_capability_profile.md) 与
+5. [`attention_provider_onboarding.md`](attention_provider_onboarding.md)：将精确版本的
+   CANN 或 flash-attention-npu Attention 能力接入自动路由的流程与门禁。
+6. [`attention_quantization.md`](attention_quantization.md)：量化 KV Cache 语义。
+7. [`attention_workspace.md`](attention_workspace.md)：workspace 查询、容量和所有权。
+8. [`attention_capability_profile.md`](attention_capability_profile.md) 与
    [`support_matrix.md`](support_matrix.md)：外部算子包进入可执行路由前必须满足的能力声明。
-8. [`attention_jit_framework.md`](attention_jit_framework.md)：JIT 目录、缓存身份与加载边界。
+9. [`attention_jit_framework.md`](attention_jit_framework.md)：JIT 目录、缓存身份与加载边界。
 
 其余文件细化 trace、数值、tensor、artifact、ABI、launch 和 execution identity 等独立契约。
 

@@ -60,7 +60,7 @@ catalog operation. Merely exposing quantization-named package parameters is
 not treated as runtime support.
 
 The unchanged paged/mixed `kv_cache` run slot can carry an
-`AttentionOperatorQuantizedKVInput` for a future provider integration. Single
+`AttentionOperatorQuantizedKVInput` through the provider framework path. Single
 prefill/decode and ragged prefill keep their upstream-style separate `k` and
 `v` positions; each carries an `AttentionOperatorQuantizedTensorInput` with an
 explicit logical shape, and the facade or wrapper combines them privately.
@@ -76,9 +76,11 @@ Ascend C kernels.
 
 The Attention-specific framework contract is documented in
 [`docs/attention_framework.md`](docs/attention_framework.md).
-The FlashInfer-aligned wrapper-owned plan/run lifecycle and the boundary for
-future CANN/flash-attention-npu provider selection are documented in
+The FlashInfer-aligned wrapper-owned plan/run lifecycle and automatic
+CANN/flash-attention-npu provider selection boundary are documented in
 [`docs/attention_plan_run_dispatch_design.md`](docs/attention_plan_run_dispatch_design.md).
+The procedure for adding a version-pinned external Attention provider is in
+[`docs/attention_provider_onboarding.md`](docs/attention_provider_onboarding.md).
 The executable Host contract for INT8/UINT8/packed-INT4 KV Cache is documented
 in [`docs/attention_quantization.md`](docs/attention_quantization.md).
 Versioned correctness trace and replay semantics are documented in

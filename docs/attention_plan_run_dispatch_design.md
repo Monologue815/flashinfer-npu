@@ -488,7 +488,9 @@ silent retry after a provider has partially executed.
 
 ## 15. Adding a real provider
 
-A production integration should be added in this order:
+A production integration follows the version-pinned procedure in
+[`attention_provider_onboarding.md`](attention_provider_onboarding.md). At a high
+level it is added in this order:
 
 1. document the exact external package version and API;
 2. add catalog entries for only the supported Attention operations;
