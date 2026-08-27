@@ -706,6 +706,7 @@ class AttentionOperatorRuntime:
         mode: AttentionMode,
         runtime_declaration_bindings=(),
         plan_scoring_manifest_binding=None,
+        provider_integration_bundle_binding=None,
     ) -> None:
         if not str(device):
             raise SchemaError("Attention operator device must be non-empty")
@@ -761,6 +762,47 @@ class AttentionOperatorRuntime:
                 raise SchemaError(
                     "runtime scoring manifest binding differs from declarations"
                 )
+        if provider_integration_bundle_binding is not None:
+            from .provider_bundle import (
+                AttentionOperatorProviderIntegrationBundleBinding,
+            )
+
+            if not isinstance(
+                provider_integration_bundle_binding,
+                AttentionOperatorProviderIntegrationBundleBinding,
+            ):
+                raise TypeError(
+                    "provider_integration_bundle_binding has the wrong type"
+                )
+            if plan_scoring_manifest_binding is None:
+                raise SchemaError(
+                    "runtime provider bundle binding requires a scoring manifest"
+                )
+            if (
+                provider_integration_bundle_binding.catalog_name
+                != operation_catalog.name
+                or provider_integration_bundle_binding.catalog_fingerprint
+                != operation_catalog.fingerprint
+            ):
+                raise SchemaError(
+                    "runtime provider bundle binding differs from operation catalog"
+                )
+            if (
+                provider_integration_bundle_binding.registration_bindings
+                != tuple(sorted(declaration_bindings))
+            ):
+                raise SchemaError(
+                    "runtime provider bundle binding differs from declarations"
+                )
+            if (
+                provider_integration_bundle_binding.scoring_manifest_id
+                != plan_scoring_manifest_binding.manifest_id
+                or provider_integration_bundle_binding.scoring_manifest_fingerprint
+                != plan_scoring_manifest_binding.manifest_fingerprint
+            ):
+                raise SchemaError(
+                    "runtime provider bundle binding differs from scoring manifest"
+                )
         self.device = str(device)
         self.mode = mode
         self._resolver_registry = resolver_registry
@@ -770,6 +812,9 @@ class AttentionOperatorRuntime:
             item[:2]: item[2] for item in declaration_bindings
         }
         self._plan_scoring_manifest_binding = plan_scoring_manifest_binding
+        self._provider_integration_bundle_binding = (
+            provider_integration_bundle_binding
+        )
         self._framework_session = AttentionFrameworkSession(mode)
         self._operator_session = None
         self._executor = None
@@ -787,6 +832,7 @@ class AttentionOperatorRuntime:
         self._runtime_plan_score = None
         self._runtime_resolution_fingerprint = None
         self._runtime_plan_scoring_binding = None
+        self._runtime_provider_integration_bundle_binding = None
 
     @property
     def is_planned(self) -> bool:
@@ -862,6 +908,12 @@ class AttentionOperatorRuntime:
             raise AttentionStateError("Attention operator runtime has not been planned")
         return self._runtime_plan_scoring_binding
 
+    @property
+    def runtime_provider_integration_bundle_binding(self):
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        return self._runtime_provider_integration_bundle_binding
+
     def fork_unplanned(self) -> "AttentionOperatorRuntime":
         """Create an empty runtime over the exact same frozen resolver inputs."""
 
@@ -873,6 +925,9 @@ class AttentionOperatorRuntime:
             runtime_declaration_bindings=self._runtime_declaration_bindings,
             plan_scoring_manifest_binding=(
                 self._plan_scoring_manifest_binding
+            ),
+            provider_integration_bundle_binding=(
+                self._provider_integration_bundle_binding
             ),
         )
 
@@ -1041,6 +1096,31 @@ class AttentionOperatorRuntime:
                 policy_id,
                 policy_fingerprint,
             )
+        candidate_runtime_provider_integration_bundle_binding = None
+        if self._provider_integration_bundle_binding is not None:
+            identity = (
+                resolved.selection.provider_id,
+                resolved.factory.operation_id,
+            )
+            declaration_fingerprint = (
+                self._runtime_declaration_fingerprints.get(identity)
+            )
+            if (
+                declaration_fingerprint is None
+                or (
+                    identity[0],
+                    identity[1],
+                    declaration_fingerprint,
+                )
+                not in self._provider_integration_bundle_binding.registration_bindings
+            ):
+                raise SchemaError(
+                    "resolved Attention operation differs from provider bundle"
+                )
+            candidate_runtime_provider_integration_bundle_binding = (
+                self._provider_integration_bundle_binding.bundle_id,
+                self._provider_integration_bundle_binding.bundle_fingerprint,
+            )
         if (
             candidate_operator_session.active_plan.runtime_resolution_fingerprint
             != candidate_runtime_resolution_fingerprint
@@ -1146,6 +1226,9 @@ class AttentionOperatorRuntime:
         )
         self._runtime_plan_scoring_binding = (
             candidate_runtime_plan_scoring_binding
+        )
+        self._runtime_provider_integration_bundle_binding = (
+            candidate_runtime_provider_integration_bundle_binding
         )
 
     def run(
@@ -1290,6 +1373,16 @@ class AttentionOperatorRuntime:
                         )
                     )
                 ),
+                provider_integration_bundle_id=(
+                    None
+                    if self._runtime_provider_integration_bundle_binding is None
+                    else self._runtime_provider_integration_bundle_binding[0]
+                ),
+                provider_integration_bundle_fingerprint=(
+                    None
+                    if self._runtime_provider_integration_bundle_binding is None
+                    else self._runtime_provider_integration_bundle_binding[1]
+                ),
                 plan_scoring_manifest_id=(
                     None
                     if self._runtime_plan_scoring_binding is None
@@ -1325,6 +1418,7 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
         operation_catalog: AttentionOperatorOperationCatalog = None,
         runtime_declaration_bindings=(),
         plan_scoring_manifest_binding=None,
+        provider_integration_bundle_binding=None,
     ) -> None:
         super().__init__(
             device,
@@ -1333,6 +1427,9 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
             mode=AttentionMode.BATCH_MIXED_PAGED,
             runtime_declaration_bindings=runtime_declaration_bindings,
             plan_scoring_manifest_binding=plan_scoring_manifest_binding,
+            provider_integration_bundle_binding=(
+                provider_integration_bundle_binding
+            ),
         )
 
 

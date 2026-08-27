@@ -111,6 +111,23 @@ bundle binding 是非执行数据，只包含 bundle、catalog、manifest、load
 权限。legacy 或合成 registry 安装会明确清除 bundle binding，不能伪装成经过完整 bundle
 审核的生产集成。
 
+## Plan、run 与审计证据链
+
+wrapper 从快照创建内部 runtime 时会传入同一 bundle binding。runtime 构造阶段先核对它
+与 catalog、全部 declaration bindings 和 scoring manifest binding 完全一致；`plan()`
+选出 operation 后，再确认该 operation 的 declaration fingerprint 属于 bundle 的精确
+registration set，之后才提交 active plan。
+
+成功 planning 后，只读 `plan_selection` 发布 bundle id/fingerprint。它们必须成对出现，
+并且只能与完整的 runtime declaration、scoring manifest/policy 和 resolution evidence
+同时出现。reference、legacy 和未使用 bundle 的兼容路径保持这两个可选字段为空。
+
+只有 provider 执行与 completion validation 都成功，原子 run receipt 才复制相同的 bundle
+id/fingerprint；执行失败或结果验收失败不发布回执。纯 Host 的
+`verify_attention_plan_scoring_chain()` 进一步要求 snapshot、selection 与可选 run receipt
+中的 bundle 身份完全一致，并把这两个字段写入不可执行的审计报告。这样 bundle 安装、
+自动 plan 选择和实际成功调用形成一条可复核身份链，而不把 bundle 变成 `run()` 参数。
+
 ## Plan-time 与 run-time 边界
 
 bundle 安装成功并不证明外部包已经安装、当前环境可用或算子结果正确。`plan()` 仍需按

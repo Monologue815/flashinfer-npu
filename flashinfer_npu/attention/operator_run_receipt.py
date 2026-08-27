@@ -14,7 +14,7 @@ from .operator_completion import AttentionOperatorCompletionReceipt
 from .operator_execution import AttentionOperatorExecutionReceipt
 
 
-ATTENTION_OPERATOR_RUN_RECEIPT_VERSION = 3
+ATTENTION_OPERATOR_RUN_RECEIPT_VERSION = 4
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -36,6 +36,8 @@ class AttentionOperatorRunReceipt:
         default=None, repr=False, compare=False
     )
     runtime_declaration_fingerprint: Optional[str] = None
+    provider_integration_bundle_id: Optional[str] = None
+    provider_integration_bundle_fingerprint: Optional[str] = None
     plan_scoring_manifest_id: Optional[str] = None
     plan_scoring_manifest_fingerprint: Optional[str] = None
     plan_scoring_policy_id: Optional[str] = None
@@ -97,6 +99,35 @@ class AttentionOperatorRunReceipt:
                     item not in "0123456789abcdef" for item in str(value)
                 ):
                     raise SchemaError("%s must be lowercase SHA-256" % name)
+        bundle_fields = (
+            self.provider_integration_bundle_id,
+            self.provider_integration_bundle_fingerprint,
+        )
+        if any(item is not None for item in bundle_fields):
+            if any(item is None for item in bundle_fields):
+                raise SchemaError(
+                    "Attention run provider bundle identity is incomplete"
+                )
+            if self.runtime_declaration_fingerprint is None or not all(
+                item is not None for item in scoring_fields
+            ):
+                raise SchemaError(
+                    "Attention run provider bundle identity requires declaration "
+                    "and scoring manifest identities"
+                )
+            bundle_id = str(self.provider_integration_bundle_id)
+            if not bundle_id.strip() or any(
+                item.isspace() for item in bundle_id
+            ):
+                raise SchemaError("Attention run provider bundle id is invalid")
+            fingerprint = str(self.provider_integration_bundle_fingerprint)
+            if len(fingerprint) != 64 or any(
+                item not in "0123456789abcdef" for item in fingerprint
+            ):
+                raise SchemaError(
+                    "provider_integration_bundle_fingerprint must be lowercase "
+                    "SHA-256"
+                )
         execution = self.execution
         completion = self.completion
         if (
@@ -157,6 +188,12 @@ class AttentionOperatorRunReceipt:
             ),
             "runtime_declaration_fingerprint": (
                 self.runtime_declaration_fingerprint
+            ),
+            "provider_integration_bundle_id": (
+                self.provider_integration_bundle_id
+            ),
+            "provider_integration_bundle_fingerprint": (
+                self.provider_integration_bundle_fingerprint
             ),
             "plan_scoring_manifest_id": self.plan_scoring_manifest_id,
             "plan_scoring_manifest_fingerprint": (

@@ -239,3 +239,8 @@ legacy and custom-scored paths keep the optional manifest fields absent.
 
 Offline replay and cross-artifact verification are specified separately in
 [Attention plan scoring audit](attention_plan_scoring_audit.md).
+When the registry generation came from a production provider bundle, the
+runtime also carries the bundle id/fingerprint through plan selection and the
+successful run receipt. The offline audit requires that identity to match the
+same snapshot before producing its report; legacy declaration-only installs
+keep the optional bundle fields absent.

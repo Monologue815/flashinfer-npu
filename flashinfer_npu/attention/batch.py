@@ -131,6 +131,9 @@ class HostBatchReferenceWrapper:
                 plan_scoring_manifest_binding=(
                     snapshot.plan_scoring_manifest_binding
                 ),
+                provider_integration_bundle_binding=(
+                    snapshot.provider_integration_bundle_binding
+                ),
             )
             self._float_workspace_buffer = float_workspace_buffer
             self._int_workspace_buffer = None
@@ -208,6 +211,9 @@ class HostBatchReferenceWrapper:
             scoring_binding = (
                 self._operator_runtime.runtime_plan_scoring_binding
             )
+            bundle_binding = (
+                self._operator_runtime.runtime_provider_integration_bundle_binding
+            )
             return build_provider_plan_selection(
                 plan,
                 active_plan,
@@ -219,6 +225,12 @@ class HostBatchReferenceWrapper:
                         active_plan.provider_selection.provider_id,
                         active_plan.prepared_plan.implementation_id,
                     )
+                ),
+                provider_integration_bundle_id=(
+                    None if bundle_binding is None else bundle_binding[0]
+                ),
+                provider_integration_bundle_fingerprint=(
+                    None if bundle_binding is None else bundle_binding[1]
                 ),
                 plan_scoring_manifest_id=(
                     None if scoring_binding is None else scoring_binding[0]

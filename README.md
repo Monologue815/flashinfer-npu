@@ -39,9 +39,11 @@ After `plan()`, `attention.plan_selection` provides optional read-only
 diagnostics about the chosen mode, provider operation, backend and registry
 generation. A scored selection also exposes its bounded score, source, reason
 and complete resolution-report fingerprint. A declaration-bound external
-integration exposes the exact reviewed runtime declaration fingerprint. It
-never contains an executable plan, module, callable or provider handle, and
-callers never pass it to `run()`.
+integration exposes the exact reviewed runtime declaration fingerprint. A
+production bundle install also exposes its bundle id/fingerprint; the same
+identity reaches a successful atomic run receipt and the offline scoring audit
+report. These diagnostics never contain an executable plan, module, callable
+or provider handle, and callers never pass them to `run()`.
 
 This rule describes the normal high-level path. Like upstream FlashInfer, the
 library also keeps separately named `*_with_jit_module` compatibility entries

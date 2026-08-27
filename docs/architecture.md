@@ -501,6 +501,9 @@ bundle installer 将 resolver、catalog、declarations、manifest binding、bund
 generation 原子发布；stale generation 不能部分覆盖。bundle 构建和安装均不观察 package、
 不解析 callable、不探测设备，真实 package/operation 检查仍发生在 plan 阶段。详见
 [Attention provider integration bundle](attention_provider_integration_bundle.md)。
+wrapper runtime 在 plan commit 前把最终选中 operation 的 declaration 再与 bundle binding
+核对；bundle id/fingerprint 随后进入只读 plan selection、completion 成功后的原子 run
+receipt 和 Host 离线审计报告。reference/legacy 路径不伪造这些可选身份字段。
 
 ### 11.3 Autotuning
 

@@ -14,7 +14,7 @@ from .planner import AttentionFrameworkPlan
 from .schema import AttentionMode
 
 
-ATTENTION_PLAN_SELECTION_VERSION = 4
+ATTENTION_PLAN_SELECTION_VERSION = 5
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -45,6 +45,8 @@ class AttentionPlanSelection:
     active_plan_fingerprint: Optional[str] = None
     registry_generation: Optional[int] = None
     runtime_declaration_fingerprint: Optional[str] = None
+    provider_integration_bundle_id: Optional[str] = None
+    provider_integration_bundle_fingerprint: Optional[str] = None
     plan_scoring_manifest_id: Optional[str] = None
     plan_scoring_manifest_fingerprint: Optional[str] = None
     plan_scoring_policy_id: Optional[str] = None
@@ -75,6 +77,8 @@ class AttentionPlanSelection:
             self.active_plan_fingerprint,
             self.registry_generation,
             self.runtime_declaration_fingerprint,
+            self.provider_integration_bundle_id,
+            self.provider_integration_bundle_fingerprint,
             self.plan_scoring_manifest_id,
             self.plan_scoring_manifest_fingerprint,
             self.plan_scoring_policy_id,
@@ -107,6 +111,31 @@ class AttentionPlanSelection:
             _require_hash(
                 "runtime_declaration_fingerprint",
                 self.runtime_declaration_fingerprint,
+            )
+        bundle_fields = (
+            self.provider_integration_bundle_id,
+            self.provider_integration_bundle_fingerprint,
+        )
+        if any(item is not None for item in bundle_fields):
+            if any(item is None for item in bundle_fields):
+                raise SchemaError(
+                    "provider integration bundle identity is incomplete"
+                )
+            if self.runtime_declaration_fingerprint is None:
+                raise SchemaError(
+                    "provider integration bundle identity requires a runtime "
+                    "declaration"
+                )
+            bundle_id = str(self.provider_integration_bundle_id)
+            if not bundle_id.strip() or any(
+                item.isspace() for item in bundle_id
+            ):
+                raise SchemaError(
+                    "provider integration bundle id is invalid"
+                )
+            _require_hash(
+                "provider_integration_bundle_fingerprint",
+                self.provider_integration_bundle_fingerprint,
             )
         manifest_fields = (
             self.plan_scoring_manifest_id,
@@ -171,6 +200,13 @@ class AttentionPlanSelection:
             raise SchemaError(
                 "scoring manifest identity requires plan scoring evidence"
             )
+        if any(item is not None for item in bundle_fields) and not all(
+            item is not None for item in manifest_fields
+        ):
+            raise SchemaError(
+                "provider integration bundle identity requires scoring "
+                "manifest identity"
+            )
 
     def to_dict(self):
         return {
@@ -186,6 +222,12 @@ class AttentionPlanSelection:
             "registry_generation": self.registry_generation,
             "runtime_declaration_fingerprint": (
                 self.runtime_declaration_fingerprint
+            ),
+            "provider_integration_bundle_id": (
+                self.provider_integration_bundle_id
+            ),
+            "provider_integration_bundle_fingerprint": (
+                self.provider_integration_bundle_fingerprint
             ),
             "plan_scoring_manifest_id": self.plan_scoring_manifest_id,
             "plan_scoring_manifest_fingerprint": (
@@ -228,6 +270,8 @@ def build_provider_plan_selection(
     *,
     registry_generation: int,
     runtime_declaration_fingerprint: Optional[str] = None,
+    provider_integration_bundle_id: Optional[str] = None,
+    provider_integration_bundle_fingerprint: Optional[str] = None,
     plan_scoring_manifest_id: Optional[str] = None,
     plan_scoring_manifest_fingerprint: Optional[str] = None,
     plan_scoring_policy_id: Optional[str] = None,
@@ -264,6 +308,10 @@ def build_provider_plan_selection(
         active_plan_fingerprint=active_plan.fingerprint,
         registry_generation=registry_generation,
         runtime_declaration_fingerprint=runtime_declaration_fingerprint,
+        provider_integration_bundle_id=provider_integration_bundle_id,
+        provider_integration_bundle_fingerprint=(
+            provider_integration_bundle_fingerprint
+        ),
         plan_scoring_manifest_id=plan_scoring_manifest_id,
         plan_scoring_manifest_fingerprint=(
             plan_scoring_manifest_fingerprint

@@ -239,6 +239,12 @@ def single_prefill_with_kv_cache(
             runtime_declaration_bindings=(
                 snapshot.runtime_declaration_binding_tuples
             ),
+            plan_scoring_manifest_binding=(
+                snapshot.plan_scoring_manifest_binding
+            ),
+            provider_integration_bundle_binding=(
+                snapshot.provider_integration_bundle_binding
+            ),
         )
         runtime.plan(spec, adapted_provider.metadata)
         if adapted_provider.kv_quant_spec is not None:

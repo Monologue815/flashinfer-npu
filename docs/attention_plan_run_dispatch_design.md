@@ -350,7 +350,9 @@ scored selection also includes the selected integer score, source, reason and
 complete resolution-report fingerprint. For a declaration-bound scoring
 manifest it additionally includes manifest id/fingerprint and the selected
 policy id/fingerprint, after the runtime has matched those structured score
-fields against the frozen manifest binding. It contains no callable, module,
+fields against the frozen manifest binding. For a production bundle install it
+also includes the bundle id/fingerprint after the runtime has matched the
+selected declaration to that bundle's exact registration set. It contains no callable, module,
 executor, opaque provider state or mutable plan handle. The property is not an
 input to `run()` and does not transfer plan ownership to the caller.
 
@@ -359,14 +361,15 @@ Provider plans report the exact registry generation captured by the wrapper.
 If replanning fails, both the old active plan and its selection summary remain
 unchanged.
 
-For declaration-bound provider installations, the captured registry snapshot
-also carries the non-executable scoring-manifest binding for that generation:
-manifest id/fingerprint and exact provider-operation-policy fingerprints. It is
-an integration audit surface, not a `plan()` or `run()` argument. Legacy and
-synthetic registry installs carry no such binding.
+For production provider installations, the captured registry snapshot carries
+both the non-executable scoring-manifest binding and provider-bundle binding for
+that generation. The latter closes the catalog, loader type/id, registration
+declarations and manifest into one fingerprint. These are integration audit
+surfaces, not `plan()` or `run()` arguments. Legacy and synthetic registry
+installs carry no bundle binding.
 
-A successful completion-validated provider run copies the same manifest and
-selected-policy identity into its atomic run receipt. The receipt also binds the
+A successful completion-validated provider run copies the same bundle,
+manifest and selected-policy identity into its atomic run receipt. The receipt also binds the
 active-plan fingerprint, which transitively contains the structured policy
 identity through the complete resolution report. Execution or completion
 failure publishes no receipt.

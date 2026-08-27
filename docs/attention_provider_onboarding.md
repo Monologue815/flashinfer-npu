@@ -213,7 +213,9 @@ declaration 生成前绑定同一 manifest，不会在安装时重写未审核�
 的 registry generation。manifest-bound scorer 返回的 score 必须携带结构化 policy id 与
 fingerprint；runtime 在 plan commit 前与 snapshot 中所选 operation 的 binding 比对。成功
 `plan_selection` 和 run receipt 都发布同一 manifest/policy 身份，不能把 source/reason 文本
-解析成授权依据。
+解析成授权依据。bundle 安装路径还会在 runtime 构造和 plan commit 前复核 catalog、
+declarations、manifest 与所选 operation；`plan_selection` 和成功 run receipt 同时发布同一
+bundle id/fingerprint，离线 scoring audit 再与 wrapper 捕获的 registry snapshot 精确比对。
 
 ## 5. CANN 与 flash-attention-npu 的独立性
 

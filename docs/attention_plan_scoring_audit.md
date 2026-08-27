@@ -44,12 +44,15 @@ The verifier fails closed unless all of the following are true:
    set, preventing omitted or injected provider operations;
 7. the selected runtime declaration, manifest and policy identities match the
    snapshot and selection;
-8. every candidate that the resolver actually scored is replayed with its exact
+8. when the snapshot is provider-bundle-bound, the selected operation belongs
+   to that bundle and the selection carries its exact bundle id/fingerprint;
+9. every candidate that the resolver actually scored is replayed with its exact
    declarative policy, canonical plan and recorded device; value, source,
    reason, policy id and policy fingerprint must all match;
-9. the report's unique winner and the public score diagnostics agree;
-10. when a run receipt is supplied, its active plan, provider, operation,
-    declaration, manifest and policy identities exactly match the selection.
+10. the report's unique winner and the public score diagnostics agree;
+11. when a run receipt is supplied, its active plan, provider, operation,
+    declaration, provider-bundle, manifest and policy identities exactly match
+    the selection.
 
 Rejected candidates and accepted candidates below the highest static priority
 do not have plan scores by design and are not evaluated during replay. Their
@@ -63,6 +66,8 @@ Success returns an immutable `AttentionPlanScoringAuditReport` containing:
 - plan, resolution, selection and active-plan fingerprints;
 - registry generation and device;
 - selected provider, operation and declaration fingerprint;
+- optional provider integration bundle id/fingerprint from the captured
+  registry generation;
 - manifest and selected-policy identities;
 - selected score;
 - a canonical list of every replayed top-tier score;

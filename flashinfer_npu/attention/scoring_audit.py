@@ -19,7 +19,7 @@ from .plan_selection import AttentionPlanSelection
 from .planner import AttentionFrameworkPlan
 
 
-ATTENTION_PLAN_SCORING_AUDIT_VERSION = 1
+ATTENTION_PLAN_SCORING_AUDIT_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -114,6 +114,8 @@ class AttentionPlanScoringAuditReport:
     policy_fingerprint: str
     plan_score: int
     replayed_candidates: Tuple[AttentionPlanScoringAuditCandidate, ...]
+    provider_integration_bundle_id: Optional[str] = None
+    provider_integration_bundle_fingerprint: Optional[str] = None
     run_receipt_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_PLAN_SCORING_AUDIT_VERSION
 
@@ -159,6 +161,29 @@ class AttentionPlanScoringAuditReport:
             ):
                 raise SchemaError(
                     "Attention scoring audit run receipt fingerprint is invalid"
+                )
+        bundle_fields = (
+            self.provider_integration_bundle_id,
+            self.provider_integration_bundle_fingerprint,
+        )
+        if any(item is not None for item in bundle_fields):
+            if any(item is None for item in bundle_fields):
+                raise SchemaError(
+                    "Attention scoring audit provider bundle identity is incomplete"
+                )
+            bundle_id = str(self.provider_integration_bundle_id)
+            if not bundle_id.strip() or any(
+                item.isspace() for item in bundle_id
+            ):
+                raise SchemaError(
+                    "Attention scoring audit provider bundle id is invalid"
+                )
+            fingerprint = str(self.provider_integration_bundle_fingerprint)
+            if len(fingerprint) != 64 or any(
+                item not in "0123456789abcdef" for item in fingerprint
+            ):
+                raise SchemaError(
+                    "Attention scoring audit provider bundle fingerprint is invalid"
                 )
         candidates = tuple(self.replayed_candidates)
         if not candidates or any(
@@ -218,6 +243,12 @@ class AttentionPlanScoringAuditReport:
             "policy_id": self.policy_id,
             "policy_fingerprint": self.policy_fingerprint,
             "plan_score": self.plan_score,
+            "provider_integration_bundle_id": (
+                self.provider_integration_bundle_id
+            ),
+            "provider_integration_bundle_fingerprint": (
+                self.provider_integration_bundle_fingerprint
+            ),
             "replayed_candidates": [
                 item.to_dict() for item in self.replayed_candidates
             ],
@@ -321,6 +352,23 @@ def verify_attention_plan_scoring_chain(
         != declaration_fingerprint
     ):
         _fail("Attention scoring audit runtime declaration differs")
+    bundle_binding = registry_snapshot.provider_integration_bundle_binding
+    if bundle_binding is None:
+        if (
+            plan_selection.provider_integration_bundle_id is not None
+            or plan_selection.provider_integration_bundle_fingerprint is not None
+        ):
+            _fail("Attention scoring audit plan provider bundle identity differs")
+    else:
+        if selected_identity not in bundle_binding.identities:
+            _fail("Attention scoring audit selected operation is outside bundle")
+        if (
+            plan_selection.provider_integration_bundle_id
+            != bundle_binding.bundle_id
+            or plan_selection.provider_integration_bundle_fingerprint
+            != bundle_binding.bundle_fingerprint
+        ):
+            _fail("Attention scoring audit plan provider bundle identity differs")
 
     candidate_identities = tuple(
         (item.provider_id, item.operation_id)
@@ -372,6 +420,10 @@ def verify_attention_plan_scoring_chain(
             or run_receipt.operation_id != plan_selection.operation_id
             or run_receipt.runtime_declaration_fingerprint
             != plan_selection.runtime_declaration_fingerprint
+            or run_receipt.provider_integration_bundle_id
+            != plan_selection.provider_integration_bundle_id
+            or run_receipt.provider_integration_bundle_fingerprint
+            != plan_selection.provider_integration_bundle_fingerprint
             or run_receipt.plan_scoring_manifest_id
             != plan_selection.plan_scoring_manifest_id
             or run_receipt.plan_scoring_manifest_fingerprint
@@ -400,6 +452,14 @@ def verify_attention_plan_scoring_chain(
         policy_fingerprint=policy_fingerprint,
         plan_score=selected_score.value,
         replayed_candidates=tuple(replayed),
+        provider_integration_bundle_id=(
+            None if bundle_binding is None else bundle_binding.bundle_id
+        ),
+        provider_integration_bundle_fingerprint=(
+            None
+            if bundle_binding is None
+            else bundle_binding.bundle_fingerprint
+        ),
         run_receipt_fingerprint=run_fingerprint,
     )
 
