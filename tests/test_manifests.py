@@ -38,7 +38,7 @@ class ManifestTests(unittest.TestCase):
 
     def test_attention_parity_inventory_tracks_single_reference_facades(self):
         manifest = load_packaged_manifest("attention")
-        self.assertEqual(manifest.schema_version, 2)
+        self.assertEqual(manifest.schema_version, 3)
         self.assertEqual(manifest.scope, "attention_core")
         self.assertEqual(
             manifest.upstream_ref,

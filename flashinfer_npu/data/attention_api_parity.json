@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "upstream": {
     "project": "flashinfer-ai/flashinfer",
     "ref": "919a24e5b1d971d50c97a3cd38862f801527eab5",
@@ -8,6 +8,15 @@
   "scope": "attention_core",
   "scope_definition": "Core MHA/GQA attention framework APIs: holistic BatchAttention, single prefill/decode, paged batch prefill/decode, ragged batch prefill, and their documented lifecycle surface. CUDA/TRT-LLM-specific adapters, MLA, sparse attention, cascade, POD, and page mutation APIs are outside this phase.",
   "inventory_status": "complete",
+  "attention_interface_contract": {
+    "model_facing_dispatch": "private_auto",
+    "run_accepts_plan_handle": false,
+    "caller_selects_provider": false,
+    "advanced_injected_module_symbols": [
+      "flashinfer_npu.prefill.single_prefill_with_kv_cache_with_jit_module",
+      "flashinfer_npu.decode.single_decode_with_kv_cache_with_jit_module"
+    ]
+  },
   "generated_at": "2026-08-27",
   "attention_surfaces": [
     {

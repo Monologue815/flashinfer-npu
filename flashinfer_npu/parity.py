@@ -7,13 +7,13 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Mapping, Tuple, Union
+from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 from .runtime.schema import SchemaError
 
 
-PARITY_SCHEMA_VERSION = 2
-SUPPORTED_PARITY_SCHEMA_VERSIONS = {1, PARITY_SCHEMA_VERSION}
+PARITY_SCHEMA_VERSION = 3
+SUPPORTED_PARITY_SCHEMA_VERSIONS = {1, 2, PARITY_SCHEMA_VERSION}
 UPSTREAM_KINDS = {"stable", "experimental"}
 SEMANTIC_STATUSES = {"unassessed", "exact", "compatible", "intentionally_different"}
 IMPLEMENTATION_STATUSES = {
@@ -39,6 +39,7 @@ NPU_EXECUTION_STATUSES = {
     "functional",
     "optimized",
 }
+MODEL_FACING_DISPATCH_KINDS = {"private_auto"}
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,55 @@ class AttentionParitySurface:
 
 
 @dataclass(frozen=True)
+class AttentionInterfaceContract:
+    """Machine-readable boundary between model-facing and advanced APIs."""
+
+    model_facing_dispatch: str
+    run_accepts_plan_handle: bool
+    caller_selects_provider: bool
+    advanced_injected_module_symbols: Tuple[str, ...]
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> "AttentionInterfaceContract":
+        symbols = value.get("advanced_injected_module_symbols")
+        if not isinstance(symbols, list):
+            raise SchemaError(
+                "advanced_injected_module_symbols must be a JSON array"
+            )
+        contract = cls(
+            model_facing_dispatch=str(value["model_facing_dispatch"]),
+            run_accepts_plan_handle=value["run_accepts_plan_handle"],
+            caller_selects_provider=value["caller_selects_provider"],
+            advanced_injected_module_symbols=tuple(str(item) for item in symbols),
+        )
+        contract.validate()
+        return contract
+
+    def validate(self) -> None:
+        if self.model_facing_dispatch not in MODEL_FACING_DISPATCH_KINDS:
+            raise SchemaError("invalid Attention model-facing dispatch contract")
+        if not isinstance(self.run_accepts_plan_handle, bool):
+            raise SchemaError("run_accepts_plan_handle must be boolean")
+        if self.run_accepts_plan_handle:
+            raise SchemaError("model-facing Attention run cannot accept a plan handle")
+        if not isinstance(self.caller_selects_provider, bool):
+            raise SchemaError("caller_selects_provider must be boolean")
+        if self.caller_selects_provider:
+            raise SchemaError("model-facing Attention cannot expose provider selection")
+        if not self.advanced_injected_module_symbols:
+            raise SchemaError("advanced injected-module symbols must be explicit")
+        if len(self.advanced_injected_module_symbols) != len(
+            set(self.advanced_injected_module_symbols)
+        ):
+            raise SchemaError("duplicate advanced injected-module symbol")
+        for symbol in self.advanced_injected_module_symbols:
+            if not symbol.startswith("flashinfer_npu.") or not symbol.endswith(
+                "_with_jit_module"
+            ):
+                raise SchemaError("invalid advanced injected-module symbol")
+
+
+@dataclass(frozen=True)
 class ParityManifest:
     schema_version: int
     upstream_project: str
@@ -148,6 +198,7 @@ class ParityManifest:
     generated_at: str
     entries: Tuple[ParityEntry, ...]
     attention_surfaces: Tuple[AttentionParitySurface, ...] = ()
+    attention_interface_contract: Optional[AttentionInterfaceContract] = None
 
     @classmethod
     def load(cls, path: Union[str, Path]) -> "ParityManifest":
@@ -173,6 +224,13 @@ class ParityManifest:
                 AttentionParitySurface.from_dict(item)
                 for item in value.get("attention_surfaces", ())
             ),
+            attention_interface_contract=(
+                AttentionInterfaceContract.from_dict(
+                    value["attention_interface_contract"]
+                )
+                if "attention_interface_contract" in value
+                else None
+            ),
         )
         manifest.validate()
         return manifest
@@ -186,6 +244,11 @@ class ParityManifest:
             raise SchemaError(
                 "attention parity upstream_ref must pin a full commit SHA"
             )
+        if self.scope == "attention_core" and self.schema_version >= 3:
+            if self.attention_interface_contract is None:
+                raise SchemaError(
+                    "Attention parity schema v3 requires an interface contract"
+                )
         upstream_symbols = tuple(entry.upstream for entry in self.entries)
         local_symbols = tuple(entry.local for entry in self.entries)
         if len(upstream_symbols) != len(set(upstream_symbols)):
@@ -226,6 +289,25 @@ class ParityManifest:
             }:
                 raise SchemaError(
                     "Attention surface NPU execution is not reflected by its symbol"
+                )
+        contract = self.attention_interface_contract
+        if contract is not None:
+            entry_locals = {entry.local for entry in self.entries}
+            declared_advanced = set(contract.advanced_injected_module_symbols)
+            inventoried_advanced = {
+                entry.local
+                for entry in self.entries
+                if entry.local.endswith("_with_jit_module")
+            }
+            if declared_advanced != inventoried_advanced:
+                raise SchemaError(
+                    "advanced injected-module contract does not match inventory"
+                )
+            if not declared_advanced <= entry_locals:
+                raise SchemaError("advanced injected-module symbol is not inventoried")
+            if declared_advanced & set(surface_locals):
+                raise SchemaError(
+                    "advanced injected-module API cannot be a model-facing surface"
                 )
 
     @property
@@ -277,6 +359,17 @@ class ParityManifest:
                     "  provider-routed-surfaces: %d"
                     % surface_counts["provider_routed"],
                     "  npu-callable-surfaces: %d" % surface_counts["npu_callable"],
+                )
+            )
+        if self.attention_interface_contract is not None:
+            contract = self.attention_interface_contract
+            lines.extend(
+                (
+                    "  attention-dispatch: %s" % contract.model_facing_dispatch,
+                    "  run-accepts-plan-handle: no",
+                    "  caller-selects-provider: no",
+                    "  advanced-injected-module-symbols: %d"
+                    % len(contract.advanced_injected_module_symbols),
                 )
             )
         lines.append("  release-compatible: %s" % ("yes" if self.is_complete else "no"))
