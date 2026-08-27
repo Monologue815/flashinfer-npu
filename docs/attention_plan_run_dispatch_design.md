@@ -419,6 +419,21 @@ or LSE overlap with every frozen input view. The completion receipt includes
 both input and result view fingerprints, closing the metadata chain from run
 admission through public result publication.
 
+After execution and completion both succeed, the runtime publishes one atomic
+run receipt containing their exact receipt fingerprints. Active plan, provider,
+operation and ordered return names must agree. Callable failure, completion
+failure and replanning all clear the previous atomic receipt, so “the selected
+callable ran” and “the returned tensors were accepted” form one auditable run
+fact rather than two unrelated observations.
+
+For JIT, the module/callable executor binding is necessarily created before the
+final active-plan runtime binding. `bind_runtime()` may then produce a different
+executor object. A separate JIT runtime-executor binding joins the original JIT
+executor-binding fingerprint, final operator runtime-binding fingerprint,
+active-plan fingerprint and exact post-bind executor object. Every JIT run
+validates this final binding before invocation. A strict JIT provider's atomic
+run receipt also embeds the JIT runtime-executor binding fingerprint.
+
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.
 

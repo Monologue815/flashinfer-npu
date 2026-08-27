@@ -112,6 +112,15 @@ tensor 形式的 runtime/head scale。completion 必须看到 query evidence；�
 `AttentionTensorAccessPolicy` 明确允许 output/input alias，否则 output/LSE 不得与任何已冻结
 input view 重叠。receipt 同时记录 input 和 result view fingerprint，使 run admission 到公开
 结果发布形成完整 metadata 证据链。
+execution 与 completion 都成功后，runtime 才发布一张 atomic run receipt，绑定两张 receipt
+的 fingerprint；active plan、provider、operation 与有序 return schema 必须一致。callable、
+completion 任一失败或 replan 都会清除旧 run receipt，因此“确切算子已执行”与“确切返回值
+已接受”不会成为两条互不关联的状态。
+
+JIT 的 module/callable executor binding 发生在最终 active-plan runtime binding 之前，
+`bind_runtime()` 可能产生不同 executor 对象。因此另建 JIT runtime-executor binding，绑定
+原 JIT executor receipt、operator runtime binding、active plan 与最终 executor 对象；每次
+run 前验证。严格 JIT provider 的 atomic run receipt 还包含这张 binding 的 fingerprint。
 ragged prefill 继续公开 `q_scale/k_scale/v_scale/o_scale`。其中 `o_scale` 是输出 scale，
 只有选中 operation 的量化 binding 同时声明精确参数名和允许的 plan 输出 dtype 时才会传入；
 它不会改变 plan 选择，也不会被解释成 KV scale。

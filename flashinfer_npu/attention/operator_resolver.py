@@ -20,6 +20,7 @@ from typing import (
 from flashinfer_npu.jit.attention import (
     AttentionJitArtifactBinding,
     AttentionJitExecutorBinding,
+    AttentionJitRuntimeExecutorBinding,
     AttentionJitLoadedModuleBinding,
     AttentionJitPlanBinding,
     AttentionJitPlannerBinding,
@@ -31,12 +32,16 @@ from .operation_catalog import (
     load_packaged_attention_operator_catalog,
 )
 from .operator_callable import AttentionOperatorCallableBinding
-from .operator_execution import AttentionRuntimeBindingAwareExecutor
+from .operator_execution import (
+    AttentionExecutionReceiptProvider,
+    AttentionRuntimeBindingAwareExecutor,
+)
 from .operator_completion import (
     AttentionOperatorCompletionReceipt,
     AttentionOperatorCompletionValidator,
     AttentionOperatorCompletionValidatorFactory,
 )
+from .operator_run_receipt import AttentionOperatorRunReceipt
 from .operator_plan import AttentionOperatorPlanFactory
 from .operator_provider import AttentionOperatorProviderSelection
 from .operator_run import (
@@ -54,7 +59,7 @@ from .planner import (
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 8
+ATTENTION_OPERATOR_RESOLVER_VERSION = 9
 
 _DEVICE_TYPE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -557,11 +562,13 @@ class AttentionOperatorRuntime:
         self._executor = None
         self._completion_validator = None
         self._last_completion_receipt = None
+        self._last_run_receipt = None
         self._jit_plan_binding = None
         self._jit_artifact_binding = None
         self._jit_module_binding = None
         self._jit_planner_binding = None
         self._jit_executor_binding = None
+        self._jit_runtime_executor_binding = None
         self._last_lowered_call = None
         self._workspace_contract = None
 
@@ -600,6 +607,14 @@ class AttentionOperatorRuntime:
                 "Attention operator runtime has no successful result completion"
             )
         return self._last_completion_receipt
+
+    @property
+    def last_run_receipt(self) -> AttentionOperatorRunReceipt:
+        if self._last_run_receipt is None:
+            raise AttentionStateError(
+                "Attention operator runtime has no successful atomic run receipt"
+            )
+        return self._last_run_receipt
 
     @property
     def resource_binding(self):
@@ -664,6 +679,16 @@ class AttentionOperatorRuntime:
         if not self.is_planned:
             raise AttentionStateError("Attention operator runtime has not been planned")
         return self._jit_executor_binding
+
+    @property
+    def jit_runtime_executor_binding(self):
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        if self._jit_runtime_executor_binding is None:
+            raise AttentionStateError(
+                "Attention operator runtime has no JIT runtime executor binding"
+            )
+        return self._jit_runtime_executor_binding
 
     @property
     def jit_planner_binding(self):
@@ -807,6 +832,21 @@ class AttentionOperatorRuntime:
                 raise SchemaError(
                     "runtime-bound Attention executor changed its identity"
                 )
+        if candidate_completion_validator is not None and not isinstance(
+            candidate_executor, AttentionExecutionReceiptProvider
+        ):
+            raise TypeError(
+                "validated Attention runtime executor must publish execution receipts"
+            )
+        candidate_jit_runtime_executor_binding = None
+        if candidate_jit_executor_binding is not None:
+            candidate_jit_runtime_executor_binding = (
+                AttentionJitRuntimeExecutorBinding.bind(
+                    candidate_jit_executor_binding,
+                    candidate_operator_session.runtime_binding,
+                    candidate_executor,
+                )
+            )
         # commit_prepared_plan cannot fail after the same candidate was prepared;
         # it is deliberately last so resolver/prepare/binding failures preserve
         # the old framework plan and executable runtime as one atomic generation.
@@ -815,11 +855,15 @@ class AttentionOperatorRuntime:
         self._executor = candidate_executor
         self._completion_validator = candidate_completion_validator
         self._last_completion_receipt = None
+        self._last_run_receipt = None
         self._jit_plan_binding = candidate_jit_plan_binding
         self._jit_artifact_binding = candidate_jit_artifact_binding
         self._jit_module_binding = candidate_jit_module_binding
         self._jit_planner_binding = candidate_jit_planner_binding
         self._jit_executor_binding = candidate_jit_executor_binding
+        self._jit_runtime_executor_binding = (
+            candidate_jit_runtime_executor_binding
+        )
         self._last_lowered_call = None
         self._workspace_contract = candidate_workspace_contract
 
@@ -917,6 +961,15 @@ class AttentionOperatorRuntime:
                 self._jit_module_binding,
                 session.callable_binding,
             )
+            if self._jit_runtime_executor_binding is None:
+                raise AttentionStateError(
+                    "Attention JIT runtime executor binding is not initialized"
+                )
+            self._jit_runtime_executor_binding.validate(
+                self._jit_executor_binding,
+                session.runtime_binding,
+                self._executor,
+            )
         request = AttentionOperatorRunRequest.from_active_plan(
             session.active_plan,
             q,
@@ -937,10 +990,17 @@ class AttentionOperatorRuntime:
         )
         lowered = session._lower_request(request)
         self._last_completion_receipt = None
+        self._last_run_receipt = None
         result = self._executor.execute(lowered)
         if self._completion_validator is not None:
             self._last_completion_receipt = self._completion_validator.validate(
                 lowered, result
+            )
+            execution_receipt = self._executor.execution_receipt()
+            self._last_run_receipt = AttentionOperatorRunReceipt(
+                execution=execution_receipt,
+                completion=self._last_completion_receipt,
+                jit_runtime_executor=self._jit_runtime_executor_binding,
             )
         self._last_lowered_call = lowered
         return result

@@ -14,6 +14,7 @@ from typing import Any, Mapping, Protocol, runtime_checkable
 
 from flashinfer_npu.attention.operator_callable import (
     AttentionOperatorCallableBinding,
+    AttentionOperatorRuntimeBinding,
 )
 from flashinfer_npu.runtime import SchemaError
 
@@ -21,6 +22,7 @@ from .loading import AttentionJitLoadedModuleBinding
 
 
 ATTENTION_JIT_EXECUTOR_BINDING_VERSION = 1
+ATTENTION_JIT_RUNTIME_EXECUTOR_BINDING_VERSION = 1
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_.-]{0,127}$")
 
 
@@ -112,6 +114,104 @@ class AttentionJitExecutorBinding:
             raise SchemaError("Attention JIT executor binding is stale")
 
 
+@dataclass(frozen=True)
+class AttentionJitRuntimeExecutorBinding:
+    """Bind the final runtime-authorized executor to one JIT executor receipt."""
+
+    active_plan_fingerprint: str
+    jit_executor_binding_fingerprint: str
+    runtime_binding_fingerprint: str
+    provider_id: str
+    operation_id: str
+    executor: Any = field(repr=False, compare=False)
+    schema_version: int = ATTENTION_JIT_RUNTIME_EXECUTOR_BINDING_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_JIT_RUNTIME_EXECUTOR_BINDING_VERSION:
+            raise SchemaError("unsupported Attention JIT runtime executor version")
+        for name in (
+            "active_plan_fingerprint",
+            "jit_executor_binding_fingerprint",
+            "runtime_binding_fingerprint",
+        ):
+            _require_hash(name, getattr(self, name))
+        for name in ("provider_id", "operation_id"):
+            value = str(getattr(self, name))
+            if not value or any(item in value for item in ("\x00", "\n", "\r")):
+                raise SchemaError(
+                    "Attention JIT runtime executor %s must be safe and non-empty"
+                    % name
+                )
+            object.__setattr__(self, name, value)
+        if self.executor is None:
+            raise SchemaError("Attention JIT runtime executor must be present")
+        if (
+            getattr(self.executor, "provider_id", None) != self.provider_id
+            or getattr(self.executor, "operation_id", None) != self.operation_id
+        ):
+            raise SchemaError("Attention JIT runtime executor identity differs")
+
+    @classmethod
+    def bind(
+        cls,
+        jit_binding: AttentionJitExecutorBinding,
+        runtime_binding: AttentionOperatorRuntimeBinding,
+        executor: Any,
+    ) -> "AttentionJitRuntimeExecutorBinding":
+        if not isinstance(jit_binding, AttentionJitExecutorBinding):
+            raise TypeError("jit_binding must be AttentionJitExecutorBinding")
+        if not isinstance(runtime_binding, AttentionOperatorRuntimeBinding):
+            raise TypeError("runtime_binding must be AttentionOperatorRuntimeBinding")
+        value = cls(
+            active_plan_fingerprint=runtime_binding.active_plan_fingerprint,
+            jit_executor_binding_fingerprint=jit_binding.fingerprint,
+            runtime_binding_fingerprint=runtime_binding.fingerprint,
+            provider_id=runtime_binding.provider_id,
+            operation_id=runtime_binding.operation_id,
+            executor=executor,
+        )
+        value.validate(jit_binding, runtime_binding, executor)
+        return value
+
+    def validate(
+        self,
+        jit_binding: AttentionJitExecutorBinding,
+        runtime_binding: AttentionOperatorRuntimeBinding,
+        executor: Any,
+    ) -> None:
+        if not isinstance(jit_binding, AttentionJitExecutorBinding):
+            raise TypeError("jit_binding must be AttentionJitExecutorBinding")
+        if not isinstance(runtime_binding, AttentionOperatorRuntimeBinding):
+            raise TypeError("runtime_binding must be AttentionOperatorRuntimeBinding")
+        if (
+            self.active_plan_fingerprint != runtime_binding.active_plan_fingerprint
+            or self.jit_executor_binding_fingerprint != jit_binding.fingerprint
+            or self.runtime_binding_fingerprint != runtime_binding.fingerprint
+            or self.provider_id != jit_binding.provider_id
+            or self.provider_id != runtime_binding.provider_id
+            or self.operation_id != jit_binding.operation_id
+            or self.operation_id != runtime_binding.operation_id
+            or jit_binding.callable_binding_fingerprint
+            != runtime_binding.callable_binding_fingerprint
+            or self.executor is not executor
+        ):
+            raise SchemaError("Attention JIT runtime executor binding is stale")
+
+    def to_dict(self):
+        return {
+            "schema_version": self.schema_version,
+            "active_plan_fingerprint": self.active_plan_fingerprint,
+            "jit_executor_binding_fingerprint": self.jit_executor_binding_fingerprint,
+            "runtime_binding_fingerprint": self.runtime_binding_fingerprint,
+            "provider_id": self.provider_id,
+            "operation_id": self.operation_id,
+        }
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_hash(self.to_dict())
+
+
 @runtime_checkable
 class AttentionJitExecutorBinder(Protocol):
     """Private adapter from a loaded module and package API to an executor."""
@@ -132,6 +232,8 @@ class AttentionJitExecutorBinder(Protocol):
 
 __all__ = [
     "ATTENTION_JIT_EXECUTOR_BINDING_VERSION",
+    "ATTENTION_JIT_RUNTIME_EXECUTOR_BINDING_VERSION",
     "AttentionJitExecutorBinder",
     "AttentionJitExecutorBinding",
+    "AttentionJitRuntimeExecutorBinding",
 ]

@@ -46,6 +46,17 @@ class AttentionRuntimeBindingAwareExecutor(Protocol):
         """Return an executor authorized for one active plan generation."""
 
 
+@runtime_checkable
+class AttentionExecutionReceiptProvider(Protocol):
+    """Executor that publishes a receipt for its latest successful invocation."""
+
+    provider_id: str
+    operation_id: str
+
+    def execution_receipt(self) -> "AttentionOperatorExecutionReceipt":
+        """Return the last successful execution receipt."""
+
+
 @dataclass(frozen=True)
 class AttentionOperatorExecutionReceipt:
     runtime_binding_fingerprint: str
@@ -142,6 +153,9 @@ class AttentionInjectedCallableExecutor:
         if self._last_execution_receipt is None:
             raise RuntimeError("injected Attention callable has not executed successfully")
         return self._last_execution_receipt
+
+    def execution_receipt(self) -> AttentionOperatorExecutionReceipt:
+        return self.last_execution_receipt
 
     def _validate_runtime_binding(
         self, runtime_binding: AttentionOperatorRuntimeBinding
@@ -252,6 +266,7 @@ class AttentionInjectedCallableExecutor:
 __all__ = [
     "ATTENTION_OPERATOR_EXECUTION_VERSION",
     "AttentionInjectedCallableExecutor",
+    "AttentionExecutionReceiptProvider",
     "AttentionOperatorExecutionReceipt",
     "AttentionRuntimeBindingAwareExecutor",
 ]
