@@ -10,6 +10,7 @@ from flashinfer_npu.attention import (
     framework_attention_coverage_policy,
 )
 from flashinfer_npu.runtime import SchemaError
+from flashinfer_npu.attention.corpus import _canonical_json
 
 
 class AttentionCorpusTests(unittest.TestCase):
@@ -18,7 +19,7 @@ class AttentionCorpusTests(unittest.TestCase):
         self.assertEqual(len(corpus.cases), 14)
         self.assertEqual(
             corpus.fingerprint,
-            "7577420ea94a1c97352ea2265a76939b8c566aeaf792daf083a123d3b38da536",
+            "2a13f8457c0635092b22e6961ae7b86df36b8ec5746d71dccb418268911082e4",
         )
         restored = AttentionTraceCorpus.from_json(corpus.to_json(indent=2))
         # Dataclass equality is unsuitable for a corpus containing NaN because
@@ -26,6 +27,16 @@ class AttentionCorpusTests(unittest.TestCase):
         self.assertEqual(restored.to_json(), corpus.to_json())
         self.assertEqual(restored.fingerprint, corpus.fingerprint)
         self.assertEqual(len(restored.replay_all()), 14)
+
+    def test_corpus_json_removes_non_semantic_float_tail_noise(self):
+        left = _canonical_json({"value": 1.0000000000000002, "zero": -0.0})
+        right = _canonical_json({"value": 1.0000000000000004, "zero": 0.0})
+        self.assertEqual(left, right)
+        self.assertEqual(left, '{"value":1.0,"zero":0.0}')
+        self.assertNotEqual(
+            _canonical_json({"value": 1.0}),
+            _canonical_json({"value": 1.000001}),
+        )
 
     def test_framework_policy_is_complete_and_exposes_case_matches(self):
         corpus = build_framework_attention_corpus()

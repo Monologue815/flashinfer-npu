@@ -28,12 +28,30 @@ from .trace import AttentionTrace
 
 
 ATTENTION_CORPUS_SCHEMA_VERSION = 1
+ATTENTION_CORPUS_FLOAT_SIGNIFICANT_DIGITS = 15
 _CASE_ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,127}$")
+
+
+def _canonicalize_corpus_numbers(value: Any) -> Any:
+    """Remove non-semantic Host/libm noise from finite corpus floats."""
+
+    if isinstance(value, Mapping):
+        return {
+            key: _canonicalize_corpus_numbers(item) for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_canonicalize_corpus_numbers(item) for item in value]
+    if isinstance(value, float) and math.isfinite(value):
+        normalized = float(
+            format(value, ".%dg" % ATTENTION_CORPUS_FLOAT_SIGNIFICANT_DIGITS)
+        )
+        return 0.0 if normalized == 0.0 else normalized
+    return value
 
 
 def _canonical_json(value: Mapping[str, Any], *, indent: Optional[int] = None) -> str:
     return json.dumps(
-        value,
+        _canonicalize_corpus_numbers(value),
         sort_keys=True,
         separators=(",", ":") if indent is None else None,
         ensure_ascii=True,

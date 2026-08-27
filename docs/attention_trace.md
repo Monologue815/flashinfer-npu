@@ -55,6 +55,12 @@ Python `json` 默认可能输出非标准裸 `NaN`/`Infinity`。v1 禁止这种�
 numerics v1 已能保存、重放 NaN/Inf case；真实设备 frontend/backend 是否通过仍属于逐 backend
 capability evidence，不能从 codec 能力推导设备支持。
 
+Corpus 的 canonical JSON 会把有限浮点规范化为 15 位有效数字，并把 `-0.0` 统一为
+`0.0`。Host oracle 的超越函数可能因 Python/libm 版本在 double 的最后一两个 bit 上不同；
+这些低于 correctness 容差的差异不应改变 corpus fingerprint。15 位规则同时保留远高于
+当前数值门禁所需的精度。单条 `AttentionTrace` 的输入身份和完整身份合同不因此改写；
+该规范化只属于 corpus JSON/整体 corpus fingerprint 边界。
+
 ## 4. Capture、身份与验证
 
 ```python
