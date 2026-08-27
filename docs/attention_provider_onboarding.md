@@ -47,6 +47,7 @@ runtime spec 至少绑定：
 - `operation_id`、adapter version、priority 和允许的 package versions；
 - 被观察的 SoC、CANN、驱动、固件、Python、PyTorch、torch_npu 与外部包环境；
 - capability profiles、kernel descriptors 和 evidence manifest 身份；
+- exact provider-operation plan scoring policy（由审核后的 manifest 绑定）；
 - pure plan gate、logical plan factory 与 logical run adapter；
 - tensor materializer、metadata inspector 和 access policy；
 - 量化参数映射与非逻辑 physical layout 目录/证据（如适用）；
@@ -145,6 +146,13 @@ spec = AttentionOperatorPackageRuntimeSpec(
     quantization_bindings=quantization_bindings,
 )
 
+# scoring_manifest 先通过 bounded JSON loader；其 identity 集合必须与
+# 本次全部 runtime specs 完全一致。
+(spec,) = bind_attention_operator_plan_scoring_manifest(
+    (spec,),
+    scoring_manifest,
+)
+
 declaration = describe_attention_operator_package_runtime(
     spec,
     operation_catalog=operation_catalog,
@@ -165,6 +173,12 @@ installed = install_declared_attention_operator_runtime_resolvers(
     expected_generation=current_generation,
 )
 ```
+
+评分 manifest 必须在生成 declaration 之前绑定。这样 declaration 审核的是最终 policy
+fingerprint，而不是尚未绑定 scorer 的中间 spec。绑定不会覆盖已有 custom scorer 或不同
+policy；缺失 policy、孤立 policy、重复 runtime spec identity 均在 package metadata probe、
+callable 解析和 registry 发布之前失败。多 provider 安装时一次传入完整 spec 集合，不能
+逐项绑定并逐项发布。
 
 安装完成后，模型侧代码仍然只调用公开 Attention API。不得为了接入方便而增加
 `provider="cann"`、`kernel_id=...` 或 callable 参数。

@@ -459,6 +459,7 @@ from .operator_authority import (
 from .operator_bootstrap import (
     ATTENTION_OPERATOR_BOOTSTRAP_VERSION,
     AttentionOperatorPackageRuntimeSpec,
+    bind_attention_operator_plan_scoring_manifest,
     build_attention_operator_package_runtime,
     build_attention_operator_runtime_resolvers,
     build_default_attention_operator_runtime_resolvers,
@@ -786,6 +787,7 @@ __all__ = [
     "AttentionOperatorPackageRuntimeDeclaration",
     "AttentionOperatorRuntimeComponentDeclaration",
     "AttentionOperatorRuntimeDeclarationBinding",
+    "bind_attention_operator_plan_scoring_manifest",
     "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",
     "load_attention_operator_package_runtime_declaration",

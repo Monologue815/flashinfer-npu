@@ -186,3 +186,19 @@ looks up the exact package runtime identity, and assigns that returned policy as
 not the manifest location. Packaging, signature and rollout metadata may change
 without changing runtime identity; any policy-content change still produces a
 new fingerprint and requires a matching reviewed declaration.
+
+For a complete provider bootstrap set, use
+`bind_attention_operator_plan_scoring_manifest(specs, manifest)`. The set of
+`(provider_id, operation_id)` identities in the manifest must exactly equal the
+runtime-spec identity set: missing policies and orphan policies both fail. A
+duplicate runtime identity also fails. The binding is immutable and validates
+the whole set before returning replacement specs, so no caller can observe a
+partly bound set.
+
+Binding is idempotent when a spec already contains the same declarative policy
+fingerprint. It never overwrites a different declarative policy or an injected
+custom scorer. `build_attention_operator_runtime_resolvers()` accepts the same
+manifest as `plan_scoring_manifest` for framework composition; production
+integrations bind first, then generate and review runtime declarations from the
+bound specs. This ordering ensures the declaration contains each exact policy
+fingerprint before the declaration-bound registry is installed.

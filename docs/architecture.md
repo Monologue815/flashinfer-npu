@@ -477,7 +477,10 @@ precedence 高于 mode/layout/dtype/QuantSpec/page-size/token-range heuristic，
 重叠必须失败封闭。部署侧可通过 bounded JSON manifest 注入这些规则：通用 envelope
 先限制 bytes/depth/nodes/container/string，再在对象构造前限制 policy、rule 及 predicate
 value 数量；每个 `(provider_id, operation_id)` 最多一份 policy，bootstrap 必须按 exact
-identity 取值。manifest 加载过程不读取路径、不导入 provider package、不探测设备。
+identity 取值。manifest 与一次 bootstrap 的 runtime-spec identity 集合必须完全相等，
+整个集合校验完成后才返回不可变的 bound specs；缺失、孤立、重复或与已有 scorer 冲突
+均不得进入 resolver 构造。manifest 加载与绑定过程不读取路径、不导入 provider package、
+不探测设备。
 完整契约见
 [Attention plan scoring policy](attention_plan_scoring_policy.md)。
 

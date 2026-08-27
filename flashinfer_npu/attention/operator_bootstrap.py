@@ -9,7 +9,7 @@ already-required capability/evidence/kernel authority inputs.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional, Sequence, Tuple, Union
 
 from flashinfer_npu.runtime import Backend, KernelDescriptor, SchemaError
@@ -68,6 +68,10 @@ from .operator_resolver import (
     AttentionOperatorRuntimeImplementationRegistry,
     AttentionOperatorRuntimePlanScorer,
     AttentionOperatorRuntimeResolverRegistry,
+)
+from .operator_scoring import (
+    AttentionOperatorPlanScoringManifest,
+    AttentionOperatorPlanScoringPolicy,
 )
 from .operator_run import (
     AttentionOperatorCallerBufferRunAdapterFactory,
@@ -285,6 +289,70 @@ class AttentionOperatorPackageRuntimeSpec:
         return self.plan_gate.provider_id
 
 
+def bind_attention_operator_plan_scoring_manifest(
+    specs: Sequence[AttentionOperatorPackageRuntimeSpec],
+    manifest: AttentionOperatorPlanScoringManifest,
+) -> Tuple[AttentionOperatorPackageRuntimeSpec, ...]:
+    """Bind one reviewed policy to every runtime spec as an immutable set.
+
+    The manifest and spec identity sets must match exactly.  Validation is
+    completed before any replacement spec is returned, so callers cannot
+    observe a partly bound bootstrap set.
+    """
+
+    values = tuple(specs)
+    if any(
+        not isinstance(item, AttentionOperatorPackageRuntimeSpec)
+        for item in values
+    ):
+        raise TypeError(
+            "specs must contain AttentionOperatorPackageRuntimeSpec values"
+        )
+    if not isinstance(manifest, AttentionOperatorPlanScoringManifest):
+        raise TypeError(
+            "manifest must be AttentionOperatorPlanScoringManifest"
+        )
+    spec_identities = tuple(
+        (item.provider_id, item.operation_id) for item in values
+    )
+    if len(set(spec_identities)) != len(spec_identities):
+        raise SchemaError("duplicate Attention runtime spec identity")
+    policy_identities = tuple(
+        (item.provider_id, item.operation_id) for item in manifest.policies
+    )
+    missing = tuple(sorted(set(spec_identities).difference(policy_identities)))
+    orphan = tuple(sorted(set(policy_identities).difference(spec_identities)))
+    if missing or orphan:
+        raise SchemaError(
+            "Attention scoring manifest identity set differs from runtime specs "
+            "(missing=%r, orphan=%r)" % (missing, orphan)
+        )
+    policies = {
+        (item.provider_id, item.operation_id): item
+        for item in manifest.policies
+    }
+    for spec in values:
+        current = spec.plan_scorer
+        policy = policies[(spec.provider_id, spec.operation_id)]
+        if current is None:
+            continue
+        if not isinstance(current, AttentionOperatorPlanScoringPolicy):
+            raise SchemaError(
+                "Attention runtime spec already has a non-manifest plan scorer"
+            )
+        if current.fingerprint != policy.fingerprint:
+            raise SchemaError(
+                "Attention runtime spec plan scorer differs from manifest policy"
+            )
+    return tuple(
+        replace(
+            spec,
+            plan_scorer=policies[(spec.provider_id, spec.operation_id)],
+        )
+        for spec in values
+    )
+
+
 def build_attention_operator_package_runtime(
     spec: AttentionOperatorPackageRuntimeSpec,
     *,
@@ -410,6 +478,9 @@ def build_attention_operator_runtime_resolvers(
     *,
     operation_catalog: Optional[AttentionOperatorOperationCatalog] = None,
     package_loader: Optional[AttentionOperatorPackageLoader] = None,
+    plan_scoring_manifest: Optional[
+        AttentionOperatorPlanScoringManifest
+    ] = None,
 ) -> AttentionOperatorRuntimeResolverRegistry:
     """Build the immutable NPU resolver tree from explicit integration specs."""
 
@@ -419,6 +490,11 @@ def build_attention_operator_runtime_resolvers(
         for item in values
     ):
         raise TypeError("specs must contain AttentionOperatorPackageRuntimeSpec values")
+    if plan_scoring_manifest is not None:
+        values = bind_attention_operator_plan_scoring_manifest(
+            values,
+            plan_scoring_manifest,
+        )
     if not values:
         return EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS
     if operation_catalog is None:
@@ -461,6 +537,7 @@ def build_default_attention_operator_runtime_resolvers(
 __all__ = [
     "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
     "AttentionOperatorPackageRuntimeSpec",
+    "bind_attention_operator_plan_scoring_manifest",
     "build_attention_operator_package_runtime",
     "build_attention_operator_runtime_resolvers",
     "build_default_attention_operator_runtime_resolvers",
