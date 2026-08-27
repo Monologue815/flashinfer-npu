@@ -26,7 +26,11 @@ from .operation_catalog import (
     AttentionOperatorOperationCatalog,
     load_packaged_attention_operator_catalog,
 )
-from .operator_bootstrap import AttentionOperatorPackageRuntimeSpec
+from .operator_bootstrap import (
+    AttentionOperatorPackageRuntimeSpec,
+    bind_attention_operator_plan_scoring_manifest,
+)
+from .operator_scoring import AttentionOperatorPlanScoringManifest
 
 
 ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION = 2
@@ -579,6 +583,9 @@ def build_declared_attention_operator_runtime_resolvers(
     *,
     operation_catalog: Optional[AttentionOperatorOperationCatalog] = None,
     package_loader=None,
+    plan_scoring_manifest: Optional[
+        AttentionOperatorPlanScoringManifest
+    ] = None,
 ):
     """Build a registry only after every declaration still matches its spec.
 
@@ -601,6 +608,23 @@ def build_declared_attention_operator_runtime_resolvers(
     fingerprints = tuple(item.fingerprint for item in values)
     if len(set(fingerprints)) != len(fingerprints):
         raise SchemaError("declared Attention runtime registrations are duplicated")
+    if plan_scoring_manifest is not None:
+        if not isinstance(
+            plan_scoring_manifest, AttentionOperatorPlanScoringManifest
+        ):
+            raise TypeError(
+                "plan_scoring_manifest must be "
+                "AttentionOperatorPlanScoringManifest"
+            )
+        if any(item.runtime_spec.plan_scorer is None for item in values):
+            raise SchemaError(
+                "declared Attention runtime specs must bind the scoring "
+                "manifest before declaration"
+            )
+        bind_attention_operator_plan_scoring_manifest(
+            tuple(item.runtime_spec for item in values),
+            plan_scoring_manifest,
+        )
     for item in values:
         item.validate(operation_catalog)
     # Imported lazily to keep declaration parsing independent of registry

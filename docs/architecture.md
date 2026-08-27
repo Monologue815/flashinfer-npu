@@ -480,7 +480,9 @@ value 数量；每个 `(provider_id, operation_id)` 最多一份 policy，bootst
 identity 取值。manifest 与一次 bootstrap 的 runtime-spec identity 集合必须完全相等，
 整个集合校验完成后才返回不可变的 bound specs；缺失、孤立、重复或与已有 scorer 冲突
 均不得进入 resolver 构造。manifest 加载与绑定过程不读取路径、不导入 provider package、
-不探测设备。
+不探测设备。production declared installer 再验证 bound spec、declaration 与同一 manifest
+一致，并将只含 manifest/policy fingerprints 的非执行 binding 与 resolver、catalog、
+declaration bindings 在同一 registry generation 原子发布；stale generation 不能部分覆盖。
 完整契约见
 [Attention plan scoring policy](attention_plan_scoring_policy.md)。
 

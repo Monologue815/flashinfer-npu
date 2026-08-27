@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from threading import RLock
+from typing import Optional
 
 from flashinfer_npu.runtime import DispatchError, SchemaError
 
@@ -39,6 +40,10 @@ from .operator_declaration import (
     AttentionOperatorRuntimeDeclarationBinding,
     build_declared_attention_operator_runtime_resolvers,
 )
+from .operator_scoring import (
+    AttentionOperatorPlanScoringManifest,
+    AttentionOperatorPlanScoringManifestBinding,
+)
 from .reference import ReferenceAttentionExecutor, ReferenceTensor
 from .schema import AttentionMode, AttentionPlanSpec, MixedPagedKVMetadata
 from .workspace import AttentionWorkspaceContract
@@ -50,6 +55,7 @@ from .tensor_contract import validate_reference_attention_views
 _operator_runtime_resolvers = build_default_attention_operator_runtime_resolvers()
 _operator_runtime_operation_catalog = load_packaged_attention_operator_catalog()
 _operator_runtime_declarations = ()
+_operator_runtime_plan_scoring_manifest_binding = None
 _operator_runtime_resolvers_generation = 0
 _operator_runtime_resolvers_lock = RLock()
 
@@ -67,6 +73,9 @@ class AttentionOperatorRuntimeRegistrySnapshot:
         default=None, repr=False, compare=False
     )
     runtime_declarations: tuple = ()
+    plan_scoring_manifest_binding: Optional[
+        AttentionOperatorPlanScoringManifestBinding
+    ] = None
 
     def __post_init__(self):
         if not isinstance(self.generation, int) or isinstance(self.generation, bool):
@@ -110,6 +119,22 @@ class AttentionOperatorRuntimeRegistrySnapshot:
                 raise SchemaError(
                     "runtime declaration binding differs from operation catalog"
                 )
+        scoring_binding = self.plan_scoring_manifest_binding
+        if scoring_binding is not None:
+            if not isinstance(
+                scoring_binding, AttentionOperatorPlanScoringManifestBinding
+            ):
+                raise TypeError(
+                    "plan_scoring_manifest_binding has the wrong type"
+                )
+            if not declarations:
+                raise SchemaError(
+                    "scoring manifest binding requires runtime declarations"
+                )
+            if set(scoring_binding.identities) != set(identities):
+                raise SchemaError(
+                    "scoring manifest binding differs from runtime declarations"
+                )
         object.__setattr__(self, "device_types", device_types)
         object.__setattr__(
             self,
@@ -121,6 +146,16 @@ class AttentionOperatorRuntimeRegistrySnapshot:
                 )
             ),
         )
+
+    @property
+    def plan_scoring_manifest_id(self):
+        binding = self.plan_scoring_manifest_binding
+        return None if binding is None else binding.manifest_id
+
+    @property
+    def plan_scoring_manifest_fingerprint(self):
+        binding = self.plan_scoring_manifest_binding
+        return None if binding is None else binding.manifest_fingerprint
 
     def declaration_fingerprint(self, provider_id: str, operation_id: str):
         """Return the reviewed declaration for one selected operation, if any."""
@@ -151,6 +186,7 @@ def attention_operator_runtime_registry_snapshot(
         registry = _operator_runtime_resolvers
         operation_catalog = _operator_runtime_operation_catalog
         runtime_declarations = _operator_runtime_declarations
+        scoring_binding = _operator_runtime_plan_scoring_manifest_binding
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
         generation=generation,
@@ -158,6 +194,7 @@ def attention_operator_runtime_registry_snapshot(
         registry=registry,
         operation_catalog=operation_catalog,
         runtime_declarations=runtime_declarations,
+        plan_scoring_manifest_binding=scoring_binding,
     )
 
 
@@ -166,6 +203,7 @@ def _install_attention_operator_runtime_resolvers(
     *,
     operation_catalog: AttentionOperatorOperationCatalog,
     runtime_declarations=(),
+    plan_scoring_manifest_binding=None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     device_types = tuple(item[0] for item in registry.resolvers)
@@ -183,10 +221,12 @@ def _install_attention_operator_runtime_resolvers(
         registry=registry,
         operation_catalog=operation_catalog,
         runtime_declarations=tuple(runtime_declarations),
+        plan_scoring_manifest_binding=plan_scoring_manifest_binding,
     )
     global _operator_runtime_resolvers
     global _operator_runtime_operation_catalog
     global _operator_runtime_declarations
+    global _operator_runtime_plan_scoring_manifest_binding
     global _operator_runtime_resolvers_generation
     with _operator_runtime_resolvers_lock:
         if (
@@ -197,6 +237,9 @@ def _install_attention_operator_runtime_resolvers(
         _operator_runtime_resolvers = registry
         _operator_runtime_operation_catalog = operation_catalog
         _operator_runtime_declarations = candidate.runtime_declarations
+        _operator_runtime_plan_scoring_manifest_binding = (
+            candidate.plan_scoring_manifest_binding
+        )
         _operator_runtime_resolvers_generation += 1
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
@@ -205,6 +248,9 @@ def _install_attention_operator_runtime_resolvers(
         registry=registry,
         operation_catalog=operation_catalog,
         runtime_declarations=candidate.runtime_declarations,
+        plan_scoring_manifest_binding=(
+            candidate.plan_scoring_manifest_binding
+        ),
     )
 
 
@@ -236,6 +282,9 @@ def install_declared_attention_operator_runtime_resolvers(
     *,
     operation_catalog: AttentionOperatorOperationCatalog = None,
     package_loader=None,
+    plan_scoring_manifest: Optional[
+        AttentionOperatorPlanScoringManifest
+    ] = None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     """Atomically install declaration-bound external integrations."""
@@ -254,11 +303,17 @@ def install_declared_attention_operator_runtime_resolvers(
         values,
         operation_catalog=operation_catalog,
         package_loader=package_loader,
+        plan_scoring_manifest=plan_scoring_manifest,
     )
     return _install_attention_operator_runtime_resolvers(
         registry,
         operation_catalog=operation_catalog,
         runtime_declarations=tuple(item.binding for item in values),
+        plan_scoring_manifest_binding=(
+            plan_scoring_manifest.binding
+            if plan_scoring_manifest is not None
+            else None
+        ),
         expected_generation=expected_generation,
     )
 

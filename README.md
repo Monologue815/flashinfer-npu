@@ -79,6 +79,9 @@ device. Bootstrap can bind the manifest to the complete runtime-spec set in one
 immutable operation; missing, orphaned, duplicate or conflicting scorer
 identities fail before resolver construction. See
 [Attention plan scoring policy](docs/attention_plan_scoring_policy.md).
+Declaration-bound installation revalidates the same manifest and atomically
+publishes its non-executable fingerprint summary with the resolver, catalog and
+declaration bindings in one registry generation.
 
 Quantized provider candidates have an additional admission boundary: every
 capability `QuantSpec` must map key/value scale and, when applicable,

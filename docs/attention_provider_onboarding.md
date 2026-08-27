@@ -170,6 +170,7 @@ installed = install_declared_attention_operator_runtime_resolvers(
     (registration,),
     operation_catalog=operation_catalog,
     package_loader=package_loader,
+    plan_scoring_manifest=scoring_manifest,
     expected_generation=current_generation,
 )
 ```
@@ -191,7 +192,10 @@ bootstrap 使用 declared installer，避免审计声明被绕过。
 
 declared installer 将 resolver、operation catalog 和每个
 `(provider_id, operation_id, declaration_fingerprint)` 作为同一 registry generation 原子
-发布。新建 wrapper 捕获这一不可变快照；成功 `plan()` 后，`plan_selection` 的只读
+发布；传入的 scoring manifest 同时压缩为只含 manifest/policy fingerprints 的非执行
+binding，并进入同一快照。installer 要求 registration 已在 declaration 生成前绑定同一
+manifest，不会在安装时重写未审核的 spec。新建 wrapper 捕获这一不可变快照；成功
+`plan()` 后，`plan_selection` 的只读
 `runtime_declaration_fingerprint` 指向所选 operation 的审核声明。旧 wrapper 不随之后的
 安装变化，legacy/合成 registry 则明确返回 `None`，不能伪装成 declaration-bound 集成。
 同一指纹也进入成功 provider 调用的 `AttentionOperatorRunReceipt`；执行或 completion

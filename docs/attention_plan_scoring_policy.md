@@ -202,3 +202,19 @@ manifest as `plan_scoring_manifest` for framework composition; production
 integrations bind first, then generate and review runtime declarations from the
 bound specs. This ordering ensures the declaration contains each exact policy
 fingerprint before the declaration-bound registry is installed.
+
+The production installer receives the same manifest through
+`plan_scoring_manifest`. It does not bind or rewrite an unreviewed spec at
+install time. Instead it requires every registration to have been bound before
+its declaration was created, rechecks the complete identity set and every
+policy fingerprint, and then validates declaration drift. All of these checks
+finish before package metadata is observed.
+
+On commit, resolver, operation catalog, declaration bindings and an
+`AttentionOperatorPlanScoringManifestBinding` are published under one registry
+generation. The binding contains only manifest id/fingerprint and exact
+provider-operation-policy fingerprints; it contains no rules, scorer callable
+or provider object. `attention_operator_runtime_registry_snapshot()` exposes
+this immutable audit identity. A stale expected generation cannot publish a
+new manifest, and a legacy/synthetic installation explicitly clears the
+binding.

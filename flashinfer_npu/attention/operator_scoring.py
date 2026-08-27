@@ -706,6 +706,129 @@ class AttentionOperatorPlanScoringManifest:
     def fingerprint(self) -> str:
         return _canonical_hash(self.to_dict())
 
+    @property
+    def binding(self) -> "AttentionOperatorPlanScoringManifestBinding":
+        return AttentionOperatorPlanScoringManifestBinding.from_manifest(self)
+
+
+@dataclass(frozen=True)
+class AttentionOperatorPlanScoringManifestBinding:
+    """Non-executable scoring authority stored with a registry generation."""
+
+    manifest_id: str
+    manifest_fingerprint: str
+    policy_bindings: Tuple[Tuple[str, str, str, str], ...]
+    schema_version: int = ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_SCORING_MANIFEST_VERSION:
+            raise SchemaError(
+                "unsupported Attention scoring manifest binding version"
+            )
+        if not _IDENTIFIER.fullmatch(str(self.manifest_id)):
+            raise SchemaError("invalid Attention scoring manifest binding id")
+        if not _SHA256.fullmatch(str(self.manifest_fingerprint)):
+            raise SchemaError(
+                "Attention scoring manifest binding fingerprint is invalid"
+            )
+        bindings = tuple(tuple(item) for item in self.policy_bindings)
+        if not bindings or any(len(item) != 4 for item in bindings):
+            raise SchemaError(
+                "Attention scoring manifest policy bindings are invalid"
+            )
+        normalized = []
+        for provider_id, operation_id, policy_id, policy_fingerprint in bindings:
+            provider_id = str(provider_id)
+            operation_id = str(operation_id)
+            policy_id = str(policy_id)
+            policy_fingerprint = str(policy_fingerprint)
+            if not _PROVIDER_ID.fullmatch(provider_id):
+                raise SchemaError(
+                    "Attention scoring manifest binding provider is invalid"
+                )
+            if not operation_id or any(item.isspace() for item in operation_id):
+                raise SchemaError(
+                    "Attention scoring manifest binding operation is invalid"
+                )
+            if not _IDENTIFIER.fullmatch(policy_id):
+                raise SchemaError(
+                    "Attention scoring manifest binding policy id is invalid"
+                )
+            if not _SHA256.fullmatch(policy_fingerprint):
+                raise SchemaError(
+                    "Attention scoring manifest policy fingerprint is invalid"
+                )
+            normalized.append(
+                (provider_id, operation_id, policy_id, policy_fingerprint)
+            )
+        identities = tuple(item[:2] for item in normalized)
+        policy_ids = tuple(item[2] for item in normalized)
+        if len(set(identities)) != len(identities):
+            raise SchemaError(
+                "Attention scoring manifest binding identities duplicate"
+            )
+        if len(set(policy_ids)) != len(policy_ids):
+            raise SchemaError(
+                "Attention scoring manifest binding policy ids duplicate"
+            )
+        object.__setattr__(self, "manifest_id", str(self.manifest_id))
+        object.__setattr__(
+            self,
+            "manifest_fingerprint",
+            str(self.manifest_fingerprint),
+        )
+        object.__setattr__(
+            self,
+            "policy_bindings",
+            tuple(sorted(normalized, key=lambda item: item[:3])),
+        )
+
+    @classmethod
+    def from_manifest(
+        cls, manifest: AttentionOperatorPlanScoringManifest
+    ) -> "AttentionOperatorPlanScoringManifestBinding":
+        if not isinstance(manifest, AttentionOperatorPlanScoringManifest):
+            raise TypeError(
+                "manifest must be AttentionOperatorPlanScoringManifest"
+            )
+        return cls(
+            manifest_id=manifest.manifest_id,
+            manifest_fingerprint=manifest.fingerprint,
+            policy_bindings=tuple(
+                (
+                    policy.provider_id,
+                    policy.operation_id,
+                    policy.policy_id,
+                    policy.fingerprint,
+                )
+                for policy in manifest.policies
+            ),
+        )
+
+    @property
+    def identities(self) -> Tuple[Tuple[str, str], ...]:
+        return tuple(item[:2] for item in self.policy_bindings)
+
+    def policy_fingerprint(self, provider_id: str, operation_id: str) -> str:
+        identity = (str(provider_id), str(operation_id))
+        for candidate_provider, candidate_operation, _, fingerprint in (
+            self.policy_bindings
+        ):
+            if (candidate_provider, candidate_operation) == identity:
+                return fingerprint
+        raise SchemaError(
+            "unknown Attention scoring manifest binding identity %r"
+            % (identity,)
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "manifest_id": self.manifest_id,
+            "manifest_fingerprint": self.manifest_fingerprint,
+            "policy_bindings": [list(item) for item in self.policy_bindings],
+        }
+
 
 def load_attention_operator_plan_scoring_manifest(
     value: str,
@@ -742,6 +865,7 @@ __all__ = [
     "AttentionOperatorPlanScoreRule",
     "AttentionOperatorPlanScoringError",
     "AttentionOperatorPlanScoringManifest",
+    "AttentionOperatorPlanScoringManifestBinding",
     "AttentionOperatorPlanScoringManifestLimits",
     "AttentionOperatorPlanScoringPolicy",
     "load_attention_operator_plan_scoring_manifest",

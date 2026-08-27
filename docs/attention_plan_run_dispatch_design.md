@@ -356,6 +356,12 @@ Provider plans report the exact registry generation captured by the wrapper.
 If replanning fails, both the old active plan and its selection summary remain
 unchanged.
 
+For declaration-bound provider installations, the captured registry snapshot
+also carries the non-executable scoring-manifest binding for that generation:
+manifest id/fingerprint and exact provider-operation-policy fingerprints. It is
+an integration audit surface, not a `plan()` or `run()` argument. Legacy and
+synthetic registry installs carry no such binding.
+
 `workspace_size()` uses the same frozen registry and plan gates through an
 unpublished runtime fork. It may resolve and prepare the selected provider in
 order to derive its exact resource binding, but it never executes Attention or
