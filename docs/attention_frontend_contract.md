@@ -223,8 +223,9 @@ provider 参数。Host oracle 仍直接读取 logical FP8 `ReferenceTensor`。�
 | CUDA backend 名称 | 明确 unsupported | 不映射成任意 Ascend kernel |
 | `backend="auto"` | 保持默认 | registry 根据 Ascend capability 选择 |
 
-本地 backend 候选预计为 `auto`、`ascendc`、`aclnn`、`reference`；正式名称在
-backend ABI 评审后冻结。
+公共 backend 值不承载 CANN、flash-attention-npu、Ascend C 或具体 kernel identity。
+普通生产调用使用 `auto`；`reference` 仅作为本仓库 Host oracle 的显式入口。具体 provider
+名称、包版本和 operation identity 只允许出现在集成配置与只读诊断中，不加入模型侧参数。
 
 Paged/ragged prefill 与 paged decode 的 `backend="auto"` 路径由 NPU workspace 确定设备，
 并在 wrapper 构造时冻结 runtime registry 与 operation catalog 的同一个 snapshot。

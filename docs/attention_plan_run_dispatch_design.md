@@ -49,14 +49,20 @@ The exact Python signatures are defined by the public modules. The architectural
 rules are:
 
 1. The caller supplies tensors and semantic Attention options.
-2. The caller does not supply a provider name, kernel name, JIT handle, module
-   handle or executable object.
+2. On the normal high-level path, the caller does not supply a provider name,
+   kernel name, JIT handle, module handle or executable object.
 3. `plan()` may be reused by subsequent compatible `run()` calls.
 4. A new incompatible request requires replanning.
 5. Planning failure leaves the previous active plan unchanged.
 
 Single-request prefill and decode functions follow the same policy but do not
 need to expose a reusable batch plan object.
+
+FlashInfer also publishes separately named `*_with_jit_module` functions for
+advanced callers that intentionally inject a compiled module. FlashInfer-NPU
+keeps those low-level compatibility entries outside this normal automatic
+dispatch contract; their existence does not make module handles part of a
+batch wrapper's public `plan()` / `run()` lifecycle.
 
 ## 3. Layering and ownership
 

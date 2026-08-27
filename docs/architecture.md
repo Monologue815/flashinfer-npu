@@ -293,8 +293,8 @@ sequenceDiagram
     Reg-->>Plan: candidates + tuning records
     Plan-->>API: immutable Plan
     loop 每个推理 step
-        App->>API: run(tensors, plan)
-        API->>RT: validate + launch(stream)
+        App->>API: run(tensors)
+        API->>RT: validate against wrapper-owned active plan + launch(stream)
         RT->>NPU: asynchronous kernel launch
         RT-->>App: output tensor / status
     end
@@ -305,7 +305,8 @@ sequenceDiagram
 - `plan()` 可以执行 Host 计算、缓存查找和 metadata 上传，但默认不触发数据相关的 NPU-to-Host 读取。
 - `run()` 只允许 O(1) Host dispatch、轻量 shape/bounds 校验和异步 launch。
 - 动态 shape 超出 plan bound 时明确报错或要求 re-plan，不能静默选择不同 workspace 大小。
-- API 提供 `backend="auto"`，也允许 `ascendc`、`aclnn`、`reference` 和具体 `kernel_id` 用于调试。
+- API 在上游兼容位置保留 `backend="auto"`；`reference` 仅是显式 Host oracle。
+  `ascendc`、`aclnn`、外部包名和具体 `kernel_id` 属于内部集成/诊断信息，不进入模型侧选择接口。
 - 强制 kernel 不可用时给出缺失 capability 和可用候选，不静默降级。
 
 ## 8. Attention 与 KV Cache 设计

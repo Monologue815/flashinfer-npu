@@ -42,6 +42,11 @@ reviewed runtime declaration fingerprint. It never contains an executable
 plan, module, callable or provider handle, and callers never pass it to
 `run()`.
 
+This rule describes the normal high-level path. Like upstream FlashInfer, the
+library also keeps separately named `*_with_jit_module` compatibility entries
+for advanced injected-module use; those low-level functions do not change the
+model-facing automatic-dispatch contract.
+
 This example documents the target interface. Internally, a declarative
 bootstrap composes exact package versions, capability evidence, kernel/ABI
 provenance, provider adapters and tensor materializers into the automatic NPU
@@ -78,6 +83,9 @@ Ascend C kernels.
 
 The Attention-specific framework contract is documented in
 [`docs/attention_framework.md`](docs/attention_framework.md).
+The exact boundary between upstream FlashInfer semantics and Ascend-specific
+provider adaptation is documented in
+[`docs/flashinfer_attention_alignment.md`](docs/flashinfer_attention_alignment.md).
 The FlashInfer-aligned wrapper-owned plan/run lifecycle and automatic
 CANN/flash-attention-npu provider selection boundary are documented in
 [`docs/attention_plan_run_dispatch_design.md`](docs/attention_plan_run_dispatch_design.md).
