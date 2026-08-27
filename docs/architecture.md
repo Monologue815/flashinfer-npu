@@ -512,6 +512,13 @@ flash-attention-npu operation 绑定不同 delegate。路由集合必须与 scop
 使整个复合 loader 失败，不能按前缀猜测、按导入成功顺序选择或隐式换 route。详见
 [Attention package loader routing](attention_package_loader_routing.md)。
 
+生产适配输入通过 `assemble_attention_operator_provider_integration_bundle()` 统一组装：先由
+完整 operation/policy 集合形成最终 scoped catalog 与 scoring manifest，再一次性绑定
+runtime specs、生成最终 declarations、组合 routed loader，最后构造 bundle。该顺序防止
+各 provider 先绑定局部 catalog 后再合并而产生 declaration fingerprint 漂移；输入顺序不
+影响最终身份。详见
+[Attention provider bundle assembly](attention_provider_bundle_assembly.md)。
+
 ### 11.3 Autotuning
 
 - 离线 tuning 是主要模式，结果随 wheel 发布。

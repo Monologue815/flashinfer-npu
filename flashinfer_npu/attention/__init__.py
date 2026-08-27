@@ -492,6 +492,7 @@ from .provider_bundle import (
     ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION,
     AttentionOperatorProviderIntegrationBundle,
     AttentionOperatorProviderIntegrationBundleBinding,
+    assemble_attention_operator_provider_integration_bundle,
     install_attention_operator_provider_integration_bundle,
 )
 from .operator_quantization import (
@@ -819,6 +820,7 @@ __all__ = [
     "AttentionOperatorRuntimeDeclarationBinding",
     "AttentionOperatorProviderIntegrationBundle",
     "AttentionOperatorProviderIntegrationBundleBinding",
+    "assemble_attention_operator_provider_integration_bundle",
     "bind_attention_operator_plan_scoring_manifest",
     "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",

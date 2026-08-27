@@ -11,10 +11,23 @@ from typing import Any, Dict, Mapping, Tuple
 from flashinfer_npu.runtime import SchemaError
 
 from .operation_catalog import AttentionOperatorOperationCatalog
-from .operator_bootstrap import bind_attention_operator_plan_scoring_manifest
-from .operator_declaration import AttentionDeclaredOperatorPackageRuntimeSpec
+from .operator_bootstrap import (
+    AttentionOperatorPackageRuntimeSpec,
+    bind_attention_operator_plan_scoring_manifest,
+)
+from .operator_declaration import (
+    AttentionDeclaredOperatorPackageRuntimeSpec,
+    describe_attention_operator_package_runtime,
+)
+from .operator_loader_routing import (
+    AttentionOperatorPackageLoaderRoute,
+    AttentionOperatorRoutedPackageLoader,
+)
 from .operator_package import AttentionOperatorPackageLoader
-from .operator_scoring import AttentionOperatorPlanScoringManifest
+from .operator_scoring import (
+    AttentionOperatorPlanScoringManifest,
+    AttentionOperatorPlanScoringPolicy,
+)
 
 
 ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 1
@@ -371,9 +384,87 @@ def install_attention_operator_provider_integration_bundle(
     )
 
 
+def assemble_attention_operator_provider_integration_bundle(
+    *,
+    bundle_id: str,
+    catalog_name: str,
+    scoring_manifest_id: str,
+    operations,
+    runtime_specs,
+    scoring_policies,
+    package_loader_routes,
+) -> AttentionOperatorProviderIntegrationBundle:
+    """Derive one reviewable bundle from complete, exact provider inputs.
+
+    Composition is deliberately ordered: catalog and scoring manifest first,
+    then immutable scorer binding, declarations, exact loader routing, and the
+    final bundle.  No step observes an external package or device.
+    """
+
+    operation_values = tuple(operations)
+    spec_values = tuple(runtime_specs)
+    policy_values = tuple(scoring_policies)
+    route_values = tuple(package_loader_routes)
+    if any(
+        not isinstance(item, AttentionOperatorPackageRuntimeSpec)
+        for item in spec_values
+    ):
+        raise TypeError(
+            "runtime_specs must contain AttentionOperatorPackageRuntimeSpec"
+        )
+    if any(
+        not isinstance(item, AttentionOperatorPlanScoringPolicy)
+        for item in policy_values
+    ):
+        raise TypeError(
+            "scoring_policies must contain AttentionOperatorPlanScoringPolicy"
+        )
+    if any(
+        not isinstance(item, AttentionOperatorPackageLoaderRoute)
+        for item in route_values
+    ):
+        raise TypeError(
+            "package_loader_routes must contain package loader routes"
+        )
+    operation_catalog = AttentionOperatorOperationCatalog(
+        name=str(catalog_name),
+        operations=operation_values,
+    )
+    scoring_manifest = AttentionOperatorPlanScoringManifest(
+        manifest_id=str(scoring_manifest_id),
+        policies=policy_values,
+    )
+    bound_specs = bind_attention_operator_plan_scoring_manifest(
+        spec_values,
+        scoring_manifest,
+    )
+    registrations = tuple(
+        AttentionDeclaredOperatorPackageRuntimeSpec(
+            declaration=describe_attention_operator_package_runtime(
+                spec,
+                operation_catalog=operation_catalog,
+            ),
+            runtime_spec=spec,
+        )
+        for spec in bound_specs
+    )
+    package_loader = AttentionOperatorRoutedPackageLoader(
+        operation_catalog=operation_catalog,
+        routes=route_values,
+    )
+    return AttentionOperatorProviderIntegrationBundle(
+        bundle_id=bundle_id,
+        operation_catalog=operation_catalog,
+        registrations=registrations,
+        scoring_manifest=scoring_manifest,
+        package_loader=package_loader,
+    )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "AttentionOperatorProviderIntegrationBundle",
     "AttentionOperatorProviderIntegrationBundleBinding",
+    "assemble_attention_operator_provider_integration_bundle",
     "install_attention_operator_provider_integration_bundle",
 ]

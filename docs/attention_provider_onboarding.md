@@ -118,6 +118,12 @@ logical run adapter 只把已经验证的 lowered call 映射到外部 callable 
 
 ### 4.6 构建并安装 registry
 
+生产集成应优先把本次部署的完整 operations、runtime specs、scoring policies 和 loader
+routes 交给 `assemble_attention_operator_provider_integration_bundle()`。该入口先形成最终
+scoped catalog 和 manifest，再绑定 policies、生成 declarations、组合 routed loader 与
+bundle，避免不同 provider 使用局部 catalog 提前生成声明。完整流程见
+[Attention provider bundle assembly](attention_provider_bundle_assembly.md)。
+
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成
 `AttentionOperatorPackageRuntimeDeclaration`。这是纯数据审计快照，包含 operation/catalog、

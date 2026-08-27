@@ -92,4 +92,5 @@ package、capability/evidence、资源与评分流程，再由唯一最高分产
 
 完整生产接入单位见
 [Attention provider 集成包](attention_provider_integration_bundle.md)，接入步骤见
-[Attention 外部 provider 接入指南](attention_provider_onboarding.md)。
+[Attention 外部 provider 接入指南](attention_provider_onboarding.md)，规范组装顺序见
+[Attention provider bundle assembly](attention_provider_bundle_assembly.md)。

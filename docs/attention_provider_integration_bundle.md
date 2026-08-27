@@ -51,7 +51,13 @@ loader id 内含完整 route fingerprint，且每条 route 与 scoped catalog op
 
 ## 构建与安装
 
-示意流程如下：
+生产适配模块优先使用
+`assemble_attention_operator_provider_integration_bundle()` 从完整 operations、runtime
+specs、scoring policies 和 loader routes 一步派生 bundle。它固定“先绑定 policy、再生成
+最终 catalog declaration”的顺序，详见
+[Attention provider bundle assembly](attention_provider_bundle_assembly.md)。
+
+以下低层示意展示 assembly 内部必须保持的等价顺序：
 
 ```python
 from flashinfer_npu.attention import (

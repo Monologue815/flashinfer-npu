@@ -68,6 +68,9 @@ model-facing API. Bundle construction and installation do not observe package
 versions, import providers, resolve callables, probe devices, or execute an
 operator; those checks remain plan-time gates. See
 [Attention provider integration bundle](docs/attention_provider_integration_bundle.md).
+The canonical side-effect-free assembly entrypoint for complete operation,
+runtime-spec, scoring-policy and loader-route sets is documented in
+[Attention provider bundle assembly](docs/attention_provider_bundle_assembly.md).
 Bundles containing CANN and flash-attention-npu operations can use distinct,
 exact package/callable delegates through the routed loader described in
 [Attention package loader routing](docs/attention_package_loader_routing.md).
@@ -136,6 +139,8 @@ The complete production bootstrap unit and its atomic snapshot binding are in
 [`docs/attention_provider_integration_bundle.md`](docs/attention_provider_integration_bundle.md).
 Multi-package loader composition is specified in
 [`docs/attention_package_loader_routing.md`](docs/attention_package_loader_routing.md).
+The preferred complete bootstrap assembly flow is specified in
+[`docs/attention_provider_bundle_assembly.md`](docs/attention_provider_bundle_assembly.md).
 The executable Host contract for INT8/UINT8/packed-INT4 KV Cache is documented
 in [`docs/attention_quantization.md`](docs/attention_quantization.md).
 Versioned correctness trace and replay semantics are documented in
