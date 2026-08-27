@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from flashinfer_npu.runtime import Backend, SchemaError
 
@@ -345,6 +345,50 @@ class AttentionOperatorPackageRuntimeDeclaration:
             raise SchemaError("Attention runtime declaration is stale")
 
 
+@dataclass(frozen=True)
+class AttentionDeclaredOperatorPackageRuntimeSpec:
+    """One executable spec bound to its previously reviewed declaration."""
+
+    declaration: AttentionOperatorPackageRuntimeDeclaration
+    runtime_spec: AttentionOperatorPackageRuntimeSpec = field(
+        repr=False, compare=False
+    )
+    schema_version: int = ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION:
+            raise SchemaError("unsupported declared Attention runtime spec version")
+        if not isinstance(
+            self.declaration, AttentionOperatorPackageRuntimeDeclaration
+        ):
+            raise TypeError("declaration has the wrong type")
+        if not isinstance(self.runtime_spec, AttentionOperatorPackageRuntimeSpec):
+            raise TypeError("runtime_spec has the wrong type")
+        spec = self.runtime_spec
+        declaration = self.declaration
+        if (
+            declaration.provider_id != spec.provider_id
+            or declaration.operation_id != spec.operation_id
+            or declaration.adapter_version != spec.adapter_version
+            or declaration.supported_package_versions
+            != spec.supported_package_versions
+        ):
+            raise SchemaError("declared Attention runtime identity differs")
+
+    def validate(
+        self, operation_catalog: AttentionOperatorOperationCatalog
+    ) -> None:
+        if not isinstance(operation_catalog, AttentionOperatorOperationCatalog):
+            raise TypeError("operation_catalog must be AttentionOperatorOperationCatalog")
+        self.declaration.validate_runtime_spec(
+            self.runtime_spec, operation_catalog=operation_catalog
+        )
+
+    @property
+    def fingerprint(self) -> str:
+        return self.declaration.fingerprint
+
+
 def _component(role: str, value: object, **identities: object):
     return AttentionOperatorRuntimeComponentDeclaration(
         role=role,
@@ -485,10 +529,52 @@ def load_attention_operator_package_runtime_declaration(
     return AttentionOperatorPackageRuntimeDeclaration.from_dict(decoded), usage
 
 
+def build_declared_attention_operator_runtime_resolvers(
+    registrations: Sequence[AttentionDeclaredOperatorPackageRuntimeSpec] = (),
+    *,
+    operation_catalog: Optional[AttentionOperatorOperationCatalog] = None,
+    package_loader=None,
+):
+    """Build a registry only after every declaration still matches its spec.
+
+    The complete registration set is validated before the ordinary composition
+    root is entered, so one stale item cannot publish a partial resolver tree.
+    """
+
+    values = tuple(registrations)
+    if any(
+        not isinstance(item, AttentionDeclaredOperatorPackageRuntimeSpec)
+        for item in values
+    ):
+        raise TypeError(
+            "registrations must contain AttentionDeclaredOperatorPackageRuntimeSpec"
+        )
+    if operation_catalog is None:
+        operation_catalog = load_packaged_attention_operator_catalog()
+    if not isinstance(operation_catalog, AttentionOperatorOperationCatalog):
+        raise TypeError("operation_catalog must be AttentionOperatorOperationCatalog")
+    fingerprints = tuple(item.fingerprint for item in values)
+    if len(set(fingerprints)) != len(fingerprints):
+        raise SchemaError("declared Attention runtime registrations are duplicated")
+    for item in values:
+        item.validate(operation_catalog)
+    # Imported lazily to keep declaration parsing independent of registry
+    # composition and to make the no-package-probe boundary explicit.
+    from .operator_bootstrap import build_attention_operator_runtime_resolvers
+
+    return build_attention_operator_runtime_resolvers(
+        tuple(item.runtime_spec for item in values),
+        operation_catalog=operation_catalog,
+        package_loader=package_loader,
+    )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION",
+    "AttentionDeclaredOperatorPackageRuntimeSpec",
     "AttentionOperatorPackageRuntimeDeclaration",
     "AttentionOperatorRuntimeComponentDeclaration",
+    "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",
     "load_attention_operator_package_runtime_declaration",
 ]

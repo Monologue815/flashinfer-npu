@@ -441,8 +441,10 @@ from .operator_bootstrap import (
 )
 from .operator_declaration import (
     ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION,
+    AttentionDeclaredOperatorPackageRuntimeSpec,
     AttentionOperatorPackageRuntimeDeclaration,
     AttentionOperatorRuntimeComponentDeclaration,
+    build_declared_attention_operator_runtime_resolvers,
     describe_attention_operator_package_runtime,
     load_attention_operator_package_runtime_declaration,
 )
@@ -738,8 +740,10 @@ __all__ = [
     "AttentionOperatorRuntimeAuthorityResolver",
     "AttentionEvidenceOperatorRuntimeAuthorityResolver",
     "AttentionOperatorPackageRuntimeSpec",
+    "AttentionDeclaredOperatorPackageRuntimeSpec",
     "AttentionOperatorPackageRuntimeDeclaration",
     "AttentionOperatorRuntimeComponentDeclaration",
+    "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",
     "load_attention_operator_package_runtime_declaration",
     "AttentionOperatorQuantArgumentBinding",

@@ -154,8 +154,12 @@ declaration.validate_runtime_spec(
     operation_catalog=operation_catalog,
 )
 
-registry = build_attention_operator_runtime_resolvers(
-    (spec,),
+registration = AttentionDeclaredOperatorPackageRuntimeSpec(
+    declaration=declaration,
+    runtime_spec=spec,
+)
+registry = build_declared_attention_operator_runtime_resolvers(
+    (registration,),
     operation_catalog=operation_catalog,
     package_loader=package_loader,
 )
@@ -171,7 +175,9 @@ install_attention_operator_runtime_resolvers(
 
 declaration 只证明“集成配置的身份可审计且没有漂移”，不证明包已安装、callable 可解析、
 capability 可运行或设备结果正确。后续 metadata probe、authority、callable binding、plan
-和 completion gate 仍按既定顺序失败关闭。
+和 completion gate 仍按既定顺序失败关闭。低层
+`build_attention_operator_runtime_resolvers()` 保留给框架组合与合成检查；真实 provider
+bootstrap 使用 declared builder，避免审计声明被绕过。
 
 ## 5. CANN 与 flash-attention-npu 的独立性
 
