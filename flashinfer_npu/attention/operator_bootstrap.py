@@ -66,6 +66,7 @@ from .quant_physical_layout import (
 from .operator_resolver import (
     EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS,
     AttentionOperatorRuntimeImplementationRegistry,
+    AttentionOperatorRuntimePlanScorer,
     AttentionOperatorRuntimeResolverRegistry,
 )
 from .operator_run import (
@@ -78,7 +79,7 @@ from .operator_run import (
 from .tensor_contract import AttentionTensorAccessPolicy
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 12
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 13
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,7 @@ class AttentionOperatorPackageRuntimeSpec:
     tensor_materializer: AttentionOperatorTensorMaterializer
     tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector
     tensor_access_policy: AttentionTensorAccessPolicy
+    plan_scorer: Optional[AttentionOperatorRuntimePlanScorer] = None
     validate_provider_results: bool = True
     quantization_bindings: Tuple[AttentionOperatorQuantizationBinding, ...] = ()
     quant_physical_layout_catalog: QuantPhysicalLayoutCatalog = (
@@ -152,6 +154,19 @@ class AttentionOperatorPackageRuntimeSpec:
             raise TypeError(
                 "bootstrap plan_gate must implement AttentionOperatorPlanGate"
             )
+        if self.plan_scorer is not None:
+            if not isinstance(
+                self.plan_scorer, AttentionOperatorRuntimePlanScorer
+            ):
+                raise TypeError(
+                    "bootstrap plan_scorer must implement "
+                    "AttentionOperatorRuntimePlanScorer"
+                )
+            if (
+                self.plan_scorer.provider_id != self.plan_gate.provider_id
+                or self.plan_scorer.operation_id != self.operation_id
+            ):
+                raise SchemaError("bootstrap plan scorer identity differs")
         if not isinstance(self.logical_factory, AttentionOperatorPlanFactory):
             raise TypeError(
                 "bootstrap logical_factory must implement AttentionOperatorPlanFactory"
@@ -381,6 +396,7 @@ def build_attention_operator_package_runtime(
         tensor_materializer=spec.tensor_materializer,
         run_adapter_factory=run_adapter_factory,
         completion_validator_factory=completion_validator_factory,
+        plan_scorer=spec.plan_scorer,
         jit_plan_resolver=spec.jit_plan_resolver,
         jit_artifact_resolver=spec.jit_artifact_resolver,
         jit_module_resolver=spec.jit_module_resolver,

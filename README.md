@@ -37,10 +37,11 @@ output, lse = attention.run(q, (k_cache, v_cache))
 
 After `plan()`, `attention.plan_selection` provides optional read-only
 diagnostics about the chosen mode, provider operation, backend and registry
-generation. A declaration-bound external integration also exposes the exact
-reviewed runtime declaration fingerprint. It never contains an executable
-plan, module, callable or provider handle, and callers never pass it to
-`run()`.
+generation. A scored selection also exposes its bounded score, source, reason
+and complete resolution-report fingerprint. A declaration-bound external
+integration exposes the exact reviewed runtime declaration fingerprint. It
+never contains an executable plan, module, callable or provider handle, and
+callers never pass it to `run()`.
 
 This rule describes the normal high-level path. Like upstream FlashInfer, the
 library also keeps separately named `*_with_jit_module` compatibility entries
@@ -59,6 +60,13 @@ Provider integrations are installed atomically at process bootstrap. Each NPU
 constructed, so a later integration update cannot change an already-created
 wrapper's plan/run authority. This bootstrap control remains separate from the
 model-facing API.
+
+Within the highest accepted deployment-priority tier, an integration may
+declare a pure plan scorer. It uses only canonical plan metadata and injected,
+prevalidated policy or tuning evidence to choose between equally ranked CANN
+and flash-attention-npu operations. The score carries an inspectable source and
+reason; ties fail closed, and `run()` never rescores or falls back. Package
+imports, device probes and operator calls are forbidden during scoring.
 
 Quantized provider candidates have an additional admission boundary: every
 capability `QuantSpec` must map key/value scale and, when applicable,

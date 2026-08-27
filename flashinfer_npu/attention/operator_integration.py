@@ -43,7 +43,11 @@ from .operator_provider import (
     AttentionOperatorProviderProbe,
     AttentionOperatorProviderSelection,
 )
-from .operator_resolver import AttentionResolvedOperatorRuntime
+from .operator_resolver import (
+    AttentionOperatorRuntimePlanScore,
+    AttentionOperatorRuntimePlanScorer,
+    AttentionResolvedOperatorRuntime,
+)
 from .operator_run import (
     AttentionOperatorRunAdapter,
     AttentionOperatorRunAdapterFactory,
@@ -51,7 +55,7 @@ from .operator_run import (
 from .planner import AttentionFrameworkPlan
 
 
-ATTENTION_OPERATOR_INTEGRATION_VERSION = 6
+ATTENTION_OPERATOR_INTEGRATION_VERSION = 7
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -185,6 +189,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         completion_validator_factory: Optional[
             AttentionOperatorCompletionValidatorFactory
         ] = None,
+        plan_scorer: Optional[AttentionOperatorRuntimePlanScorer] = None,
         jit_plan_resolver: Optional[AttentionJitPlanResolver] = None,
         jit_artifact_resolver: Optional[AttentionJitArtifactResolver] = None,
         jit_module_resolver: Optional[AttentionJitModuleResolver] = None,
@@ -231,6 +236,12 @@ class AttentionOperatorPackageRuntimeImplementation:
             raise TypeError(
                 "completion_validator_factory must be "
                 "AttentionOperatorCompletionValidatorFactory"
+            )
+        if plan_scorer is not None and not isinstance(
+            plan_scorer, AttentionOperatorRuntimePlanScorer
+        ):
+            raise TypeError(
+                "plan_scorer must implement AttentionOperatorRuntimePlanScorer"
             )
         if jit_plan_resolver is not None and not isinstance(
             jit_plan_resolver, AttentionJitPlanResolver
@@ -289,6 +300,11 @@ class AttentionOperatorPackageRuntimeImplementation:
             or completion_validator_factory.operation_id != operation.operation_id
         ):
             raise SchemaError("package runtime completion validator differs")
+        if plan_scorer is not None and (
+            plan_scorer.provider_id != operation.provider_id
+            or plan_scorer.operation_id != operation.operation_id
+        ):
+            raise SchemaError("package runtime plan scorer differs")
         if jit_executor_binder is not None and (
             jit_executor_binder.provider_id != operation.provider_id
             or jit_executor_binder.operation_id != operation.operation_id
@@ -310,11 +326,28 @@ class AttentionOperatorPackageRuntimeImplementation:
         self._tensor_materializer = tensor_materializer
         self._run_adapter_factory = run_adapter_factory
         self._completion_validator_factory = completion_validator_factory
+        self._plan_scorer = plan_scorer
         self._jit_plan_resolver = jit_plan_resolver
         self._jit_artifact_resolver = jit_artifact_resolver
         self._jit_module_resolver = jit_module_resolver
         self._jit_planner_binder = jit_planner_binder
         self._jit_executor_binder = jit_executor_binder
+
+    def plan_score(
+        self, plan: AttentionFrameworkPlan, device: str
+    ) -> AttentionOperatorRuntimePlanScore:
+        if not isinstance(plan, AttentionFrameworkPlan):
+            raise TypeError("plan must be AttentionFrameworkPlan")
+        if self._plan_scorer is None:
+            return AttentionOperatorRuntimePlanScore(
+                0,
+                "default",
+                "package runtime declares no plan-specific scorer",
+            )
+        score = self._plan_scorer.score(plan, str(device))
+        if not isinstance(score, AttentionOperatorRuntimePlanScore):
+            raise TypeError("package runtime plan scorer returned an invalid score")
+        return score
 
     def rejection_reasons(
         self, plan: AttentionFrameworkPlan, device: str

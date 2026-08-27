@@ -14,7 +14,7 @@ from .planner import AttentionFrameworkPlan
 from .schema import AttentionMode
 
 
-ATTENTION_PLAN_SELECTION_VERSION = 2
+ATTENTION_PLAN_SELECTION_VERSION = 3
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -45,6 +45,10 @@ class AttentionPlanSelection:
     active_plan_fingerprint: Optional[str] = None
     registry_generation: Optional[int] = None
     runtime_declaration_fingerprint: Optional[str] = None
+    plan_score: Optional[int] = None
+    plan_score_source: Optional[str] = None
+    plan_score_reason: Optional[str] = None
+    runtime_resolution_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_PLAN_SELECTION_VERSION
 
     def __post_init__(self) -> None:
@@ -67,6 +71,10 @@ class AttentionPlanSelection:
             self.active_plan_fingerprint,
             self.registry_generation,
             self.runtime_declaration_fingerprint,
+            self.plan_score,
+            self.plan_score_source,
+            self.plan_score_reason,
+            self.runtime_resolution_fingerprint,
         )
         if self.route == "reference":
             if self.backend != "reference" or any(
@@ -92,6 +100,31 @@ class AttentionPlanSelection:
                 "runtime_declaration_fingerprint",
                 self.runtime_declaration_fingerprint,
             )
+        scoring_fields = (
+            self.plan_score,
+            self.plan_score_source,
+            self.plan_score_reason,
+            self.runtime_resolution_fingerprint,
+        )
+        if any(item is not None for item in scoring_fields):
+            if any(item is None for item in scoring_fields):
+                raise SchemaError(
+                    "provider plan selection scoring evidence is incomplete"
+                )
+            if not isinstance(self.plan_score, int) or isinstance(
+                self.plan_score, bool
+            ):
+                raise SchemaError("provider plan score must be an integer")
+            if not -(2**31) <= self.plan_score <= 2**31 - 1:
+                raise SchemaError("provider plan score is out of range")
+            if not str(self.plan_score_source).strip() or not str(
+                self.plan_score_reason
+            ).strip():
+                raise SchemaError("provider plan score source/reason is empty")
+            _require_hash(
+                "runtime_resolution_fingerprint",
+                self.runtime_resolution_fingerprint,
+            )
 
     def to_dict(self):
         return {
@@ -107,6 +140,12 @@ class AttentionPlanSelection:
             "registry_generation": self.registry_generation,
             "runtime_declaration_fingerprint": (
                 self.runtime_declaration_fingerprint
+            ),
+            "plan_score": self.plan_score,
+            "plan_score_source": self.plan_score_source,
+            "plan_score_reason": self.plan_score_reason,
+            "runtime_resolution_fingerprint": (
+                self.runtime_resolution_fingerprint
             ),
         }
 
@@ -135,6 +174,10 @@ def build_provider_plan_selection(
     *,
     registry_generation: int,
     runtime_declaration_fingerprint: Optional[str] = None,
+    plan_score: Optional[int] = None,
+    plan_score_source: Optional[str] = None,
+    plan_score_reason: Optional[str] = None,
+    runtime_resolution_fingerprint: Optional[str] = None,
 ) -> AttentionPlanSelection:
     if not isinstance(plan, AttentionFrameworkPlan):
         raise TypeError("plan must be AttentionFrameworkPlan")
@@ -156,6 +199,10 @@ def build_provider_plan_selection(
         active_plan_fingerprint=active_plan.fingerprint,
         registry_generation=registry_generation,
         runtime_declaration_fingerprint=runtime_declaration_fingerprint,
+        plan_score=plan_score,
+        plan_score_source=plan_score_source,
+        plan_score_reason=plan_score_reason,
+        runtime_resolution_fingerprint=runtime_resolution_fingerprint,
     )
 
 

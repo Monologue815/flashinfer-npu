@@ -462,6 +462,17 @@ Planner 根据 batch/token/expert 分布选择 fused 或 staged 实现。不能�
 
 默认优先级不是简单固定的 AOT > JIT > aclnn；同一 workload 上应以满足证据合同的 tuning record 为准。reference 永远不应静默进入生产热路径。
 
+Attention provider 的框架级选择分成两个层次：静态 `priority` 表示部署方对
+integration generation 的管理排序；只有通过 capability gate 且处于最高
+`priority` 的候选才进入 plan scorer。scorer 根据 canonical plan 和启动时注入、
+已验证的 tuning/policy 记录返回有界整数分数、来源和原因；未配置 scorer 时分数
+为零。最高分并列必须失败封闭，不能按注册顺序任选。低优先级或已拒绝候选不执行
+scorer。plan 发布后，`run()` 不重新评分、不重选 provider，也不在失败后隐式回退。
+
+scorer 是纯 Host 策略：不得导入 CANN/flash-attention-npu、探测 NPU、读取 tensor
+内容、执行算子或触发在线 tuning。这样用户只提供 plan，框架即可在已有 package
+能力之间自动选择，同时决策仍可复现、可解释并绑定到具体 provider operation。
+
 ### 11.3 Autotuning
 
 - 离线 tuning 是主要模式，结果随 wheel 发布。

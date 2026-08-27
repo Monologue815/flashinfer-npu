@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import (
     Any,
     Dict,
@@ -59,7 +59,10 @@ from .planner import (
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 9
+ATTENTION_OPERATOR_RESOLVER_VERSION = 10
+
+ATTENTION_OPERATOR_PLAN_SCORE_MIN = -(2**31)
+ATTENTION_OPERATOR_PLAN_SCORE_MAX = 2**31 - 1
 
 _DEVICE_TYPE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -95,6 +98,8 @@ class AttentionResolvedOperatorRuntime:
     callable_binding: AttentionOperatorCallableBinding = field(
         repr=False, compare=False
     )
+    plan_score: Optional["AttentionOperatorRuntimePlanScore"] = None
+    runtime_resolution_fingerprint: Optional[str] = None
     completion_validator_factory: Optional[
         AttentionOperatorCompletionValidatorFactory
     ] = field(default=None, repr=False, compare=False)
@@ -130,6 +135,24 @@ class AttentionResolvedOperatorRuntime:
             raise TypeError("selection must be AttentionOperatorProviderSelection")
         if not isinstance(self.callable_binding, AttentionOperatorCallableBinding):
             raise TypeError("callable_binding must be AttentionOperatorCallableBinding")
+        if (self.plan_score is None) != (
+            self.runtime_resolution_fingerprint is None
+        ):
+            raise SchemaError(
+                "resolved Attention runtime scoring evidence is incomplete"
+            )
+        if self.plan_score is not None:
+            if not isinstance(self.plan_score, AttentionOperatorRuntimePlanScore):
+                raise TypeError(
+                    "plan_score must be AttentionOperatorRuntimePlanScore"
+                )
+            if len(self.runtime_resolution_fingerprint) != 64 or any(
+                item not in "0123456789abcdef"
+                for item in self.runtime_resolution_fingerprint
+            ):
+                raise SchemaError(
+                    "runtime_resolution_fingerprint must be lowercase SHA-256"
+                )
         if self.completion_validator_factory is not None and not isinstance(
             self.completion_validator_factory,
             AttentionOperatorCompletionValidatorFactory,
@@ -264,12 +287,64 @@ class AttentionOperatorRuntimeImplementation(Protocol):
 
 
 @dataclass(frozen=True)
+class AttentionOperatorRuntimePlanScore:
+    """Pure, explainable preference among accepted implementations at one priority."""
+
+    value: int
+    source: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.value, int) or isinstance(self.value, bool):
+            raise SchemaError("Attention runtime plan score must be an integer")
+        if not (
+            ATTENTION_OPERATOR_PLAN_SCORE_MIN
+            <= self.value
+            <= ATTENTION_OPERATOR_PLAN_SCORE_MAX
+        ):
+            raise SchemaError("Attention runtime plan score is out of range")
+        if not str(self.source).strip() or not str(self.reason).strip():
+            raise SchemaError("Attention runtime plan score source/reason is empty")
+        object.__setattr__(self, "source", str(self.source))
+        object.__setattr__(self, "reason", str(self.reason))
+
+    def to_dict(self):
+        return {
+            "value": self.value,
+            "source": self.source,
+            "reason": self.reason,
+        }
+
+
+@runtime_checkable
+class AttentionOperatorRuntimePlanScorer(Protocol):
+    """Integration-owned, side-effect-free workload preference policy."""
+
+    provider_id: str
+    operation_id: str
+
+    def score(
+        self, plan: AttentionFrameworkPlan, device: str
+    ) -> AttentionOperatorRuntimePlanScore:
+        """Score one already accepted plan without package/device observation."""
+
+
+def _default_plan_score() -> AttentionOperatorRuntimePlanScore:
+    return AttentionOperatorRuntimePlanScore(
+        0,
+        "default",
+        "no plan-specific scorer is declared",
+    )
+
+
+@dataclass(frozen=True)
 class AttentionOperatorRuntimeImplementationCandidate:
     provider_id: str
     operation_id: str
     priority: int
     accepted: bool
     reasons: Tuple[str, ...]
+    plan_score: Optional[AttentionOperatorRuntimePlanScore] = None
     schema_version: int = ATTENTION_OPERATOR_RESOLVER_VERSION
 
     def __post_init__(self) -> None:
@@ -284,6 +359,12 @@ class AttentionOperatorRuntimeImplementationCandidate:
             raise SchemaError("runtime candidate reasons must be non-empty and unique")
         if self.accepted == bool(reasons):
             raise SchemaError("accepted runtime candidate must have no reasons")
+        if self.plan_score is not None and not isinstance(
+            self.plan_score, AttentionOperatorRuntimePlanScore
+        ):
+            raise TypeError("runtime candidate plan_score has an invalid type")
+        if not self.accepted and self.plan_score is not None:
+            raise SchemaError("rejected runtime candidate cannot have a plan score")
         object.__setattr__(self, "provider_id", str(self.provider_id))
         object.__setattr__(self, "operation_id", str(self.operation_id))
         object.__setattr__(self, "reasons", reasons)
@@ -296,6 +377,9 @@ class AttentionOperatorRuntimeImplementationCandidate:
             "priority": self.priority,
             "accepted": self.accepted,
             "reasons": list(self.reasons),
+            "plan_score": (
+                None if self.plan_score is None else self.plan_score.to_dict()
+            ),
         }
 
 
@@ -322,6 +406,13 @@ class AttentionOperatorRuntimeResolutionReport:
         )
         if len(set(identities)) != len(identities):
             raise SchemaError("runtime resolution candidates contain duplicates")
+        accepted = tuple(item for item in candidates if item.accepted)
+        top_priority = max((item.priority for item in accepted), default=None)
+        for item in accepted:
+            if item.priority == top_priority and item.plan_score is None:
+                raise SchemaError("top-priority runtime candidate requires a plan score")
+            if item.priority != top_priority and item.plan_score is not None:
+                raise SchemaError("lower-priority runtime candidate cannot be scored")
         object.__setattr__(self, "device", str(self.device))
         object.__setattr__(self, "candidates", candidates)
 
@@ -334,11 +425,30 @@ class AttentionOperatorRuntimeResolutionReport:
         return max((item.priority for item in self.accepted), default=None)
 
     @property
+    def top_plan_score(self):
+        top_priority = self.top_priority
+        return max(
+            (
+                item.plan_score.value
+                for item in self.accepted
+                if item.priority == top_priority and item.plan_score is not None
+            ),
+            default=None,
+        )
+
+    @property
     def finalists(self) -> Tuple[AttentionOperatorRuntimeImplementationCandidate, ...]:
-        top = self.top_priority
-        if top is None:
+        top_priority = self.top_priority
+        top_score = self.top_plan_score
+        if top_priority is None or top_score is None:
             return ()
-        return tuple(item for item in self.accepted if item.priority == top)
+        return tuple(
+            item
+            for item in self.accepted
+            if item.priority == top_priority
+            and item.plan_score is not None
+            and item.plan_score.value == top_score
+        )
 
     @property
     def selected(self):
@@ -407,7 +517,7 @@ class AttentionOperatorRuntimeImplementationRegistry:
     ) -> AttentionOperatorRuntimeResolutionReport:
         if not isinstance(plan, AttentionFrameworkPlan):
             raise TypeError("plan must be AttentionFrameworkPlan")
-        candidates = []
+        admissions = []
         for implementation in self._implementations:
             raw_reasons = implementation.rejection_reasons(plan, str(device))
             try:
@@ -416,6 +526,32 @@ class AttentionOperatorRuntimeImplementationRegistry:
                 raise TypeError(
                     "runtime implementation rejection_reasons must be a sequence"
                 ) from error
+            admissions.append((implementation, reasons))
+        top_priority = max(
+            (
+                implementation.priority
+                for implementation, reasons in admissions
+                if not reasons
+            ),
+            default=None,
+        )
+        candidates = []
+        for implementation, reasons in admissions:
+            plan_score = None
+            if not reasons and implementation.priority == top_priority:
+                score_method = getattr(implementation, "plan_score", None)
+                if score_method is None:
+                    plan_score = _default_plan_score()
+                elif not callable(score_method):
+                    raise TypeError("runtime implementation plan_score is not callable")
+                else:
+                    plan_score = score_method(plan, str(device))
+                    if not isinstance(
+                        plan_score, AttentionOperatorRuntimePlanScore
+                    ):
+                        raise TypeError(
+                            "runtime implementation returned an invalid plan score"
+                        )
             candidates.append(
                 AttentionOperatorRuntimeImplementationCandidate(
                     provider_id=implementation.provider_id,
@@ -423,6 +559,7 @@ class AttentionOperatorRuntimeImplementationRegistry:
                     priority=implementation.priority,
                     accepted=not reasons,
                     reasons=reasons,
+                    plan_score=plan_score,
                 )
             )
         return AttentionOperatorRuntimeResolutionReport(
@@ -457,8 +594,9 @@ class AttentionOperatorRuntimeImplementationRegistry:
                     for item in report.finalists
                 )
                 message = (
-                    "ambiguous Attention runtime implementations at priority %d: %s"
-                    % (report.top_priority, identities)
+                    "ambiguous Attention runtime implementations at priority %d "
+                    "and plan score %d: %s"
+                    % (report.top_priority, report.top_plan_score, identities)
                 )
             raise AttentionOperatorRuntimeResolutionError(message, report)
         implementation = self._implementation_map[
@@ -473,7 +611,11 @@ class AttentionOperatorRuntimeImplementationRegistry:
             or resolved.factory.operation_id != selected.operation_id
         ):
             raise SchemaError("selected runtime implementation changed its identity")
-        return resolved
+        return replace(
+            resolved,
+            plan_score=selected.plan_score,
+            runtime_resolution_fingerprint=report.fingerprint,
+        )
 
 
 @dataclass(frozen=True)
@@ -598,6 +740,8 @@ class AttentionOperatorRuntime:
         self._jit_runtime_executor_binding = None
         self._last_lowered_call = None
         self._workspace_contract = None
+        self._runtime_plan_score = None
+        self._runtime_resolution_fingerprint = None
 
     @property
     def is_planned(self) -> bool:
@@ -654,6 +798,18 @@ class AttentionOperatorRuntime:
                 "Attention operator runtime has no caller workspace binding"
             )
         return self._workspace_contract
+
+    @property
+    def runtime_plan_score(self) -> Optional[AttentionOperatorRuntimePlanScore]:
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        return self._runtime_plan_score
+
+    @property
+    def runtime_resolution_fingerprint(self) -> Optional[str]:
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        return self._runtime_resolution_fingerprint
 
     def fork_unplanned(self) -> "AttentionOperatorRuntime":
         """Create an empty runtime over the exact same frozen resolver inputs."""
@@ -802,6 +958,10 @@ class AttentionOperatorRuntime:
         candidate_jit_module_binding = resolved.jit_module_binding
         candidate_jit_planner_binding = resolved.jit_planner_binding
         candidate_jit_executor_binding = resolved.jit_executor_binding
+        candidate_runtime_plan_score = resolved.plan_score
+        candidate_runtime_resolution_fingerprint = (
+            resolved.runtime_resolution_fingerprint
+        )
         if candidate_jit_plan_binding is not None and (
             candidate_operator_session.active_plan.jit_plan_binding_fingerprint
             != candidate_jit_plan_binding.fingerprint
@@ -894,6 +1054,10 @@ class AttentionOperatorRuntime:
         )
         self._last_lowered_call = None
         self._workspace_contract = candidate_workspace_contract
+        self._runtime_plan_score = candidate_runtime_plan_score
+        self._runtime_resolution_fingerprint = (
+            candidate_runtime_resolution_fingerprint
+        )
 
     def run(
         self,
@@ -1062,6 +1226,8 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
 
 
 __all__ = [
+    "ATTENTION_OPERATOR_PLAN_SCORE_MAX",
+    "ATTENTION_OPERATOR_PLAN_SCORE_MIN",
     "ATTENTION_OPERATOR_RESOLVER_VERSION",
     "EMPTY_ATTENTION_OPERATOR_RUNTIME_RESOLVERS",
     "AttentionLoweredOperatorExecutor",
@@ -1070,6 +1236,8 @@ __all__ = [
     "AttentionOperatorRuntimeImplementation",
     "AttentionOperatorRuntimeImplementationCandidate",
     "AttentionOperatorRuntimeImplementationRegistry",
+    "AttentionOperatorRuntimePlanScore",
+    "AttentionOperatorRuntimePlanScorer",
     "AttentionOperatorRuntimeResolutionError",
     "AttentionOperatorRuntimeResolutionReport",
     "AttentionOperatorRuntimeResolver",

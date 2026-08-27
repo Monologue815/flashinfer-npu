@@ -327,6 +327,7 @@ class BatchAttention:
         plan = self.plan_state
         if self._operator_runtime is not None:
             active_plan = self._operator_runtime.operator_session.active_plan
+            plan_score = self._operator_runtime.runtime_plan_score
             return build_provider_plan_selection(
                 plan,
                 active_plan,
@@ -338,6 +339,16 @@ class BatchAttention:
                         active_plan.provider_selection.provider_id,
                         active_plan.prepared_plan.implementation_id,
                     )
+                ),
+                plan_score=(None if plan_score is None else plan_score.value),
+                plan_score_source=(
+                    None if plan_score is None else plan_score.source
+                ),
+                plan_score_reason=(
+                    None if plan_score is None else plan_score.reason
+                ),
+                runtime_resolution_fingerprint=(
+                    self._operator_runtime.runtime_resolution_fingerprint
                 ),
             )
         return build_reference_plan_selection(plan)

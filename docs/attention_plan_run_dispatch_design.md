@@ -179,9 +179,12 @@ Every registered implementation is evaluated through a pure plan gate. The gate
 returns structured acceptance or rejection reasons and must not import the
 external package or invoke an operator.
 
-Selection is deterministic. Ordering is based on declared priority and stable
-implementation identity, never discovery order. A candidate is eligible only
-when all of the following agree:
+Selection is deterministic and has two explicit levels. Declared priority is
+an administrative deployment rank. After all plan gates have run, only
+accepted candidates at the highest priority are passed to their optional
+plan-specific scorer. Stable implementation identity determines report order,
+never selection or discovery order. A candidate is eligible only when all of
+the following agree:
 
 - the canonical plan;
 - the provider operation catalog;
@@ -191,8 +194,19 @@ when all of the following agree:
 - numerical and physical-layout evidence;
 - callable or artifact identity.
 
-`explain()` may expose these reasons for diagnostics without performing package
-loading or device work.
+The scorer returns a bounded integer preference plus a non-empty `source` and
+`reason`. A candidate without a scorer receives score zero. Higher scores win;
+an equal top score is ambiguous and fails closed. Rejected and lower-priority
+candidates are not scored, so an irrelevant integration cannot block the
+selected priority tier.
+
+A scorer is integration-owned, identity-bound to one provider operation and
+side-effect-free. It may inspect the immutable canonical plan and injected,
+prevalidated policy or tuning records. It must not import the external package,
+probe a device, read tensor contents, run an operator or perform online tuning.
+`explain()` exposes gate reasons and score evidence without package loading or
+device work, and its fingerprint therefore binds the decision to the plan.
+`run()` never rescales, rescores, retries or switches the selected provider.
 
 ## 7. Operation catalog
 
@@ -328,10 +342,11 @@ Publication is atomic. Any error keeps the previous active plan intact.
 
 After publication, batch wrappers expose `plan_selection` as a read-only
 diagnostic value. It contains only the Attention mode, route, backend,
-provider/operation identifiers, registry generation and plan fingerprints. It
-contains no callable, module, executor, opaque provider state or mutable plan
-handle. The property is not an input to `run()` and does not transfer plan
-ownership to the caller.
+provider/operation identifiers, registry generation and plan fingerprints. A
+scored selection also includes the selected integer score, source, reason and
+complete resolution-report fingerprint. It contains no callable, module,
+executor, opaque provider state or mutable plan handle. The property is not an
+input to `run()` and does not transfer plan ownership to the caller.
 
 Reference plans report `route="reference"` and contain no provider identity.
 Provider plans report the exact registry generation captured by the wrapper.
