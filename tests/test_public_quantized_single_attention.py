@@ -40,7 +40,10 @@ from tests.test_attention_capability import (
     bound_kernel,
     pinned_environment,
 )
-from tests.test_checkpoint_019_package_runtime_integration import package_attention
+from tests.test_checkpoint_019_package_runtime_integration import (
+    FakeLogicalRunAdapter,
+    package_attention,
+)
 from tests.test_checkpoint_022_operator_runtime_bootstrap import bootstrap_components
 from tests.test_public_quantized_paged_prefill import metadata_tensor
 
@@ -54,6 +57,25 @@ class FakeNpuTensor:
 
     def __str__(self):
         return self.name
+
+
+class PlanScaleLogicalRunAdapter(FakeLogicalRunAdapter):
+    """Make the synthetic package call expose the canonical plan scale."""
+
+    def lower(self, active_plan, request):
+        lowered = super().lower(active_plan, request)
+        return replace(
+            lowered,
+            keyword_arguments=tuple(
+                (
+                    name,
+                    active_plan.framework_plan.spec.sm_scale
+                    if name == "scale"
+                    else value,
+                )
+                for name, value in lowered.keyword_arguments
+            ),
+        )
 
 
 def single_quant_spec():
@@ -305,6 +327,7 @@ def public_single_quantized_runtime(
         quantization_bindings=(binding,),
         corpus=corpus,
         coverage_policy=policy,
+        logical_run_adapter=PlanScaleLogicalRunAdapter(),
     )
     registry = build_attention_operator_runtime_resolvers(
         (runtime_spec,),
@@ -362,7 +385,7 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
 
         self.assertEqual(output, "package-output:q-prefill")
         self.assertEqual(
-            output_lse, ("package-output:q-prefill", "package-lse:0.25")
+            output_lse, ("package-output:q-prefill", "package-lse:1.0")
         )
         first_call = package_attention.calls[0]
         self.assertIs(first_call[1], key.storage)
@@ -379,7 +402,7 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
 
         self.assertEqual(output, "package-output:q-decode")
         self.assertEqual(
-            output_lse, ("package-output:q-decode", "package-lse:0.25")
+            output_lse, ("package-output:q-decode", "package-lse:1.0")
         )
         first_call = package_attention.calls[0]
         self.assertIs(first_call[1], key.storage)
@@ -445,7 +468,8 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
             key_head_scale,
             value_head_scale,
         ))
-        self.assertEqual(decode_call[8:10], (1.5, 0.5))
+        self.assertEqual(decode_call[4], 3.0)
+        self.assertEqual(decode_call[8:10], (None, 0.5))
         self.assertIsNone(decode_call[10])
         self.assertEqual(decode_call[12:15], (None, None, None))
 
@@ -491,10 +515,16 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
             SchemaError, "rejects run-time q_head_scale"
         ):
             single_prefill_with_kv_cache(prefill_q, key, value, scale_q=query_scale)
-        with self.assertRaisesRegex(SchemaError, "rejects run-time k_scale"):
-            single_decode_with_kv_cache(
-                decode_q, key, value, k_scale=1.5
-            )
+        output = single_decode_with_kv_cache(
+            decode_q, key, value, q_scale=2.0, k_scale=1.5
+        )
+        self.assertEqual(output, "package-output:q-decode-scale")
+        self.assertEqual(package_attention.calls[0][4], 3.0)
+        self.assertEqual(package_attention.calls[0][8:11], (None, None, None))
+
+        package_attention.calls[:] = []
+        with self.assertRaisesRegex(SchemaError, "rejects run-time v_scale"):
+            single_decode_with_kv_cache(decode_q, key, value, v_scale=0.5)
         self.assertEqual(package_attention.calls, [])
 
     def test_bare_fp8_single_prefill_canonicalizes_public_head_scales(self):

@@ -89,6 +89,8 @@ def single_decode_with_kv_cache(
         )
         if provider_q_scale is not None:
             provider_softmax_scale *= provider_q_scale
+        if provider_k_scale is not None:
+            provider_softmax_scale *= provider_k_scale
         spec = AttentionPlanSpec(
             mode=AttentionMode.SINGLE_DECODE,
             num_qo_heads=adapted_provider.num_qo_heads,
@@ -138,7 +140,6 @@ def single_decode_with_kv_cache(
             q,
             provider_kv_input,
             return_lse=bool(return_lse),
-            k_scale=provider_k_scale,
             v_scale=provider_v_scale,
             logits_soft_cap=spec.logits_soft_cap,
         )

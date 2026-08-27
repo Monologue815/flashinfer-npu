@@ -226,8 +226,9 @@ JIT call 与 provider launch 的 lifecycle 不写入数值 correctness trace。�
 Provider facade 只有在 K/V 使用完整 `QuantSpec` 且所选 operation 的 quantization binding
 明确允许时，才把 query、key 或 value runtime scale 作为三个独立来源注入对应参数；未声明
 或仅凭参数名称相似的候选必须失败。single prefill 的 `scale_q` 与 batch paged/ragged 的
-`q_scale` 映射到 `run.q_scale`；single decode 的标量 `q_scale` 折入 canonical softmax
-scale，不占用 provider quant 参数来源。
+`q_scale` 映射到 `run.q_scale`；single decode 的标量 `q_scale` 与 `k_scale` 相乘后折入
+canonical softmax scale，不占用 provider quant 参数来源，只有输出倍率 `v_scale` 保持为
+`run.v_scale`。
 ragged `o_scale` 是第四个独立来源；除精确 argument binding 外还受 plan `o_dtype` 白名单
 约束。未绑定、非量化或输出 dtype 不匹配的 provider 路径均在 package invocation 前失败。
 

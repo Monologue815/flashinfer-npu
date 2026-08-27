@@ -142,9 +142,10 @@ single prefill 的 `scale_q`/`scale_k`/`scale_v` 是上游 FP8 逐头 scale，�
 `k_scale`/`v_scale` 校准倍率合并：后两者继续表示为 `run.k_scale`/`run.v_scale`。
 batch paged/ragged 的 `q_scale` 则表示为 `run.q_scale`。只有所选 operation 的
 `AttentionOperatorQuantizationBinding` 将相应来源精确绑定到 provider 参数时才会注入；
-每一项默认独立拒绝。single decode 的标量 `q_scale` 直接折入该次 canonical plan 的
-softmax scale，不伪造额外 provider quant 参数。非量化 provider 路径仍拒绝这些尚无独立
-语义证明的 scale。已授权的逐头 scale 还必须是 contiguous rank-1 tensor，Q 长度等于
+每一项默认独立拒绝。single decode 的标量 `q_scale` 与 `k_scale` 按上游语义相乘后折入
+该次 canonical plan 的 softmax scale，不伪造额外 provider quant 参数；`v_scale` 仍是输出
+倍率，只有精确的 `run.v_scale` provider 绑定才能承接。非量化 provider 路径仍拒绝这些
+尚无独立语义证明的 scale。已授权的逐头 scale 还必须是 contiguous rank-1 tensor，Q 长度等于
 `num_qo_heads`，K/V 长度等于 `num_kv_heads`，dtype 等于绑定 `QuantSpec.scale_dtype`，且
 device 与 provider query 一致；这些检查先于 package callable。
 

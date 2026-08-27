@@ -261,7 +261,7 @@
       "semantic_status": "compatible",
       "implementation_status": "reference",
       "priority": "P0",
-      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. ReferenceTensor inputs explicitly opt into the oracle because the upstream API has no backend argument; NPU tensors own an ephemeral provider resolver. Explicit quantized K/V logical shapes drive the plan; q_scale folds into the canonical softmax scale while runtime K/V multipliers require exact provider argument bindings."
+      "notes": "Exact snapshot signature with executable Host ReferenceTensor semantics. ReferenceTensor inputs explicitly opt into the oracle because the upstream API has no backend argument; NPU tensors own an ephemeral provider resolver. Explicit quantized K/V logical shapes drive the plan; q_scale and k_scale multiply into the canonical softmax scale, while the output multiplier v_scale requires an exact provider argument binding."
     },
     {
       "upstream": "flashinfer.decode.single_decode_with_kv_cache_with_jit_module",
