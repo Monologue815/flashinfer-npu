@@ -100,6 +100,12 @@ provider 自行分配的返回 tensor 还要经过 plan-bound metadata completio
 `output` 对齐计划 shape/`o_dtype`/device，`softmax_lse` 对齐计划 shape/FP32/device，
 两者必须 writable、满足 provider alignment/contiguous policy 且不能互相重叠。验证只读取
 metadata，并生成绑定 active plan、operation、access policy 与 result view 的 receipt。
+package bootstrap 默认启用该验证：resolved runtime 携带 validator factory，在完整 active plan
+生成后、原子发布前绑定。`run()` 先清除旧 completion receipt，只调用 provider 一次，通过
+metadata contract 后才把结果交给公开 wrapper；失败不会返回结果、不会生成成功 receipt，
+也不会静默重试算子。replan 必须为新 active-plan fingerprint 重建 validator。JIT 与非 JIT
+共用此返回边界，且不会替换已有 callable/JIT executor identity。只有无 tensor metadata 的
+合成集成夹具才应显式关闭该默认验证，生产 provider registration 不应关闭。
 ragged prefill 继续公开 `q_scale/k_scale/v_scale/o_scale`。其中 `o_scale` 是输出 scale，
 只有选中 operation 的量化 binding 同时声明精确参数名和允许的 plan 输出 dtype 时才会传入；
 它不会改变 plan 选择，也不会被解释成 KV scale。

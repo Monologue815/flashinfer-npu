@@ -131,6 +131,14 @@ class AttentionOperatorCompletionValidator:
         self._access_policy = access_policy
         self._expected_device = str(expected_device)
 
+    @property
+    def operation_fingerprint(self) -> str:
+        return self._operation.fingerprint
+
+    @property
+    def access_policy_fingerprint(self) -> str:
+        return self._access_policy.fingerprint
+
     def validate(
         self, call: AttentionLoweredOperatorCall, result: Any
     ) -> AttentionOperatorCompletionReceipt:
@@ -213,8 +221,52 @@ class AttentionOperatorCompletionValidator:
         )
 
 
+class AttentionOperatorCompletionValidatorFactory:
+    """Bind one provider's result metadata contract to each active plan."""
+
+    def __init__(
+        self,
+        operation: AttentionOperatorOperationSpec,
+        inspector: AttentionOperatorTensorMetadataInspector,
+        access_policy: AttentionTensorAccessPolicy,
+    ) -> None:
+        if not isinstance(operation, AttentionOperatorOperationSpec):
+            raise TypeError("operation must be AttentionOperatorOperationSpec")
+        if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+            raise TypeError(
+                "inspector must implement AttentionOperatorTensorMetadataInspector"
+            )
+        if not isinstance(access_policy, AttentionTensorAccessPolicy):
+            raise TypeError("access_policy must be AttentionTensorAccessPolicy")
+        self.provider_id = operation.provider_id
+        self.operation_id = operation.operation_id
+        self._operation = operation
+        self._inspector = inspector
+        self._access_policy = access_policy
+
+    @property
+    def operation_fingerprint(self) -> str:
+        return self._operation.fingerprint
+
+    @property
+    def access_policy_fingerprint(self) -> str:
+        return self._access_policy.fingerprint
+
+    def build(
+        self, active_plan: AttentionOperatorActivePlan, expected_device: str
+    ) -> AttentionOperatorCompletionValidator:
+        return AttentionOperatorCompletionValidator(
+            self._operation,
+            active_plan,
+            self._inspector,
+            self._access_policy,
+            expected_device,
+        )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_COMPLETION_VERSION",
     "AttentionOperatorCompletionReceipt",
     "AttentionOperatorCompletionValidator",
+    "AttentionOperatorCompletionValidatorFactory",
 ]

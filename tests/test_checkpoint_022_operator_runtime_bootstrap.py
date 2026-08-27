@@ -67,6 +67,9 @@ def bootstrap_components(*, package_version="1.0.0", gate_reasons=()):
         tensor_access_policy=AttentionTensorAccessPolicy(
             require_contiguous_q=True
         ),
+        # This legacy synthetic callable returns string labels rather than
+        # tensors. Dedicated completion tests keep the production default strict.
+        validate_provider_results=False,
     )
     return {
         "events": events,
@@ -236,6 +239,10 @@ class OperatorRuntimeBootstrapCheckpoint(unittest.TestCase):
             (
                 {"tuned_kernel_ids": ("same", "same")},
                 "tuned kernel ids must be unique",
+            ),
+            (
+                {"validate_provider_results": "strict"},
+                "validate_provider_results must be boolean",
             ),
         )
         for overrides, message in cases:

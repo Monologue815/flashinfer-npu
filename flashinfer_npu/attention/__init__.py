@@ -403,6 +403,7 @@ from .operator_completion import (
     ATTENTION_OPERATOR_COMPLETION_VERSION,
     AttentionOperatorCompletionReceipt,
     AttentionOperatorCompletionValidator,
+    AttentionOperatorCompletionValidatorFactory,
 )
 from .operator_package import (
     ATTENTION_OPERATOR_PACKAGE_VERSION,
@@ -706,6 +707,7 @@ __all__ = [
     "AttentionRuntimeBindingAwareExecutor",
     "AttentionOperatorCompletionReceipt",
     "AttentionOperatorCompletionValidator",
+    "AttentionOperatorCompletionValidatorFactory",
     "AttentionOperatorPackageCompatibility",
     "AttentionOperatorPackageLoader",
     "AttentionOperatorPackageResolutionError",

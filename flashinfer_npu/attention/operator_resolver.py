@@ -32,6 +32,11 @@ from .operation_catalog import (
 )
 from .operator_callable import AttentionOperatorCallableBinding
 from .operator_execution import AttentionRuntimeBindingAwareExecutor
+from .operator_completion import (
+    AttentionOperatorCompletionReceipt,
+    AttentionOperatorCompletionValidator,
+    AttentionOperatorCompletionValidatorFactory,
+)
 from .operator_plan import AttentionOperatorPlanFactory
 from .operator_provider import AttentionOperatorProviderSelection
 from .operator_run import (
@@ -49,7 +54,7 @@ from .planner import (
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 7
+ATTENTION_OPERATOR_RESOLVER_VERSION = 8
 
 _DEVICE_TYPE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
@@ -85,6 +90,9 @@ class AttentionResolvedOperatorRuntime:
     callable_binding: AttentionOperatorCallableBinding = field(
         repr=False, compare=False
     )
+    completion_validator_factory: Optional[
+        AttentionOperatorCompletionValidatorFactory
+    ] = field(default=None, repr=False, compare=False)
     jit_plan_binding: Optional[AttentionJitPlanBinding] = field(
         default=None, repr=False, compare=False
     )
@@ -117,6 +125,14 @@ class AttentionResolvedOperatorRuntime:
             raise TypeError("selection must be AttentionOperatorProviderSelection")
         if not isinstance(self.callable_binding, AttentionOperatorCallableBinding):
             raise TypeError("callable_binding must be AttentionOperatorCallableBinding")
+        if self.completion_validator_factory is not None and not isinstance(
+            self.completion_validator_factory,
+            AttentionOperatorCompletionValidatorFactory,
+        ):
+            raise TypeError(
+                "completion_validator_factory must be "
+                "AttentionOperatorCompletionValidatorFactory"
+            )
         if self.receipt.backend == Backend.ASCENDC_JIT:
             if not isinstance(self.jit_plan_binding, AttentionJitPlanBinding):
                 raise SchemaError(
@@ -194,6 +210,15 @@ class AttentionResolvedOperatorRuntime:
             or self.callable_binding.operation_id != operation_id
         ):
             raise SchemaError("resolved Attention runtime operation identities differ")
+        if self.completion_validator_factory is not None and (
+            self.completion_validator_factory.provider_id != provider_id
+            or self.completion_validator_factory.operation_id != operation_id
+            or self.completion_validator_factory.operation_fingerprint
+            != self.callable_binding.operation_fingerprint
+        ):
+            raise SchemaError(
+                "resolved Attention completion validator identities differ"
+            )
         if self.receipt.plan_fingerprint != self.framework_plan_fingerprint:
             raise SchemaError("resolved Attention runtime does not bind its plan")
         if (
@@ -530,6 +555,8 @@ class AttentionOperatorRuntime:
         self._framework_session = AttentionFrameworkSession(mode)
         self._operator_session = None
         self._executor = None
+        self._completion_validator = None
+        self._last_completion_receipt = None
         self._jit_plan_binding = None
         self._jit_artifact_binding = None
         self._jit_module_binding = None
@@ -557,6 +584,22 @@ class AttentionOperatorRuntime:
         if self._last_lowered_call is None:
             raise AttentionStateError("Attention operator runtime has not been run")
         return self._last_lowered_call
+
+    @property
+    def completion_validator(self) -> AttentionOperatorCompletionValidator:
+        if self._completion_validator is None:
+            raise AttentionStateError(
+                "Attention operator runtime has no result completion validator"
+            )
+        return self._completion_validator
+
+    @property
+    def last_completion_receipt(self) -> AttentionOperatorCompletionReceipt:
+        if self._last_completion_receipt is None:
+            raise AttentionStateError(
+                "Attention operator runtime has no successful result completion"
+            )
+        return self._last_completion_receipt
 
     @property
     def resource_binding(self):
@@ -684,6 +727,23 @@ class AttentionOperatorRuntime:
                 )
             )
         candidate_executor = resolved.executor
+        candidate_completion_validator = None
+        if resolved.completion_validator_factory is not None:
+            candidate_completion_validator = (
+                resolved.completion_validator_factory.build(
+                    candidate_operator_session.active_plan,
+                    self.device,
+                )
+            )
+            if (
+                candidate_completion_validator.provider_id
+                != resolved.selection.provider_id
+                or candidate_completion_validator.operation_id
+                != resolved.factory.operation_id
+            ):
+                raise SchemaError(
+                    "bound Attention completion validator changed its identity"
+                )
         candidate_jit_plan_binding = resolved.jit_plan_binding
         candidate_jit_artifact_binding = resolved.jit_artifact_binding
         candidate_jit_module_binding = resolved.jit_module_binding
@@ -753,6 +813,8 @@ class AttentionOperatorRuntime:
         self._framework_session.commit_prepared_plan(candidate_plan)
         self._operator_session = candidate_operator_session
         self._executor = candidate_executor
+        self._completion_validator = candidate_completion_validator
+        self._last_completion_receipt = None
         self._jit_plan_binding = candidate_jit_plan_binding
         self._jit_artifact_binding = candidate_jit_artifact_binding
         self._jit_module_binding = candidate_jit_module_binding
@@ -874,7 +936,12 @@ class AttentionOperatorRuntime:
             kv_cache_sf=kv_cache_sf,
         )
         lowered = session._lower_request(request)
+        self._last_completion_receipt = None
         result = self._executor.execute(lowered)
+        if self._completion_validator is not None:
+            self._last_completion_receipt = self._completion_validator.validate(
+                lowered, result
+            )
         self._last_lowered_call = lowered
         return result
 

@@ -394,6 +394,19 @@ storage. A completion receipt binds their metadata fingerprints to the active
 plan, exact operation and access policy. This validator is a distinct boundary
 so provider invocation authority and returned-tensor acceptance cannot be
 conflated.
+Package bootstrap enables this result validation by default. The validator
+factory is carried by the resolved runtime, then bound only after the complete
+provider active plan exists and before that generation is atomically published.
+`run()` clears the previous completion receipt, invokes the already authorized
+provider exactly once, validates the returned tensors and only then exposes the
+result to the public wrapper. Validation failure therefore cannot publish a
+result or a success receipt and does not trigger a second provider invocation.
+Replanning constructs a new validator for the new active-plan fingerprint.
+JIT and non-JIT runtimes share this completion boundary; it wraps neither the
+callable nor the JIT executor, so their existing identity bindings remain
+unchanged. A bootstrap spec can disable result validation only explicitly,
+which is intended for metadata-free synthetic integration fixtures rather than
+production provider registrations.
 
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.

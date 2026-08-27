@@ -41,6 +41,7 @@ from .operator_integration import (
     AttentionOperatorPackageRuntimeImplementation,
     AttentionOperatorPlanGate,
 )
+from .operator_completion import AttentionOperatorCompletionValidatorFactory
 from .operator_materialization import AttentionOperatorTensorMaterializer
 from .operator_package import (
     AttentionOperatorPackageCompatibility,
@@ -77,7 +78,7 @@ from .operator_run import (
 from .tensor_contract import AttentionTensorAccessPolicy
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 11
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 12
 
 
 @dataclass(frozen=True)
@@ -97,6 +98,7 @@ class AttentionOperatorPackageRuntimeSpec:
     tensor_materializer: AttentionOperatorTensorMaterializer
     tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector
     tensor_access_policy: AttentionTensorAccessPolicy
+    validate_provider_results: bool = True
     quantization_bindings: Tuple[AttentionOperatorQuantizationBinding, ...] = ()
     quant_physical_layout_catalog: QuantPhysicalLayoutCatalog = (
         EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG
@@ -190,6 +192,8 @@ class AttentionOperatorPackageRuntimeSpec:
             raise TypeError(
                 "tensor_access_policy must be AttentionTensorAccessPolicy"
             )
+        if not isinstance(self.validate_provider_results, bool):
+            raise SchemaError("validate_provider_results must be boolean")
         if not isinstance(
             self.quant_physical_layout_catalog, QuantPhysicalLayoutCatalog
         ):
@@ -344,6 +348,15 @@ def build_attention_operator_package_runtime(
     package_resolver = AttentionOperatorPackageResolver(
         operation_catalog, compatibility, package_loader
     )
+    completion_validator_factory = (
+        AttentionOperatorCompletionValidatorFactory(
+            operation,
+            spec.tensor_metadata_inspector,
+            spec.tensor_access_policy,
+        )
+        if spec.validate_provider_results
+        else None
+    )
     authority_resolver = AttentionEvidenceOperatorRuntimeAuthorityResolver(
         operation,
         spec.profiles,
@@ -367,6 +380,7 @@ def build_attention_operator_package_runtime(
         logical_run_adapter=spec.logical_run_adapter,
         tensor_materializer=spec.tensor_materializer,
         run_adapter_factory=run_adapter_factory,
+        completion_validator_factory=completion_validator_factory,
         jit_plan_resolver=spec.jit_plan_resolver,
         jit_artifact_resolver=spec.jit_artifact_resolver,
         jit_module_resolver=spec.jit_module_resolver,

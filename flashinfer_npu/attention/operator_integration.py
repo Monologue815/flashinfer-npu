@@ -37,6 +37,7 @@ from .operator_package import (
     AttentionOperatorPackageResolver,
     AttentionResolvedOperatorPackage,
 )
+from .operator_completion import AttentionOperatorCompletionValidatorFactory
 from .operator_plan import AttentionOperatorPlanFactory
 from .operator_provider import (
     AttentionOperatorProviderProbe,
@@ -50,7 +51,7 @@ from .operator_run import (
 from .planner import AttentionFrameworkPlan
 
 
-ATTENTION_OPERATOR_INTEGRATION_VERSION = 5
+ATTENTION_OPERATOR_INTEGRATION_VERSION = 6
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -181,6 +182,9 @@ class AttentionOperatorPackageRuntimeImplementation:
         logical_run_adapter: AttentionOperatorRunAdapter,
         tensor_materializer: AttentionOperatorTensorMaterializer,
         run_adapter_factory: Optional[AttentionOperatorRunAdapterFactory] = None,
+        completion_validator_factory: Optional[
+            AttentionOperatorCompletionValidatorFactory
+        ] = None,
         jit_plan_resolver: Optional[AttentionJitPlanResolver] = None,
         jit_artifact_resolver: Optional[AttentionJitArtifactResolver] = None,
         jit_module_resolver: Optional[AttentionJitModuleResolver] = None,
@@ -219,6 +223,14 @@ class AttentionOperatorPackageRuntimeImplementation:
             raise TypeError(
                 "run_adapter_factory must implement "
                 "AttentionOperatorRunAdapterFactory"
+            )
+        if completion_validator_factory is not None and not isinstance(
+            completion_validator_factory,
+            AttentionOperatorCompletionValidatorFactory,
+        ):
+            raise TypeError(
+                "completion_validator_factory must be "
+                "AttentionOperatorCompletionValidatorFactory"
             )
         if jit_plan_resolver is not None and not isinstance(
             jit_plan_resolver, AttentionJitPlanResolver
@@ -272,6 +284,11 @@ class AttentionOperatorPackageRuntimeImplementation:
             or run_adapter_factory.operation_id != operation.operation_id
         ):
             raise SchemaError("package runtime run adapter factory differs")
+        if completion_validator_factory is not None and (
+            completion_validator_factory.provider_id != operation.provider_id
+            or completion_validator_factory.operation_id != operation.operation_id
+        ):
+            raise SchemaError("package runtime completion validator differs")
         if jit_executor_binder is not None and (
             jit_executor_binder.provider_id != operation.provider_id
             or jit_executor_binder.operation_id != operation.operation_id
@@ -292,6 +309,7 @@ class AttentionOperatorPackageRuntimeImplementation:
         self._logical_run_adapter = logical_run_adapter
         self._tensor_materializer = tensor_materializer
         self._run_adapter_factory = run_adapter_factory
+        self._completion_validator_factory = completion_validator_factory
         self._jit_plan_resolver = jit_plan_resolver
         self._jit_artifact_resolver = jit_artifact_resolver
         self._jit_module_resolver = jit_module_resolver
@@ -483,6 +501,7 @@ class AttentionOperatorPackageRuntimeImplementation:
             receipt=authority.receipt,
             selection=authority.selection,
             callable_binding=package.callable_binding,
+            completion_validator_factory=self._completion_validator_factory,
             jit_plan_binding=jit_plan_binding,
             jit_artifact_binding=jit_artifact_binding,
             jit_module_binding=jit_module_binding,
