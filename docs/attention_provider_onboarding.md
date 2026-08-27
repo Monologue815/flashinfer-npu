@@ -158,14 +158,10 @@ registration = AttentionDeclaredOperatorPackageRuntimeSpec(
     declaration=declaration,
     runtime_spec=spec,
 )
-registry = build_declared_attention_operator_runtime_resolvers(
+installed = install_declared_attention_operator_runtime_resolvers(
     (registration,),
     operation_catalog=operation_catalog,
     package_loader=package_loader,
-)
-install_attention_operator_runtime_resolvers(
-    registry,
-    operation_catalog=operation_catalog,
     expected_generation=current_generation,
 )
 ```
@@ -177,7 +173,13 @@ declaration 只证明“集成配置的身份可审计且没有漂移”，不�
 capability 可运行或设备结果正确。后续 metadata probe、authority、callable binding、plan
 和 completion gate 仍按既定顺序失败关闭。低层
 `build_attention_operator_runtime_resolvers()` 保留给框架组合与合成检查；真实 provider
-bootstrap 使用 declared builder，避免审计声明被绕过。
+bootstrap 使用 declared installer，避免审计声明被绕过。
+
+declared installer 将 resolver、operation catalog 和每个
+`(provider_id, operation_id, declaration_fingerprint)` 作为同一 registry generation 原子
+发布。新建 wrapper 捕获这一不可变快照；成功 `plan()` 后，`plan_selection` 的只读
+`runtime_declaration_fingerprint` 指向所选 operation 的审核声明。旧 wrapper 不随之后的
+安装变化，legacy/合成 registry 则明确返回 `None`，不能伪装成 declaration-bound 集成。
 
 ## 5. CANN 与 flash-attention-npu 的独立性
 

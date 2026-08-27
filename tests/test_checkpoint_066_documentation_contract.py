@@ -23,7 +23,7 @@ class AttentionDocumentationContractTests(unittest.TestCase):
         required = (
             "AttentionOperatorPackageRuntimeSpec",
             "build_attention_operator_runtime_resolvers",
-            "install_attention_operator_runtime_resolvers",
+            "install_declared_attention_operator_runtime_resolvers",
             "validate_provider_results",
             "AttentionOperatorQuantizedKVInput",
             "AttentionOperatorQuantizedTensorInput",

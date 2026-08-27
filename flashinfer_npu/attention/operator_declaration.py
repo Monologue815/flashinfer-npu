@@ -388,6 +388,41 @@ class AttentionDeclaredOperatorPackageRuntimeSpec:
     def fingerprint(self) -> str:
         return self.declaration.fingerprint
 
+    @property
+    def binding(self) -> "AttentionOperatorRuntimeDeclarationBinding":
+        return AttentionOperatorRuntimeDeclarationBinding(
+            provider_id=self.declaration.provider_id,
+            operation_id=self.declaration.operation_id,
+            declaration_fingerprint=self.declaration.fingerprint,
+        )
+
+
+@dataclass(frozen=True)
+class AttentionOperatorRuntimeDeclarationBinding:
+    """Compact declaration identity stored in an installed registry snapshot."""
+
+    provider_id: str
+    operation_id: str
+    declaration_fingerprint: str
+    schema_version: int = ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION:
+            raise SchemaError("unsupported runtime declaration binding version")
+        if not str(self.provider_id) or not str(self.operation_id):
+            raise SchemaError("runtime declaration binding identity is incomplete")
+        _require_hash("runtime declaration fingerprint", self.declaration_fingerprint)
+        object.__setattr__(self, "provider_id", str(self.provider_id))
+        object.__setattr__(self, "operation_id", str(self.operation_id))
+
+    def to_dict(self):
+        return {
+            "schema_version": self.schema_version,
+            "provider_id": self.provider_id,
+            "operation_id": self.operation_id,
+            "declaration_fingerprint": self.declaration_fingerprint,
+        }
+
 
 def _component(role: str, value: object, **identities: object):
     return AttentionOperatorRuntimeComponentDeclaration(
@@ -573,6 +608,7 @@ __all__ = [
     "ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION",
     "AttentionDeclaredOperatorPackageRuntimeSpec",
     "AttentionOperatorPackageRuntimeDeclaration",
+    "AttentionOperatorRuntimeDeclarationBinding",
     "AttentionOperatorRuntimeComponentDeclaration",
     "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",

@@ -197,11 +197,18 @@ class HostBatchReferenceWrapper:
 
         plan = self.plan_state
         if self._operator_runtime is not None:
+            active_plan = self._operator_runtime.operator_session.active_plan
             return build_provider_plan_selection(
                 plan,
-                self._operator_runtime.operator_session.active_plan,
+                active_plan,
                 registry_generation=(
                     self._operator_runtime_registry_snapshot.generation
+                ),
+                runtime_declaration_fingerprint=(
+                    self._operator_runtime_registry_snapshot.declaration_fingerprint(
+                        active_plan.provider_selection.provider_id,
+                        active_plan.prepared_plan.implementation_id,
+                    )
                 ),
             )
         return build_reference_plan_selection(plan)

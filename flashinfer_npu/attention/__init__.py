@@ -4,6 +4,7 @@ from .holistic import (
     AttentionOperatorRuntimeRegistrySnapshot,
     BatchAttention,
     attention_operator_runtime_registry_snapshot,
+    install_declared_attention_operator_runtime_resolvers,
     install_attention_operator_runtime_resolvers,
 )
 from .jit_protocol import (
@@ -444,6 +445,7 @@ from .operator_declaration import (
     AttentionDeclaredOperatorPackageRuntimeSpec,
     AttentionOperatorPackageRuntimeDeclaration,
     AttentionOperatorRuntimeComponentDeclaration,
+    AttentionOperatorRuntimeDeclarationBinding,
     build_declared_attention_operator_runtime_resolvers,
     describe_attention_operator_package_runtime,
     load_attention_operator_package_runtime_declaration,
@@ -743,6 +745,7 @@ __all__ = [
     "AttentionDeclaredOperatorPackageRuntimeSpec",
     "AttentionOperatorPackageRuntimeDeclaration",
     "AttentionOperatorRuntimeComponentDeclaration",
+    "AttentionOperatorRuntimeDeclarationBinding",
     "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",
     "load_attention_operator_package_runtime_declaration",
@@ -883,6 +886,7 @@ __all__ = [
     "dtype_itemsize",
     "decode_attention_json",
     "infer_quant_scale_shape",
+    "install_declared_attention_operator_runtime_resolvers",
     "install_attention_operator_runtime_resolvers",
     "infer_logical_quant_storage_shape",
     "infer_quant_storage_shape",

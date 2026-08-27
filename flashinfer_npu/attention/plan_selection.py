@@ -14,7 +14,7 @@ from .planner import AttentionFrameworkPlan
 from .schema import AttentionMode
 
 
-ATTENTION_PLAN_SELECTION_VERSION = 1
+ATTENTION_PLAN_SELECTION_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -44,6 +44,7 @@ class AttentionPlanSelection:
     operation_id: Optional[str] = None
     active_plan_fingerprint: Optional[str] = None
     registry_generation: Optional[int] = None
+    runtime_declaration_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_PLAN_SELECTION_VERSION
 
     def __post_init__(self) -> None:
@@ -65,6 +66,7 @@ class AttentionPlanSelection:
             self.operation_id,
             self.active_plan_fingerprint,
             self.registry_generation,
+            self.runtime_declaration_fingerprint,
         )
         if self.route == "reference":
             if self.backend != "reference" or any(
@@ -85,6 +87,11 @@ class AttentionPlanSelection:
             raise SchemaError(
                 "provider plan selection registry generation must be non-negative"
             )
+        if self.runtime_declaration_fingerprint is not None:
+            _require_hash(
+                "runtime_declaration_fingerprint",
+                self.runtime_declaration_fingerprint,
+            )
 
     def to_dict(self):
         return {
@@ -98,6 +105,9 @@ class AttentionPlanSelection:
             "operation_id": self.operation_id,
             "active_plan_fingerprint": self.active_plan_fingerprint,
             "registry_generation": self.registry_generation,
+            "runtime_declaration_fingerprint": (
+                self.runtime_declaration_fingerprint
+            ),
         }
 
     @property
@@ -124,6 +134,7 @@ def build_provider_plan_selection(
     active_plan: AttentionOperatorActivePlan,
     *,
     registry_generation: int,
+    runtime_declaration_fingerprint: Optional[str] = None,
 ) -> AttentionPlanSelection:
     if not isinstance(plan, AttentionFrameworkPlan):
         raise TypeError("plan must be AttentionFrameworkPlan")
@@ -144,6 +155,7 @@ def build_provider_plan_selection(
         operation_id=active_plan.prepared_plan.implementation_id,
         active_plan_fingerprint=active_plan.fingerprint,
         registry_generation=registry_generation,
+        runtime_declaration_fingerprint=runtime_declaration_fingerprint,
     )
 
 
