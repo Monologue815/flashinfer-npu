@@ -483,6 +483,9 @@ identity 取值。manifest 与一次 bootstrap 的 runtime-spec identity 集合�
 不探测设备。production declared installer 再验证 bound spec、declaration 与同一 manifest
 一致，并将只含 manifest/policy fingerprints 的非执行 binding 与 resolver、catalog、
 declaration bindings 在同一 registry generation 原子发布；stale generation 不能部分覆盖。
+plan 发布前还必须将 resolver score 的结构化 policy id/fingerprint 与所选 operation 的
+manifest binding 精确比对，不能解析 source 文本充当权限。成功后 manifest/policy 身份
+同时进入只读 plan selection 与通过 completion gate 的 run receipt；失败调用不发布回执。
 完整契约见
 [Attention plan scoring policy](attention_plan_scoring_policy.md)。
 

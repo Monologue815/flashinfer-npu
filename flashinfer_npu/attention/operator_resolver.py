@@ -59,7 +59,7 @@ from .planner import (
 from .schema import AttentionMetadata, AttentionMode, AttentionPlanSpec
 
 
-ATTENTION_OPERATOR_RESOLVER_VERSION = 10
+ATTENTION_OPERATOR_RESOLVER_VERSION = 11
 
 ATTENTION_OPERATOR_PLAN_SCORE_MIN = -(2**31)
 ATTENTION_OPERATOR_PLAN_SCORE_MAX = 2**31 - 1
@@ -293,6 +293,8 @@ class AttentionOperatorRuntimePlanScore:
     value: int
     source: str
     reason: str
+    policy_id: Optional[str] = None
+    policy_fingerprint: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.value, int) or isinstance(self.value, bool):
@@ -305,6 +307,28 @@ class AttentionOperatorRuntimePlanScore:
             raise SchemaError("Attention runtime plan score is out of range")
         if not str(self.source).strip() or not str(self.reason).strip():
             raise SchemaError("Attention runtime plan score source/reason is empty")
+        if (self.policy_id is None) != (self.policy_fingerprint is None):
+            raise SchemaError(
+                "Attention runtime plan score policy identity is incomplete"
+            )
+        if self.policy_id is not None:
+            if not str(self.policy_id).strip() or any(
+                item.isspace() for item in str(self.policy_id)
+            ):
+                raise SchemaError("Attention runtime plan score policy id is invalid")
+            if len(str(self.policy_fingerprint)) != 64 or any(
+                item not in "0123456789abcdef"
+                for item in str(self.policy_fingerprint)
+            ):
+                raise SchemaError(
+                    "Attention runtime plan score policy fingerprint is invalid"
+                )
+            object.__setattr__(self, "policy_id", str(self.policy_id))
+            object.__setattr__(
+                self,
+                "policy_fingerprint",
+                str(self.policy_fingerprint),
+            )
         object.__setattr__(self, "source", str(self.source))
         object.__setattr__(self, "reason", str(self.reason))
 
@@ -313,6 +337,8 @@ class AttentionOperatorRuntimePlanScore:
             "value": self.value,
             "source": self.source,
             "reason": self.reason,
+            "policy_id": self.policy_id,
+            "policy_fingerprint": self.policy_fingerprint,
         }
 
 
@@ -679,6 +705,7 @@ class AttentionOperatorRuntime:
         *,
         mode: AttentionMode,
         runtime_declaration_bindings=(),
+        plan_scoring_manifest_binding=None,
     ) -> None:
         if not str(device):
             raise SchemaError("Attention operator device must be non-empty")
@@ -718,6 +745,22 @@ class AttentionOperatorRuntime:
             for provider_id, operation_id, fingerprint in declaration_bindings
         ):
             raise SchemaError("runtime declaration binding identity is invalid")
+        if plan_scoring_manifest_binding is not None:
+            from .operator_scoring import (
+                AttentionOperatorPlanScoringManifestBinding,
+            )
+
+            if not isinstance(
+                plan_scoring_manifest_binding,
+                AttentionOperatorPlanScoringManifestBinding,
+            ):
+                raise TypeError(
+                    "plan_scoring_manifest_binding has the wrong type"
+                )
+            if set(plan_scoring_manifest_binding.identities) != set(identities):
+                raise SchemaError(
+                    "runtime scoring manifest binding differs from declarations"
+                )
         self.device = str(device)
         self.mode = mode
         self._resolver_registry = resolver_registry
@@ -726,6 +769,7 @@ class AttentionOperatorRuntime:
         self._runtime_declaration_fingerprints = {
             item[:2]: item[2] for item in declaration_bindings
         }
+        self._plan_scoring_manifest_binding = plan_scoring_manifest_binding
         self._framework_session = AttentionFrameworkSession(mode)
         self._operator_session = None
         self._executor = None
@@ -742,6 +786,7 @@ class AttentionOperatorRuntime:
         self._workspace_contract = None
         self._runtime_plan_score = None
         self._runtime_resolution_fingerprint = None
+        self._runtime_plan_scoring_binding = None
 
     @property
     def is_planned(self) -> bool:
@@ -811,6 +856,12 @@ class AttentionOperatorRuntime:
             raise AttentionStateError("Attention operator runtime has not been planned")
         return self._runtime_resolution_fingerprint
 
+    @property
+    def runtime_plan_scoring_binding(self):
+        if not self.is_planned:
+            raise AttentionStateError("Attention operator runtime has not been planned")
+        return self._runtime_plan_scoring_binding
+
     def fork_unplanned(self) -> "AttentionOperatorRuntime":
         """Create an empty runtime over the exact same frozen resolver inputs."""
 
@@ -820,6 +871,9 @@ class AttentionOperatorRuntime:
             self._operation_catalog,
             mode=self.mode,
             runtime_declaration_bindings=self._runtime_declaration_bindings,
+            plan_scoring_manifest_binding=(
+                self._plan_scoring_manifest_binding
+            ),
         )
 
     def rebind_workspace_contract(self, workspace_contract) -> None:
@@ -963,6 +1017,30 @@ class AttentionOperatorRuntime:
         candidate_runtime_resolution_fingerprint = (
             resolved.runtime_resolution_fingerprint
         )
+        candidate_runtime_plan_scoring_binding = None
+        if self._plan_scoring_manifest_binding is not None:
+            identity = (
+                resolved.selection.provider_id,
+                resolved.factory.operation_id,
+            )
+            policy_id, policy_fingerprint = (
+                self._plan_scoring_manifest_binding.policy_binding(*identity)
+            )
+            if (
+                candidate_runtime_plan_score is None
+                or candidate_runtime_plan_score.policy_id != policy_id
+                or candidate_runtime_plan_score.policy_fingerprint
+                != policy_fingerprint
+            ):
+                raise SchemaError(
+                    "resolved Attention plan score differs from scoring manifest"
+                )
+            candidate_runtime_plan_scoring_binding = (
+                self._plan_scoring_manifest_binding.manifest_id,
+                self._plan_scoring_manifest_binding.manifest_fingerprint,
+                policy_id,
+                policy_fingerprint,
+            )
         if (
             candidate_operator_session.active_plan.runtime_resolution_fingerprint
             != candidate_runtime_resolution_fingerprint
@@ -1065,6 +1143,9 @@ class AttentionOperatorRuntime:
         self._runtime_plan_score = candidate_runtime_plan_score
         self._runtime_resolution_fingerprint = (
             candidate_runtime_resolution_fingerprint
+        )
+        self._runtime_plan_scoring_binding = (
+            candidate_runtime_plan_scoring_binding
         )
 
     def run(
@@ -1209,6 +1290,26 @@ class AttentionOperatorRuntime:
                         )
                     )
                 ),
+                plan_scoring_manifest_id=(
+                    None
+                    if self._runtime_plan_scoring_binding is None
+                    else self._runtime_plan_scoring_binding[0]
+                ),
+                plan_scoring_manifest_fingerprint=(
+                    None
+                    if self._runtime_plan_scoring_binding is None
+                    else self._runtime_plan_scoring_binding[1]
+                ),
+                plan_scoring_policy_id=(
+                    None
+                    if self._runtime_plan_scoring_binding is None
+                    else self._runtime_plan_scoring_binding[2]
+                ),
+                plan_scoring_policy_fingerprint=(
+                    None
+                    if self._runtime_plan_scoring_binding is None
+                    else self._runtime_plan_scoring_binding[3]
+                ),
             )
         self._last_lowered_call = lowered
         return result
@@ -1223,6 +1324,7 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
         resolver_registry: AttentionOperatorRuntimeResolverRegistry,
         operation_catalog: AttentionOperatorOperationCatalog = None,
         runtime_declaration_bindings=(),
+        plan_scoring_manifest_binding=None,
     ) -> None:
         super().__init__(
             device,
@@ -1230,6 +1332,7 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
             operation_catalog,
             mode=AttentionMode.BATCH_MIXED_PAGED,
             runtime_declaration_bindings=runtime_declaration_bindings,
+            plan_scoring_manifest_binding=plan_scoring_manifest_binding,
         )
 
 

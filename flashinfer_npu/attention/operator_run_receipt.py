@@ -14,7 +14,7 @@ from .operator_completion import AttentionOperatorCompletionReceipt
 from .operator_execution import AttentionOperatorExecutionReceipt
 
 
-ATTENTION_OPERATOR_RUN_RECEIPT_VERSION = 2
+ATTENTION_OPERATOR_RUN_RECEIPT_VERSION = 3
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -36,6 +36,10 @@ class AttentionOperatorRunReceipt:
         default=None, repr=False, compare=False
     )
     runtime_declaration_fingerprint: Optional[str] = None
+    plan_scoring_manifest_id: Optional[str] = None
+    plan_scoring_manifest_fingerprint: Optional[str] = None
+    plan_scoring_policy_id: Optional[str] = None
+    plan_scoring_policy_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_RUN_RECEIPT_VERSION
 
     def __post_init__(self) -> None:
@@ -55,6 +59,44 @@ class AttentionOperatorRunReceipt:
             raise SchemaError(
                 "runtime_declaration_fingerprint must be lowercase SHA-256"
             )
+        scoring_fields = (
+            self.plan_scoring_manifest_id,
+            self.plan_scoring_manifest_fingerprint,
+            self.plan_scoring_policy_id,
+            self.plan_scoring_policy_fingerprint,
+        )
+        if any(item is not None for item in scoring_fields):
+            if any(item is None for item in scoring_fields):
+                raise SchemaError(
+                    "Attention run scoring manifest identity is incomplete"
+                )
+            if self.runtime_declaration_fingerprint is None:
+                raise SchemaError(
+                    "run scoring manifest identity requires a declaration"
+                )
+            manifest_id = str(self.plan_scoring_manifest_id)
+            policy_id = str(self.plan_scoring_policy_id)
+            if (
+                not manifest_id.strip()
+                or any(item.isspace() for item in manifest_id)
+                or not policy_id.strip()
+                or any(item.isspace() for item in policy_id)
+            ):
+                raise SchemaError("Attention run scoring manifest ids are invalid")
+            for name, value in (
+                (
+                    "plan_scoring_manifest_fingerprint",
+                    self.plan_scoring_manifest_fingerprint,
+                ),
+                (
+                    "plan_scoring_policy_fingerprint",
+                    self.plan_scoring_policy_fingerprint,
+                ),
+            ):
+                if len(str(value)) != 64 or any(
+                    item not in "0123456789abcdef" for item in str(value)
+                ):
+                    raise SchemaError("%s must be lowercase SHA-256" % name)
         execution = self.execution
         completion = self.completion
         if (
@@ -115,6 +157,14 @@ class AttentionOperatorRunReceipt:
             ),
             "runtime_declaration_fingerprint": (
                 self.runtime_declaration_fingerprint
+            ),
+            "plan_scoring_manifest_id": self.plan_scoring_manifest_id,
+            "plan_scoring_manifest_fingerprint": (
+                self.plan_scoring_manifest_fingerprint
+            ),
+            "plan_scoring_policy_id": self.plan_scoring_policy_id,
+            "plan_scoring_policy_fingerprint": (
+                self.plan_scoring_policy_fingerprint
             ),
         }
 

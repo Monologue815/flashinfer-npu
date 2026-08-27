@@ -82,6 +82,10 @@ identities fail before resolver construction. See
 Declaration-bound installation revalidates the same manifest and atomically
 publishes its non-executable fingerprint summary with the resolver, catalog and
 declaration bindings in one registry generation.
+The selected declarative score carries a structured policy fingerprint; plan
+publication checks it against that frozen manifest rather than parsing a reason
+string. `plan_selection` and a successful provider run receipt expose the same
+manifest/policy audit identity without changing `plan()` or `run()` arguments.
 
 Quantized provider candidates have an additional admission boundary: every
 capability `QuantSpec` must map key/value scale and, when applicable,

@@ -450,6 +450,8 @@ class AttentionOperatorPlanScoringPolicy:
                 self.default_score,
                 "declarative:%s:%s:default" % (self.policy_id, self.fingerprint),
                 self.default_reason,
+                policy_id=self.policy_id,
+                policy_fingerprint=self.fingerprint,
             )
         precedence = max(item.precedence for item in matches)
         finalists = tuple(item for item in matches if item.precedence == precedence)
@@ -464,6 +466,8 @@ class AttentionOperatorPlanScoringPolicy:
             "declarative:%s:%s:%s"
             % (self.policy_id, self.fingerprint, selected.rule_id),
             selected.reason,
+            policy_id=self.policy_id,
+            policy_fingerprint=self.fingerprint,
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -810,12 +814,17 @@ class AttentionOperatorPlanScoringManifestBinding:
         return tuple(item[:2] for item in self.policy_bindings)
 
     def policy_fingerprint(self, provider_id: str, operation_id: str) -> str:
+        return self.policy_binding(provider_id, operation_id)[1]
+
+    def policy_binding(
+        self, provider_id: str, operation_id: str
+    ) -> Tuple[str, str]:
         identity = (str(provider_id), str(operation_id))
-        for candidate_provider, candidate_operation, _, fingerprint in (
+        for candidate_provider, candidate_operation, policy_id, fingerprint in (
             self.policy_bindings
         ):
             if (candidate_provider, candidate_operation) == identity:
-                return fingerprint
+                return policy_id, fingerprint
         raise SchemaError(
             "unknown Attention scoring manifest binding identity %r"
             % (identity,)

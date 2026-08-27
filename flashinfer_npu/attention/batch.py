@@ -128,6 +128,9 @@ class HostBatchReferenceWrapper:
                 runtime_declaration_bindings=(
                     snapshot.runtime_declaration_binding_tuples
                 ),
+                plan_scoring_manifest_binding=(
+                    snapshot.plan_scoring_manifest_binding
+                ),
             )
             self._float_workspace_buffer = float_workspace_buffer
             self._int_workspace_buffer = None
@@ -202,6 +205,9 @@ class HostBatchReferenceWrapper:
         if self._operator_runtime is not None:
             active_plan = self._operator_runtime.operator_session.active_plan
             plan_score = self._operator_runtime.runtime_plan_score
+            scoring_binding = (
+                self._operator_runtime.runtime_plan_scoring_binding
+            )
             return build_provider_plan_selection(
                 plan,
                 active_plan,
@@ -213,6 +219,18 @@ class HostBatchReferenceWrapper:
                         active_plan.provider_selection.provider_id,
                         active_plan.prepared_plan.implementation_id,
                     )
+                ),
+                plan_scoring_manifest_id=(
+                    None if scoring_binding is None else scoring_binding[0]
+                ),
+                plan_scoring_manifest_fingerprint=(
+                    None if scoring_binding is None else scoring_binding[1]
+                ),
+                plan_scoring_policy_id=(
+                    None if scoring_binding is None else scoring_binding[2]
+                ),
+                plan_scoring_policy_fingerprint=(
+                    None if scoring_binding is None else scoring_binding[3]
                 ),
                 plan_score=(None if plan_score is None else plan_score.value),
                 plan_score_source=(

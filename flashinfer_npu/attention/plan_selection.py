@@ -14,7 +14,7 @@ from .planner import AttentionFrameworkPlan
 from .schema import AttentionMode
 
 
-ATTENTION_PLAN_SELECTION_VERSION = 3
+ATTENTION_PLAN_SELECTION_VERSION = 4
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -45,6 +45,10 @@ class AttentionPlanSelection:
     active_plan_fingerprint: Optional[str] = None
     registry_generation: Optional[int] = None
     runtime_declaration_fingerprint: Optional[str] = None
+    plan_scoring_manifest_id: Optional[str] = None
+    plan_scoring_manifest_fingerprint: Optional[str] = None
+    plan_scoring_policy_id: Optional[str] = None
+    plan_scoring_policy_fingerprint: Optional[str] = None
     plan_score: Optional[int] = None
     plan_score_source: Optional[str] = None
     plan_score_reason: Optional[str] = None
@@ -71,6 +75,10 @@ class AttentionPlanSelection:
             self.active_plan_fingerprint,
             self.registry_generation,
             self.runtime_declaration_fingerprint,
+            self.plan_scoring_manifest_id,
+            self.plan_scoring_manifest_fingerprint,
+            self.plan_scoring_policy_id,
+            self.plan_scoring_policy_fingerprint,
             self.plan_score,
             self.plan_score_source,
             self.plan_score_reason,
@@ -100,6 +108,38 @@ class AttentionPlanSelection:
                 "runtime_declaration_fingerprint",
                 self.runtime_declaration_fingerprint,
             )
+        manifest_fields = (
+            self.plan_scoring_manifest_id,
+            self.plan_scoring_manifest_fingerprint,
+            self.plan_scoring_policy_id,
+            self.plan_scoring_policy_fingerprint,
+        )
+        if any(item is not None for item in manifest_fields):
+            if any(item is None for item in manifest_fields):
+                raise SchemaError(
+                    "provider plan scoring manifest identity is incomplete"
+                )
+            if self.runtime_declaration_fingerprint is None:
+                raise SchemaError(
+                    "scoring manifest identity requires a runtime declaration"
+                )
+            manifest_id = str(self.plan_scoring_manifest_id)
+            policy_id = str(self.plan_scoring_policy_id)
+            if (
+                not manifest_id.strip()
+                or any(item.isspace() for item in manifest_id)
+                or not policy_id.strip()
+                or any(item.isspace() for item in policy_id)
+            ):
+                raise SchemaError("provider plan scoring manifest ids are invalid")
+            _require_hash(
+                "plan_scoring_manifest_fingerprint",
+                self.plan_scoring_manifest_fingerprint,
+            )
+            _require_hash(
+                "plan_scoring_policy_fingerprint",
+                self.plan_scoring_policy_fingerprint,
+            )
         scoring_fields = (
             self.plan_score,
             self.plan_score_source,
@@ -125,6 +165,12 @@ class AttentionPlanSelection:
                 "runtime_resolution_fingerprint",
                 self.runtime_resolution_fingerprint,
             )
+        if any(item is not None for item in manifest_fields) and not any(
+            item is not None for item in scoring_fields
+        ):
+            raise SchemaError(
+                "scoring manifest identity requires plan scoring evidence"
+            )
 
     def to_dict(self):
         return {
@@ -140,6 +186,14 @@ class AttentionPlanSelection:
             "registry_generation": self.registry_generation,
             "runtime_declaration_fingerprint": (
                 self.runtime_declaration_fingerprint
+            ),
+            "plan_scoring_manifest_id": self.plan_scoring_manifest_id,
+            "plan_scoring_manifest_fingerprint": (
+                self.plan_scoring_manifest_fingerprint
+            ),
+            "plan_scoring_policy_id": self.plan_scoring_policy_id,
+            "plan_scoring_policy_fingerprint": (
+                self.plan_scoring_policy_fingerprint
             ),
             "plan_score": self.plan_score,
             "plan_score_source": self.plan_score_source,
@@ -174,6 +228,10 @@ def build_provider_plan_selection(
     *,
     registry_generation: int,
     runtime_declaration_fingerprint: Optional[str] = None,
+    plan_scoring_manifest_id: Optional[str] = None,
+    plan_scoring_manifest_fingerprint: Optional[str] = None,
+    plan_scoring_policy_id: Optional[str] = None,
+    plan_scoring_policy_fingerprint: Optional[str] = None,
     plan_score: Optional[int] = None,
     plan_score_source: Optional[str] = None,
     plan_score_reason: Optional[str] = None,
@@ -206,6 +264,12 @@ def build_provider_plan_selection(
         active_plan_fingerprint=active_plan.fingerprint,
         registry_generation=registry_generation,
         runtime_declaration_fingerprint=runtime_declaration_fingerprint,
+        plan_scoring_manifest_id=plan_scoring_manifest_id,
+        plan_scoring_manifest_fingerprint=(
+            plan_scoring_manifest_fingerprint
+        ),
+        plan_scoring_policy_id=plan_scoring_policy_id,
+        plan_scoring_policy_fingerprint=plan_scoring_policy_fingerprint,
         plan_score=plan_score,
         plan_score_source=plan_score_source,
         plan_score_reason=plan_score_reason,

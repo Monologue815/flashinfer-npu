@@ -347,7 +347,10 @@ After publication, batch wrappers expose `plan_selection` as a read-only
 diagnostic value. It contains only the Attention mode, route, backend,
 provider/operation identifiers, registry generation and plan fingerprints. A
 scored selection also includes the selected integer score, source, reason and
-complete resolution-report fingerprint. It contains no callable, module,
+complete resolution-report fingerprint. For a declaration-bound scoring
+manifest it additionally includes manifest id/fingerprint and the selected
+policy id/fingerprint, after the runtime has matched those structured score
+fields against the frozen manifest binding. It contains no callable, module,
 executor, opaque provider state or mutable plan handle. The property is not an
 input to `run()` and does not transfer plan ownership to the caller.
 
@@ -361,6 +364,12 @@ also carries the non-executable scoring-manifest binding for that generation:
 manifest id/fingerprint and exact provider-operation-policy fingerprints. It is
 an integration audit surface, not a `plan()` or `run()` argument. Legacy and
 synthetic registry installs carry no such binding.
+
+A successful completion-validated provider run copies the same manifest and
+selected-policy identity into its atomic run receipt. The receipt also binds the
+active-plan fingerprint, which transitively contains the structured policy
+identity through the complete resolution report. Execution or completion
+failure publishes no receipt.
 
 `workspace_size()` uses the same frozen registry and plan gates through an
 unpublished runtime fork. It may resolve and prepare the selected provider in

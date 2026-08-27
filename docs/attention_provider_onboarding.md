@@ -200,7 +200,10 @@ manifest，不会在安装时重写未审核的 spec。新建 wrapper 捕获这�
 安装变化，legacy/合成 registry 则明确返回 `None`，不能伪装成 declaration-bound 集成。
 同一指纹也进入成功 provider 调用的 `AttentionOperatorRunReceipt`；执行或 completion
 失败时不发布 receipt，重新 plan 时 active-plan 身份更新但声明身份保持为该 wrapper 捕获
-的 registry generation。
+的 registry generation。manifest-bound scorer 返回的 score 必须携带结构化 policy id 与
+fingerprint；runtime 在 plan commit 前与 snapshot 中所选 operation 的 binding 比对。成功
+`plan_selection` 和 run receipt 都发布同一 manifest/policy 身份，不能把 source/reason 文本
+解析成授权依据。
 
 ## 5. CANN 与 flash-attention-npu 的独立性
 

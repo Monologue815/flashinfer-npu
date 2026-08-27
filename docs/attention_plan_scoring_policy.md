@@ -114,6 +114,8 @@ The selected rule returns an `AttentionOperatorRuntimePlanScore` containing:
 - the rule's integer score;
 - a source string binding policy id, policy fingerprint and rule id;
 - the rule's declared reason.
+- structured `policy_id` and `policy_fingerprint` fields for framework
+  validation; custom/non-manifest scorers leave both fields absent.
 
 If no rule matches, the same structure binds the policy fingerprint and the
 explicit default. Provider-level equal top scores remain ambiguous in the
@@ -218,3 +220,16 @@ or provider object. `attention_operator_runtime_registry_snapshot()` exposes
 this immutable audit identity. A stale expected generation cannot publish a
 new manifest, and a legacy/synthetic installation explicitly clears the
 binding.
+
+At plan time, a manifest-bound runtime looks up the selected
+`(provider_id, operation_id)` in the frozen binding and requires the structured
+policy identity on the resolved score to match exactly. A source string is
+diagnostic text and is never parsed as authority. Mismatch fails before the
+candidate framework plan is committed, preserving the previous plan.
+
+After a successful plan, `plan_selection` exposes the manifest id/fingerprint
+and selected policy id/fingerprint alongside the score and complete resolution
+fingerprint. A successful validated provider call copies the same four fields
+into `AttentionOperatorRunReceipt`, whose active-plan fingerprint already binds
+the resolution report. Completion failure publishes no receipt. Reference,
+legacy and custom-scored paths keep the optional manifest fields absent.
