@@ -536,6 +536,7 @@ class AttentionOperatorRuntime:
         operation_catalog: AttentionOperatorOperationCatalog = None,
         *,
         mode: AttentionMode,
+        runtime_declaration_bindings=(),
     ) -> None:
         if not str(device):
             raise SchemaError("Attention operator device must be non-empty")
@@ -553,10 +554,36 @@ class AttentionOperatorRuntime:
             )
         if not isinstance(mode, AttentionMode):
             raise TypeError("mode must be AttentionMode")
+        try:
+            declaration_bindings = tuple(
+                (str(provider_id), str(operation_id), str(fingerprint))
+                for provider_id, operation_id, fingerprint in (
+                    runtime_declaration_bindings
+                )
+            )
+        except (TypeError, ValueError) as error:
+            raise SchemaError(
+                "runtime declaration bindings must contain identity triples"
+            ) from error
+        identities = tuple(item[:2] for item in declaration_bindings)
+        if len(set(identities)) != len(identities):
+            raise SchemaError("runtime declaration bindings contain duplicates")
+        if any(
+            not provider_id
+            or not operation_id
+            or len(fingerprint) != 64
+            or any(item not in "0123456789abcdef" for item in fingerprint)
+            for provider_id, operation_id, fingerprint in declaration_bindings
+        ):
+            raise SchemaError("runtime declaration binding identity is invalid")
         self.device = str(device)
         self.mode = mode
         self._resolver_registry = resolver_registry
         self._operation_catalog = operation_catalog
+        self._runtime_declaration_bindings = declaration_bindings
+        self._runtime_declaration_fingerprints = {
+            item[:2]: item[2] for item in declaration_bindings
+        }
         self._framework_session = AttentionFrameworkSession(mode)
         self._operator_session = None
         self._executor = None
@@ -636,6 +663,7 @@ class AttentionOperatorRuntime:
             self._resolver_registry,
             self._operation_catalog,
             mode=self.mode,
+            runtime_declaration_bindings=self._runtime_declaration_bindings,
         )
 
     def rebind_workspace_contract(self, workspace_contract) -> None:
@@ -1001,6 +1029,14 @@ class AttentionOperatorRuntime:
                 execution=execution_receipt,
                 completion=self._last_completion_receipt,
                 jit_runtime_executor=self._jit_runtime_executor_binding,
+                runtime_declaration_fingerprint=(
+                    self._runtime_declaration_fingerprints.get(
+                        (
+                            session.active_plan.provider_selection.provider_id,
+                            session.active_plan.prepared_plan.implementation_id,
+                        )
+                    )
+                ),
             )
         self._last_lowered_call = lowered
         return result
@@ -1014,12 +1050,14 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
         device: str,
         resolver_registry: AttentionOperatorRuntimeResolverRegistry,
         operation_catalog: AttentionOperatorOperationCatalog = None,
+        runtime_declaration_bindings=(),
     ) -> None:
         super().__init__(
             device,
             resolver_registry,
             operation_catalog,
             mode=AttentionMode.BATCH_MIXED_PAGED,
+            runtime_declaration_bindings=runtime_declaration_bindings,
         )
 
 

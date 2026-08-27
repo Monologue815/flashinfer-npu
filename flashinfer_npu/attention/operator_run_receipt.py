@@ -14,7 +14,7 @@ from .operator_completion import AttentionOperatorCompletionReceipt
 from .operator_execution import AttentionOperatorExecutionReceipt
 
 
-ATTENTION_OPERATOR_RUN_RECEIPT_VERSION = 1
+ATTENTION_OPERATOR_RUN_RECEIPT_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, object]) -> str:
@@ -35,6 +35,7 @@ class AttentionOperatorRunReceipt:
     jit_runtime_executor: Optional[AttentionJitRuntimeExecutorBinding] = field(
         default=None, repr=False, compare=False
     )
+    runtime_declaration_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_RUN_RECEIPT_VERSION
 
     def __post_init__(self) -> None:
@@ -44,6 +45,16 @@ class AttentionOperatorRunReceipt:
             raise TypeError("execution must be AttentionOperatorExecutionReceipt")
         if not isinstance(self.completion, AttentionOperatorCompletionReceipt):
             raise TypeError("completion must be AttentionOperatorCompletionReceipt")
+        if self.runtime_declaration_fingerprint is not None and (
+            len(self.runtime_declaration_fingerprint) != 64
+            or any(
+                item not in "0123456789abcdef"
+                for item in self.runtime_declaration_fingerprint
+            )
+        ):
+            raise SchemaError(
+                "runtime_declaration_fingerprint must be lowercase SHA-256"
+            )
         execution = self.execution
         completion = self.completion
         if (
@@ -101,6 +112,9 @@ class AttentionOperatorRunReceipt:
                 self.jit_runtime_executor.fingerprint
                 if self.jit_runtime_executor is not None
                 else None
+            ),
+            "runtime_declaration_fingerprint": (
+                self.runtime_declaration_fingerprint
             ),
         }
 

@@ -131,6 +131,17 @@ class AttentionOperatorRuntimeRegistrySnapshot:
                 return item.declaration_fingerprint
         return None
 
+    @property
+    def runtime_declaration_binding_tuples(self):
+        return tuple(
+            (
+                item.provider_id,
+                item.operation_id,
+                item.declaration_fingerprint,
+            )
+            for item in self.runtime_declarations
+        )
+
 
 def attention_operator_runtime_registry_snapshot(
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
@@ -274,13 +285,15 @@ class BatchAttention:
             self._workspace_contract = None
             self._session = None
             self._executor = None
-            self._operator_runtime_registry_snapshot = (
-                attention_operator_runtime_registry_snapshot()
-            )
+            snapshot = attention_operator_runtime_registry_snapshot()
+            self._operator_runtime_registry_snapshot = snapshot
             self._operator_runtime = AttentionOperatorBatchRuntime(
                 self.device,
-                self._operator_runtime_registry_snapshot.registry,
-                self._operator_runtime_registry_snapshot.operation_catalog,
+                snapshot.registry,
+                snapshot.operation_catalog,
+                runtime_declaration_bindings=(
+                    snapshot.runtime_declaration_binding_tuples
+                ),
             )
             return
         # Logical placeholders only; Host scalar execution needs no workspace.

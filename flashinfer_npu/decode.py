@@ -169,6 +169,9 @@ def single_decode_with_kv_cache(
             snapshot.registry,
             snapshot.operation_catalog,
             mode=AttentionMode.SINGLE_DECODE,
+            runtime_declaration_bindings=(
+                snapshot.runtime_declaration_binding_tuples
+            ),
         )
         runtime.plan(spec, adapted_provider.metadata)
         if adapted_provider.kv_quant_spec is not None:

@@ -180,6 +180,9 @@ declared installer 将 resolver、operation catalog 和每个
 发布。新建 wrapper 捕获这一不可变快照；成功 `plan()` 后，`plan_selection` 的只读
 `runtime_declaration_fingerprint` 指向所选 operation 的审核声明。旧 wrapper 不随之后的
 安装变化，legacy/合成 registry 则明确返回 `None`，不能伪装成 declaration-bound 集成。
+同一指纹也进入成功 provider 调用的 `AttentionOperatorRunReceipt`；执行或 completion
+失败时不发布 receipt，重新 plan 时 active-plan 身份更新但声明身份保持为该 wrapper 捕获
+的 registry generation。
 
 ## 5. CANN 与 flash-attention-npu 的独立性
 

@@ -125,6 +125,9 @@ class HostBatchReferenceWrapper:
                 snapshot.registry,
                 snapshot.operation_catalog,
                 mode=mode,
+                runtime_declaration_bindings=(
+                    snapshot.runtime_declaration_binding_tuples
+                ),
             )
             self._float_workspace_buffer = float_workspace_buffer
             self._int_workspace_buffer = None
