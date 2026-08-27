@@ -384,6 +384,17 @@ public results retained caller ownership. This follows the FlashInfer wrapper
 contract and prevents an external package from silently replacing a validated
 buffer with a newly allocated tensor or an unrelated view.
 
+Provider-allocated results additionally have a plan-bound metadata completion
+contract. It uses the same injected tensor inspector and access policy as run
+lowering, without importing torch or reading device data. `output` must match
+the planned output shape, output dtype and provider device; `softmax_lse` must
+match the planned LSE shape, FP32 and the same device. Both results must be
+writable, meet provider alignment/contiguity rules and occupy non-overlapping
+storage. A completion receipt binds their metadata fingerprints to the active
+plan, exact operation and access policy. This validator is a distinct boundary
+so provider invocation authority and returned-tensor acceptance cannot be
+conflated.
+
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.
 

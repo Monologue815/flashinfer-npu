@@ -399,6 +399,11 @@ from .operator_execution import (
     AttentionOperatorExecutionReceipt,
     AttentionRuntimeBindingAwareExecutor,
 )
+from .operator_completion import (
+    ATTENTION_OPERATOR_COMPLETION_VERSION,
+    AttentionOperatorCompletionReceipt,
+    AttentionOperatorCompletionValidator,
+)
 from .operator_package import (
     ATTENTION_OPERATOR_PACKAGE_VERSION,
     AttentionOperatorPackageCompatibility,
@@ -529,6 +534,7 @@ __all__ = [
     "ATTENTION_PROVIDER_ADAPTER_VERSION",
     "ATTENTION_OPERATOR_RESOLVER_VERSION",
     "ATTENTION_OPERATOR_EXECUTION_VERSION",
+    "ATTENTION_OPERATOR_COMPLETION_VERSION",
     "ATTENTION_OPERATOR_PACKAGE_VERSION",
     "ATTENTION_OPERATOR_INTEGRATION_VERSION",
     "ATTENTION_OPERATOR_AUTHORITY_VERSION",
@@ -698,6 +704,8 @@ __all__ = [
     "AttentionInjectedCallableExecutor",
     "AttentionOperatorExecutionReceipt",
     "AttentionRuntimeBindingAwareExecutor",
+    "AttentionOperatorCompletionReceipt",
+    "AttentionOperatorCompletionValidator",
     "AttentionOperatorPackageCompatibility",
     "AttentionOperatorPackageLoader",
     "AttentionOperatorPackageResolutionError",
