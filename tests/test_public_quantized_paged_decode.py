@@ -229,6 +229,20 @@ def plan_public_wrapper(wrapper, case):
     )
 
 
+def query_tensor(case, name="q"):
+    spec = case.trace.spec
+    metadata = case.trace.metadata
+    return metadata_tensor(
+        name,
+        (
+            metadata.batch_size * spec.q_len_per_req,
+            spec.num_qo_heads,
+            spec.head_dim_qk,
+        ),
+        spec.q_dtype,
+    )
+
+
 class PublicQuantizedPagedDecodeTests(unittest.TestCase):
     """Bare paged FP8 inputs stay behind the FlashInfer-compatible run slot."""
 
@@ -273,9 +287,11 @@ class PublicQuantizedPagedDecodeTests(unittest.TestCase):
         )
         key, value = self.raw_cache()
 
-        implicit_output = wrapper.run("q-implicit", (key, value))
+        implicit_output = wrapper.run(
+            query_tensor(self.case, "q-implicit"), (key, value)
+        )
         calibrated_output = wrapper.run(
-            "q-calibrated",
+            query_tensor(self.case, "q-calibrated"),
             (key, value),
             q_scale=2.0,
             k_scale=1.5,
@@ -378,9 +394,12 @@ class PublicQuantizedPagedDecodeTests(unittest.TestCase):
             "float8_e4m3fn",
         )
         with self.assertRaisesRegex(SchemaError, "separate.*key, value"):
-            wrapper.run("q-combined", combined)
+            wrapper.run(query_tensor(self.case, "q-combined"), combined)
         with self.assertRaisesRegex(SchemaError, "storage.*dtype"):
-            wrapper.run("q-wrong-dtype", self.raw_cache(dtype="float16"))
+            wrapper.run(
+                query_tensor(self.case, "q-wrong-dtype"),
+                self.raw_cache(dtype="float16"),
+            )
         self.assertEqual(package_attention.calls, [])
 
     def test_explicit_quantized_input_remains_supported(self):
@@ -398,7 +417,7 @@ class PublicQuantizedPagedDecodeTests(unittest.TestCase):
         )
 
         self.assertEqual(
-            wrapper.run("q-explicit", explicit),
+            wrapper.run(query_tensor(self.case, "q-explicit"), explicit),
             "package-output:q-explicit",
         )
         call = package_attention.calls[0]

@@ -26,7 +26,10 @@ from tests.test_attention_capability import (
 )
 from tests.test_checkpoint_019_package_runtime_integration import package_attention
 from tests.test_checkpoint_022_operator_runtime_bootstrap import bootstrap_components
-from tests.test_public_quantized_paged_prefill import quantized_kv_input
+from tests.test_public_quantized_paged_prefill import (
+    metadata_tensor,
+    quantized_kv_input,
+)
 
 
 def mixed_quantized_case():
@@ -155,6 +158,19 @@ def mixed_kv_input(quant_spec):
     )
 
 
+def query_tensor(case, name="q"):
+    spec = case.trace.spec
+    return metadata_tensor(
+        name,
+        (
+            case.trace.metadata.total_qo_tokens,
+            spec.num_qo_heads,
+            spec.head_dim_qk,
+        ),
+        spec.q_dtype,
+    )
+
+
 class PublicQuantizedBatchAttentionTests(unittest.TestCase):
     """Mixed prefill/decode keeps quantized provider routing wrapper-owned."""
 
@@ -185,7 +201,7 @@ class PublicQuantizedBatchAttentionTests(unittest.TestCase):
         kv_input = mixed_kv_input(self.case.trace.spec.kv_quant_spec)
 
         result = wrapper.run(
-            "q",
+            query_tensor(self.case, "q"),
             kv_input,
             logits_soft_cap=self.case.trace.spec.logits_soft_cap,
         )
@@ -206,7 +222,7 @@ class PublicQuantizedBatchAttentionTests(unittest.TestCase):
 
         with self.assertRaisesRegex(SchemaError, "QuantizedKVInput"):
             wrapper.run(
-                "plain",
+                query_tensor(self.case, "plain"),
                 ("key", "value"),
                 logits_soft_cap=self.case.trace.spec.logits_soft_cap,
             )
@@ -214,7 +230,7 @@ class PublicQuantizedBatchAttentionTests(unittest.TestCase):
         different = replace(quant_spec, packing_order="high_nibble_first")
         with self.assertRaisesRegex(SchemaError, "does not match"):
             wrapper.run(
-                "mismatched",
+                query_tensor(self.case, "mismatched"),
                 mixed_kv_input(different),
                 logits_soft_cap=self.case.trace.spec.logits_soft_cap,
             )
@@ -222,7 +238,7 @@ class PublicQuantizedBatchAttentionTests(unittest.TestCase):
         self.assertEqual(package_attention.calls, [])
         self.assertEqual(
             wrapper.run(
-                "valid",
+                query_tensor(self.case, "valid"),
                 mixed_kv_input(quant_spec),
                 logits_soft_cap=self.case.trace.spec.logits_soft_cap,
             ),

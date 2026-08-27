@@ -13,7 +13,10 @@ from flashinfer_npu.attention import (
 )
 from flashinfer_npu.runtime import SchemaError
 from tests.test_checkpoint_019_package_runtime_integration import package_attention
-from tests.test_checkpoint_025_quantized_provider_run_lowering import active_session
+from tests.test_checkpoint_025_quantized_provider_run_lowering import (
+    active_session,
+    query_input,
+)
 from tests.test_checkpoint_027_provider_physical_layout_binding import (
     physical_input,
     physical_runtime,
@@ -154,9 +157,11 @@ class EvidenceManifestCheckpoint(unittest.TestCase):
         authorized = replace(
             spec, physical_layout_evidence_bundle=verified
         )
-        _, session = active_session(values, spec=authorized, plan=plan)
+        active_plan, session = active_session(values, spec=authorized, plan=plan)
 
-        lowered = session.run("query", physical_input(quant_spec, descriptor))
+        lowered = session.run(
+            query_input(active_plan), physical_input(quant_spec, descriptor)
+        )
 
         self.assertEqual(
             session.active_plan.dispatch_receipt.evidence_id,

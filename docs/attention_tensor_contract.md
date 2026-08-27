@@ -74,6 +74,13 @@ permit_output_input_alias
 不能由 adapter 静默 `.contiguous()`；需要 materialization 时应产生显式转换 plan、额外
 workspace 和 trace event。
 
+Package provider 的 bootstrap 直接绑定一份 `AttentionTensorAccessPolicy` 和 metadata-only
+inspector。通用 run adapter 始终闭合 Q 的 mode-specific shape、计划 dtype 与 provider device；
+只有当 policy 的 `require_contiguous_q` 为真时才拒绝非连续 Q，并按 `required_alignment`
+检查地址对齐。该 adapter 不访问 tensor 内容，也不创建替代 tensor。KV、output 与 workspace
+继续由各自的量化、resource 和 operation binding 负责；对应 access-policy 字段必须在这些
+边界接通后才能宣称生效。
+
 ## 4. 量化 view
 
 `QuantizedTensorView` 包含：

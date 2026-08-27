@@ -20,6 +20,7 @@ from tests.test_public_quantized_paged_prefill import (
     metadata_tensor,
     plan_public_wrapper as plan_prefill_wrapper,
     public_prefill_runtime,
+    query_tensor,
     quantized_kv_input,
 )
 
@@ -107,8 +108,12 @@ class RuntimeScaleLoweringTests(unittest.TestCase):
             self.case.trace.spec.kv_quant_spec.scale_dtype,
         )
 
-        wrapper.run("q-scalar", kv_input, q_scale=2.0)
-        wrapper.run("q-tensor", kv_input, q_scale=head_scale)
+        wrapper.run(
+            query_tensor(self.case, "q-scalar"), kv_input, q_scale=2.0
+        )
+        wrapper.run(
+            query_tensor(self.case, "q-tensor"), kv_input, q_scale=head_scale
+        )
 
         self.assertEqual(package_attention.calls[0][10], 2.0)
         self.assertIs(package_attention.calls[1][10], head_scale)
@@ -154,7 +159,11 @@ class RuntimeScaleLoweringTests(unittest.TestCase):
         for value, message in cases:
             with self.subTest(message=message):
                 with self.assertRaisesRegex(SchemaError, message):
-                    wrapper.run("q-invalid", kv_input, q_scale=value)
+                    wrapper.run(
+                        query_tensor(self.case, "q-invalid"),
+                        kv_input,
+                        q_scale=value,
+                    )
         self.assertEqual(package_attention.calls, [])
 
     def test_decode_public_contract_stays_scalar_even_if_provider_is_broader(self):
@@ -184,7 +193,20 @@ class RuntimeScaleLoweringTests(unittest.TestCase):
         with self.assertRaisesRegex(
             SchemaError, "not accepted by the public Attention mode"
         ):
-            wrapper.run("q", cache, q_scale=head_scale)
+            wrapper.run(
+                metadata_tensor(
+                    "q",
+                    (
+                        case.trace.metadata.batch_size
+                        * case.trace.spec.q_len_per_req,
+                        case.trace.spec.num_qo_heads,
+                        case.trace.spec.head_dim_qk,
+                    ),
+                    case.trace.spec.q_dtype,
+                ),
+                cache,
+                q_scale=head_scale,
+            )
         self.assertEqual(package_attention.calls, [])
 
 

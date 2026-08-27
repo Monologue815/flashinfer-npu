@@ -25,6 +25,7 @@ from tests.test_checkpoint_022_operator_runtime_bootstrap import bootstrap_compo
 from tests.test_checkpoint_025_quantized_provider_run_lowering import (
     active_session,
     metadata_tensor,
+    query_input,
     quantized_input,
 )
 
@@ -226,7 +227,9 @@ class ProviderPhysicalLayoutBindingCheckpoint(unittest.TestCase):
     def test_logical_binding_still_uses_empty_catalog_path(self):
         values = bootstrap_components()
         plan, session = active_session(values)
-        lowered = session.run("query", quantized_input(plan.spec.kv_quant_spec))
+        lowered = session.run(
+            query_input(plan), quantized_input(plan.spec.kv_quant_spec)
+        )
         self.assertEqual(lowered.provider_id, "cann")
         self.assertEqual(package_attention.calls, [])
 

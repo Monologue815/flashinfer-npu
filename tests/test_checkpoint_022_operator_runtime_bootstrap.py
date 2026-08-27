@@ -8,6 +8,7 @@ from flashinfer_npu.attention import (
     AttentionOperatorQuantizationBinding,
     AttentionOperatorRuntimeResolutionError,
     AttentionOperatorRuntimeResolverRegistry,
+    AttentionTensorAccessPolicy,
     build_attention_operator_package_runtime,
     build_attention_operator_runtime_resolvers,
     build_default_attention_operator_runtime_resolvers,
@@ -63,6 +64,9 @@ def bootstrap_components(*, package_version="1.0.0", gate_reasons=()):
         tensor_materializer=materializer,
         quantization_bindings=(quantization_binding,),
         tensor_metadata_inspector=tensor_metadata_inspector,
+        tensor_access_policy=AttentionTensorAccessPolicy(
+            require_contiguous_q=True
+        ),
     )
     return {
         "events": events,
@@ -194,6 +198,7 @@ class OperatorRuntimeBootstrapCheckpoint(unittest.TestCase):
             tensor_materializer=spec.tensor_materializer,
             quantization_bindings=spec.quantization_bindings,
             tensor_metadata_inspector=spec.tensor_metadata_inspector,
+            tensor_access_policy=spec.tensor_access_policy,
         )
 
         with self.assertRaisesRegex(SchemaError, "providers differ"):

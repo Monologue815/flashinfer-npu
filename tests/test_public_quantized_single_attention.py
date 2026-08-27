@@ -57,6 +57,9 @@ class FakeNpuTensor:
         self.shape = tuple(shape)
         self.dtype = dtype
         self.device = device
+        self.tensor_view = metadata_tensor(
+            name, self.shape, dtype, device=device
+        ).tensor_view
 
     def __str__(self):
         return self.name

@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol, Tuple, runtime_checkable
+from typing import Any, Optional, Protocol, Sequence, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import SchemaError
 
@@ -33,9 +33,10 @@ from .operator_callable import (
 )
 from .operator_provider import AttentionOperatorProviderSelection
 from .planner import AttentionFrameworkPlan, AttentionStateError
+from .tensor_contract import AttentionTensorAccessPolicy, TensorView
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 5
+ATTENTION_OPERATOR_RUN_VERSION = 6
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
@@ -281,6 +282,147 @@ class AttentionOperatorRunAdapterFactory(Protocol):
         self, base_adapter: AttentionOperatorRunAdapter, device: str
     ) -> AttentionOperatorRunAdapter:
         """Decorate ``base_adapter`` without importing or executing an operator."""
+
+
+@runtime_checkable
+class AttentionOperatorTensorMetadataInspector(Protocol):
+    """Read opaque provider tensors without importing or touching device data."""
+
+    def to_view(
+        self, tensor: Any, *, name: str, writable: bool = False
+    ) -> TensorView:
+        """Return a zero-copy metadata view for ``tensor``."""
+
+
+class AttentionOperatorQueryValidationRunAdapter:
+    """Close query tensor metadata against the immutable framework plan."""
+
+    def __init__(
+        self,
+        base_adapter: AttentionOperatorRunAdapter,
+        inspector: AttentionOperatorTensorMetadataInspector,
+        expected_device: str,
+        access_policy: AttentionTensorAccessPolicy,
+    ) -> None:
+        if not isinstance(base_adapter, AttentionOperatorRunAdapter):
+            raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
+        if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+            raise TypeError(
+                "inspector must implement AttentionOperatorTensorMetadataInspector"
+            )
+        if not str(expected_device):
+            raise SchemaError("query validation expected_device must be non-empty")
+        if not isinstance(access_policy, AttentionTensorAccessPolicy):
+            raise TypeError("access_policy must be AttentionTensorAccessPolicy")
+        self.provider_id = base_adapter.provider_id
+        self._base_adapter = base_adapter
+        self._inspector = inspector
+        self._expected_device = str(expected_device)
+        self._access_policy = access_policy
+
+    def lower(
+        self,
+        active_plan: AttentionOperatorActivePlan,
+        request: AttentionOperatorRunRequest,
+    ) -> AttentionLoweredOperatorCall:
+        if not isinstance(active_plan, AttentionOperatorActivePlan):
+            raise TypeError("active_plan must be AttentionOperatorActivePlan")
+        if not isinstance(request, AttentionOperatorRunRequest):
+            raise TypeError("request must be AttentionOperatorRunRequest")
+        view = self._inspector.to_view(
+            request.query, name="query", writable=False
+        )
+        if not isinstance(view, TensorView):
+            raise TypeError("tensor metadata inspector must return TensorView")
+        plan = active_plan.framework_plan
+        if view.shape != plan.expected_query_shape:
+            raise SchemaError(
+                "query shape must be %r, got %r"
+                % (plan.expected_query_shape, view.shape)
+            )
+        if view.dtype != plan.spec.q_dtype:
+            raise SchemaError(
+                "query dtype must be %s, got %s"
+                % (plan.spec.q_dtype, view.dtype)
+            )
+        if view.device != self._expected_device:
+            raise SchemaError("query device must match the planned provider device")
+        view.require_alignment(
+            self._access_policy.required_alignment, "query"
+        )
+        if self._access_policy.require_contiguous_q and not view.is_contiguous:
+            raise SchemaError("query must be contiguous for provider lowering")
+        return self._base_adapter.lower(active_plan, request)
+
+
+class AttentionOperatorQueryValidationRunAdapterFactory:
+    """Bind query metadata validation to one provider operation and device."""
+
+    def __init__(
+        self,
+        provider_id: str,
+        operation_id: str,
+        inspector: AttentionOperatorTensorMetadataInspector,
+        access_policy: AttentionTensorAccessPolicy,
+    ) -> None:
+        if not str(provider_id) or not str(operation_id):
+            raise SchemaError("query validation factory identities must be non-empty")
+        if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+            raise TypeError(
+                "inspector must implement AttentionOperatorTensorMetadataInspector"
+            )
+        if not isinstance(access_policy, AttentionTensorAccessPolicy):
+            raise TypeError("access_policy must be AttentionTensorAccessPolicy")
+        self.provider_id = str(provider_id)
+        self.operation_id = str(operation_id)
+        self._inspector = inspector
+        self._access_policy = access_policy
+
+    def build(
+        self, base_adapter: AttentionOperatorRunAdapter, device: str
+    ) -> AttentionOperatorRunAdapter:
+        if base_adapter.provider_id != self.provider_id:
+            raise SchemaError("query validation adapter provider differs")
+        return AttentionOperatorQueryValidationRunAdapter(
+            base_adapter,
+            self._inspector,
+            str(device),
+            self._access_policy,
+        )
+
+
+class AttentionOperatorRunAdapterFactoryChain:
+    """Compose multiple identity-matched run adapter decorators in order."""
+
+    def __init__(
+        self,
+        provider_id: str,
+        operation_id: str,
+        factories: Sequence[AttentionOperatorRunAdapterFactory],
+    ) -> None:
+        values = tuple(factories)
+        if not values or any(
+            not isinstance(item, AttentionOperatorRunAdapterFactory)
+            for item in values
+        ):
+            raise TypeError("factories must contain run adapter factories")
+        if any(
+            item.provider_id != str(provider_id)
+            or item.operation_id != str(operation_id)
+            for item in values
+        ):
+            raise SchemaError("run adapter factory chain identities differ")
+        self.provider_id = str(provider_id)
+        self.operation_id = str(operation_id)
+        self._factories = values
+
+    def build(
+        self, base_adapter: AttentionOperatorRunAdapter, device: str
+    ) -> AttentionOperatorRunAdapter:
+        adapter = base_adapter
+        for factory in self._factories:
+            adapter = factory.build(adapter, str(device))
+        return adapter
 
 
 def lower_attention_operator_run(
@@ -581,9 +723,13 @@ __all__ = [
     "ATTENTION_OPERATOR_RUN_REQUEST_FIELDS",
     "ATTENTION_OPERATOR_RUN_VERSION",
     "AttentionLoweredOperatorCall",
+    "AttentionOperatorQueryValidationRunAdapter",
+    "AttentionOperatorQueryValidationRunAdapterFactory",
     "AttentionOperatorRunAdapter",
     "AttentionOperatorRunAdapterFactory",
+    "AttentionOperatorRunAdapterFactoryChain",
     "AttentionOperatorRunRequest",
+    "AttentionOperatorTensorMetadataInspector",
     "AttentionOperatorWrapperSession",
     "lower_attention_operator_run",
     "validate_attention_lowered_operator_call",

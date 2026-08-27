@@ -14,7 +14,7 @@ import math
 import re
 from dataclasses import dataclass, replace
 from numbers import Real
-from typing import Any, Mapping, Optional, Protocol, Sequence, Tuple, runtime_checkable
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 from flashinfer_npu.runtime import KernelDescriptor, QuantSpec, SchemaError
 
@@ -31,6 +31,7 @@ from .operator_run import (
     AttentionLoweredOperatorCall,
     AttentionOperatorRunAdapter,
     AttentionOperatorRunRequest,
+    AttentionOperatorTensorMetadataInspector,
 )
 from .planner import AttentionFrameworkPlan
 from .quant_physical_layout import (
@@ -507,21 +508,6 @@ def combine_attention_operator_quantized_kv_input(
         key_logical_shape=key.logical_shape,
         value_logical_shape=value.logical_shape,
     )
-
-
-@runtime_checkable
-class AttentionOperatorTensorMetadataInspector(Protocol):
-    """Read an opaque provider tensor as a framework ``TensorView``.
-
-    Implementations may inspect shape/stride/dtype/device/storage metadata only;
-    importing an operator package, allocating a tensor, or touching device data
-    is outside this protocol.
-    """
-
-    def to_view(
-        self, tensor: Any, *, name: str, writable: bool = False
-    ) -> TensorView:
-        """Return a non-copying metadata view for ``tensor``."""
 
 
 def _inspect_quant_component(

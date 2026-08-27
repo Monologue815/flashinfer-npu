@@ -101,6 +101,14 @@ def quantized_input(quant_spec, **overrides):
     return AttentionOperatorQuantizedKVInput(**values)
 
 
+def query_input(plan, name="query"):
+    return metadata_tensor(
+        name,
+        plan.expected_query_shape,
+        plan.spec.q_dtype,
+    )
+
+
 class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
     """Checkpoint 025: bound quant inputs lower without executing a package."""
 
@@ -144,7 +152,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         plan, session = active_session(values)
         kv_input = quantized_input(plan.spec.kv_quant_spec)
 
-        lowered = session.run("query", kv_input)
+        lowered = session.run(query_input(plan), kv_input)
 
         positional = dict(lowered.positional_arguments)
         keywords = dict(lowered.keyword_arguments)
@@ -162,7 +170,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         values = bootstrap_components()
         plan, session = active_session(values)
         with self.assertRaisesRegex(SchemaError, "QuantizedKVInput"):
-            session.run("query", ("key", "value"))
+            session.run(query_input(plan), ("key", "value"))
 
         different = replace(
             plan.spec.kv_quant_spec,
@@ -171,7 +179,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
             axis=None,
         )
         with self.assertRaisesRegex(SchemaError, "does not match"):
-            session.run("query", quantized_input(different))
+            session.run(query_input(plan), quantized_input(different))
         self.assertEqual(len(values["materializer"].calls), 1)
         self.assertEqual(package_attention.calls, [])
 
@@ -183,7 +191,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         for name in ("q_scale", "k_scale", "v_scale"):
             with self.subTest(name=name):
                 with self.assertRaisesRegex(SchemaError, "rejects run-time"):
-                    session.run("query", kv_input, **{name: object()})
+                    session.run(query_input(plan), kv_input, **{name: object()})
         self.assertEqual(package_attention.calls, [])
 
     def test_explicit_runtime_scale_policy_injects_separate_arguments(self):
@@ -225,7 +233,7 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         runtime_o_scale = 0.25
 
         lowered = session.run(
-            "query",
+            query_input(plan),
             kv_input,
             q_scale=runtime_q_scale,
             k_scale=runtime_k_scale,
@@ -276,7 +284,9 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         plan, session = active_session(values, spec=spec, catalog=catalog)
 
         with self.assertRaisesRegex(SchemaError, "collides.*scale"):
-            session.run("query", quantized_input(plan.spec.kv_quant_spec))
+            session.run(
+                query_input(plan), quantized_input(plan.spec.kv_quant_spec)
+            )
         self.assertEqual(package_attention.calls, [])
 
     def test_lowering_reuses_one_plan_materialization_without_callable_execution(self):
@@ -284,8 +294,8 @@ class QuantizedProviderRunLoweringCheckpoint(unittest.TestCase):
         plan, session = active_session(values)
         kv_input = quantized_input(plan.spec.kv_quant_spec)
 
-        first = session.run("query-1", kv_input)
-        second = session.run("query-2", kv_input)
+        first = session.run(query_input(plan, "query-1"), kv_input)
+        second = session.run(query_input(plan, "query-2"), kv_input)
 
         self.assertEqual(len(values["materializer"].calls), 1)
         self.assertIs(

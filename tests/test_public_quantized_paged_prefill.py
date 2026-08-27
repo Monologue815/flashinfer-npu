@@ -50,11 +50,15 @@ class FakeNpuWorkspace:
 
 
 class MetadataTensor:
-    def __init__(self, tensor_view):
+    def __init__(self, tensor_view, label=None):
         self.tensor_view = tensor_view
         self.shape = tensor_view.shape
         self.dtype = tensor_view.dtype
         self.device = tensor_view.device
+        self.label = tensor_view.storage_id if label is None else str(label)
+
+    def __str__(self):
+        return self.label
 
 
 def metadata_tensor(name, shape, dtype, *, device="npu:0", strides=None):
@@ -75,7 +79,23 @@ def metadata_tensor(name, shape, dtype, *, device="npu:0", strides=None):
             device=device,
             storage_id="public-quantized-prefill:" + name,
             storage_nbytes=storage_elements * dtype_itemsize(dtype),
-        )
+        ),
+        name,
+    )
+
+
+def query_tensor(case, name="q"):
+    plan = case.trace
+    metadata = plan.metadata
+    total_qo_tokens = (
+        metadata.qo_indptr[-1]
+        if hasattr(metadata, "qo_indptr")
+        else metadata.batch_size * plan.spec.q_len_per_req
+    )
+    return metadata_tensor(
+        name,
+        (total_qo_tokens, plan.spec.num_qo_heads, plan.spec.head_dim_qk),
+        plan.spec.q_dtype,
     )
 
 
@@ -457,8 +477,12 @@ class PublicQuantizedPagedPrefillTests(unittest.TestCase):
             self.case.trace.spec.kv_quant_spec.scale_dtype,
         )
 
-        output = wrapper.run("q", kv_input, q_scale=query_scale)
-        output_lse = wrapper.run("q-lse", kv_input, return_lse=True)
+        output = wrapper.run(
+            query_tensor(self.case, "q"), kv_input, q_scale=query_scale
+        )
+        output_lse = wrapper.run(
+            query_tensor(self.case, "q-lse"), kv_input, return_lse=True
+        )
 
         self.assertEqual(output, "package-output:q")
         self.assertEqual(
@@ -481,27 +505,33 @@ class PublicQuantizedPagedPrefillTests(unittest.TestCase):
         quant_spec = self.case.trace.spec.kv_quant_spec
 
         with self.assertRaisesRegex(SchemaError, "QuantizedKVInput"):
-            wrapper.run("plain", ("key", "value"))
+            wrapper.run(query_tensor(self.case, "plain"), ("key", "value"))
 
         mismatched = replace(quant_spec, packing_order="high_nibble_first")
         with self.assertRaisesRegex(SchemaError, "does not match"):
-            wrapper.run("mismatched", quantized_kv_input(mismatched))
+            wrapper.run(
+                query_tensor(self.case, "mismatched"),
+                quantized_kv_input(mismatched),
+            )
 
         with self.assertRaisesRegex(SchemaError, "scale.*shape"):
             wrapper.run(
-                "bad-scale",
+                query_tensor(self.case, "bad-scale"),
                 quantized_kv_input(quant_spec, scale_shape_override=(1,)),
             )
 
         with self.assertRaisesRegex(SchemaError, "device"):
             wrapper.run(
-                "bad-device",
+                query_tensor(self.case, "bad-device"),
                 quantized_kv_input(quant_spec, device="npu:1"),
             )
 
         self.assertEqual(package_attention.calls, [])
         self.assertEqual(
-            wrapper.run("valid", quantized_kv_input(quant_spec)),
+            wrapper.run(
+                query_tensor(self.case, "valid"),
+                quantized_kv_input(quant_spec),
+            ),
             "package-output:valid",
         )
 
@@ -598,9 +628,11 @@ class PublicFP8PagedPrefillTests(unittest.TestCase):
         )
         key, value = self.raw_cache()
 
-        implicit_output = wrapper.run("q-implicit", (key, value))
+        implicit_output = wrapper.run(
+            query_tensor(self.case, "q-implicit"), (key, value)
+        )
         calibrated_output = wrapper.run(
-            "q-calibrated",
+            query_tensor(self.case, "q-calibrated"),
             (key, value),
             q_scale=2.0,
             k_scale=1.5,
@@ -634,9 +666,12 @@ class PublicFP8PagedPrefillTests(unittest.TestCase):
             "float8_e4m3fn",
         )
         with self.assertRaisesRegex(SchemaError, "separate.*key, value"):
-            wrapper.run("q-combined", combined)
+            wrapper.run(query_tensor(self.case, "q-combined"), combined)
         with self.assertRaisesRegex(SchemaError, "storage.*dtype"):
-            wrapper.run("q-wrong-dtype", self.raw_cache(dtype="float16"))
+            wrapper.run(
+                query_tensor(self.case, "q-wrong-dtype"),
+                self.raw_cache(dtype="float16"),
+            )
         self.assertEqual(package_attention.calls, [])
 
     def test_fp8_workspace_query_is_non_publishing(self):

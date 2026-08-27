@@ -13,6 +13,7 @@ from tests.test_checkpoint_022_operator_runtime_bootstrap import bootstrap_compo
 from tests.test_checkpoint_025_quantized_provider_run_lowering import (
     active_session,
     metadata_tensor,
+    query_input,
     quantized_input,
 )
 
@@ -34,12 +35,13 @@ class QuantizedProviderTensorMetadataCheckpoint(unittest.TestCase):
         plan, session = active_session(values)
         kv_input = quantized_input(plan.spec.kv_quant_spec)
 
-        lowered = session.run("query", kv_input)
+        lowered = session.run(query_input(plan), kv_input)
 
         calls = values["tensor_metadata_inspector"].calls
         self.assertEqual(
             tuple(name for _, name, _ in calls),
             (
+                "query",
                 "kv.key.storage",
                 "kv.value.storage",
                 "kv.key.scale",
@@ -56,13 +58,15 @@ class QuantizedProviderTensorMetadataCheckpoint(unittest.TestCase):
 
         wrong_dtype = with_view(valid.key_storage, dtype="uint8")
         with self.assertRaisesRegex(SchemaError, "storage view dtype"):
-            session.run("query", replace(valid, key_storage=wrong_dtype))
+            session.run(query_input(plan), replace(valid, key_storage=wrong_dtype))
 
         too_few_pages = metadata_tensor(
             "too-few-pages", (1, 2, 1, 3), "int8"
         )
         with self.assertRaisesRegex(SchemaError, "every referenced page"):
-            session.run("query", replace(valid, key_storage=too_few_pages))
+            session.run(
+                query_input(plan), replace(valid, key_storage=too_few_pages)
+            )
 
     def test_scale_shape_and_dtype_must_match_exact_quant_spec(self):
         values = bootstrap_components()
@@ -71,11 +75,11 @@ class QuantizedProviderTensorMetadataCheckpoint(unittest.TestCase):
 
         wrong_shape = metadata_tensor("wrong-scale-shape", (2, 2, 1, 1), "float32")
         with self.assertRaisesRegex(SchemaError, "scale view shape"):
-            session.run("query", replace(valid, key_scale=wrong_shape))
+            session.run(query_input(plan), replace(valid, key_scale=wrong_shape))
 
         wrong_dtype = with_view(valid.value_scale, dtype="float16", storage_nbytes=8)
         with self.assertRaisesRegex(SchemaError, "scale view dtype"):
-            session.run("query", replace(valid, value_scale=wrong_dtype))
+            session.run(query_input(plan), replace(valid, value_scale=wrong_dtype))
 
     def test_asymmetric_zero_points_require_int32_exact_shapes(self):
         plan = group_plan()
@@ -121,7 +125,9 @@ class QuantizedProviderTensorMetadataCheckpoint(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(SchemaError, "must be contiguous"):
-            session.run("query", replace(valid, key_storage=non_contiguous))
+            session.run(
+                query_input(plan), replace(valid, key_storage=non_contiguous)
+            )
 
     def test_every_component_must_use_the_resolved_device(self):
         values = bootstrap_components()
@@ -130,14 +136,14 @@ class QuantizedProviderTensorMetadataCheckpoint(unittest.TestCase):
         foreign = with_view(valid.value_scale, device="npu:1")
 
         with self.assertRaisesRegex(SchemaError, "share device"):
-            session.run("query", replace(valid, value_scale=foreign))
+            session.run(query_input(plan), replace(valid, value_scale=foreign))
 
         all_foreign = {
             name: with_view(getattr(valid, name), device="npu:1")
             for name in ("key_storage", "value_storage", "key_scale", "value_scale")
         }
         with self.assertRaisesRegex(SchemaError, "device does not match"):
-            session.run("query", replace(valid, **all_foreign))
+            session.run(query_input(plan), replace(valid, **all_foreign))
 
     def test_component_and_kv_storage_aliases_are_rejected(self):
         values = bootstrap_components()
@@ -149,14 +155,16 @@ class QuantizedProviderTensorMetadataCheckpoint(unittest.TestCase):
             storage_id=valid.key_storage.tensor_view.storage_id,
         )
         with self.assertRaisesRegex(SchemaError, "components.*alias"):
-            session.run("query", replace(valid, key_scale=aliased_scale))
+            session.run(query_input(plan), replace(valid, key_scale=aliased_scale))
 
         aliased_value = with_view(
             valid.value_storage,
             storage_id=valid.key_storage.tensor_view.storage_id,
         )
         with self.assertRaisesRegex(SchemaError, "K and V.*alias"):
-            session.run("query", replace(valid, value_storage=aliased_value))
+            session.run(
+                query_input(plan), replace(valid, value_storage=aliased_value)
+            )
 
     def test_bootstrap_requires_a_real_inspector_and_rejects_invalid_output(self):
         values = bootstrap_components()
@@ -168,7 +176,9 @@ class QuantizedProviderTensorMetadataCheckpoint(unittest.TestCase):
         )
         plan, session = active_session(values, spec=invalid)
         with self.assertRaisesRegex(TypeError, "must return TensorView"):
-            session.run("query", quantized_input(plan.spec.kv_quant_spec))
+            session.run(
+                query_input(plan), quantized_input(plan.spec.kv_quant_spec)
+            )
 
 
 if __name__ == "__main__":

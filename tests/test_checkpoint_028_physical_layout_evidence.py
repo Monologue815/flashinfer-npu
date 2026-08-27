@@ -13,7 +13,10 @@ from flashinfer_npu.attention import (
 )
 from flashinfer_npu.runtime import SchemaError
 from tests.test_checkpoint_019_package_runtime_integration import package_attention
-from tests.test_checkpoint_025_quantized_provider_run_lowering import active_session
+from tests.test_checkpoint_025_quantized_provider_run_lowering import (
+    active_session,
+    query_input,
+)
 from tests.test_checkpoint_027_provider_physical_layout_binding import (
     physical_input,
     physical_runtime,
@@ -153,7 +156,7 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
         )
         kv_input = physical_input(quant_spec, descriptor)
 
-        lowered = session.run("query", kv_input)
+        lowered = session.run(query_input(active_plan), kv_input)
 
         receipt = session.active_plan.dispatch_receipt
         self.assertEqual(receipt.evidence_id, evidence.evidence_id)

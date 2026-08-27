@@ -137,6 +137,13 @@ Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
 | out/lse buffer | shape contract | 是 | 不允许隐式 alias |
 | workspace 地址/容量 | wrapper resource | 可 reset，不能在 run 扩容 | caller-owned 优先 |
 
+所有 package-backed provider（包括非量化路径）在 bootstrap 时必须提供只读 tensor metadata
+inspector 和显式 `AttentionTensorAccessPolicy`。每次 `run()` 都在 provider-specific lowering
+之前验证 Q 的 mode-specific shape、plan `q_dtype` 与 provider device，并执行 provider 声明的
+Q alignment/contiguous policy。验证后原 Q 对象原样进入 operation adapter；框架不会在热路径
+隐式 `.contiguous()`、cast 或搬运。需要转换的 provider 必须以后续显式 materialization plan
+表达其 workspace、生命周期和成本。
+
 single prefill 的 `scale_q`/`scale_k`/`scale_v` 属于逐头量化 scale；同一接口中的
 `k_scale`/`v_scale` 属于校准倍率。provider lowering 必须保持两组来源独立，并为每个非空
 来源声明精确参数绑定；不能因为名称相近而合并或覆盖。

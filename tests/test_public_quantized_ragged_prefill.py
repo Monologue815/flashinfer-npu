@@ -252,6 +252,16 @@ def plan_public_wrapper(wrapper, case):
     )
 
 
+def query_tensor(case, name="q"):
+    spec = case.trace.spec
+    metadata = case.trace.metadata
+    return metadata_tensor(
+        name,
+        (metadata.qo_indptr[-1], spec.num_qo_heads, spec.head_dim_qk),
+        spec.q_dtype,
+    )
+
+
 class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
     """Separate public K/V slots compose into one private quantized KV input."""
 
@@ -285,13 +295,15 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         output_scale = 0.5
 
         output = wrapper.run(
-            "q",
+            query_tensor(self.case, "q"),
             key,
             value,
             q_scale=query_scale,
             o_scale=output_scale,
         )
-        output_lse = wrapper.run("q-lse", key, value, return_lse=True)
+        output_lse = wrapper.run(
+            query_tensor(self.case, "q-lse"), key, value, return_lse=True
+        )
 
         self.assertEqual(output, "package-output:q")
         self.assertEqual(
@@ -314,25 +326,31 @@ class PublicQuantizedRaggedPrefillTests(unittest.TestCase):
         quant_spec = self.case.trace.spec.kv_quant_spec
 
         with self.assertRaisesRegex(SchemaError, "for key"):
-            wrapper.run("plain", "key", "value")
+            wrapper.run(query_tensor(self.case, "plain"), "key", "value")
 
         different = replace(quant_spec, group_size=(1, 2, 1))
         key, value = quantized_tensor_pair(
             quant_spec, value_quant_spec=different
         )
         with self.assertRaisesRegex(SchemaError, "different QuantSpec"):
-            wrapper.run("mismatched", key, value)
+            wrapper.run(query_tensor(self.case, "mismatched"), key, value)
 
         self.assertEqual(package_attention.calls, [])
         wrong_shape_key, wrong_shape_value = quantized_tensor_pair(
             quant_spec, logical_shape=(1, 2, 2)
         )
         with self.assertRaisesRegex(SchemaError, "key logical_shape"):
-            wrapper.run("wrong-shape", wrong_shape_key, wrong_shape_value)
+            wrapper.run(
+                query_tensor(self.case, "wrong-shape"),
+                wrong_shape_key,
+                wrong_shape_value,
+            )
         self.assertEqual(package_attention.calls, [])
         valid_key, valid_value = quantized_tensor_pair(quant_spec)
         self.assertEqual(
-            wrapper.run("valid", valid_key, valid_value),
+            wrapper.run(
+                query_tensor(self.case, "valid"), valid_key, valid_value
+            ),
             "package-output:valid",
         )
 

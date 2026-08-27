@@ -350,6 +350,17 @@ usage.
 6. invokes the authorized executor once;
 7. normalizes output/LSE and completion ownership to the public contract.
 
+Every package-backed provider installs a common query-validation adapter before
+its operation-specific lowering. Bootstrap therefore requires a metadata-only
+tensor inspector and an explicit `AttentionTensorAccessPolicy`, even when the
+operation is not quantized. The adapter checks the exact mode-dependent query
+shape, planned Q dtype and provider device on every run. It also enforces the
+provider-declared Q alignment and `require_contiguous_q` policy. The original
+query object is forwarded unchanged after validation; this layer neither reads
+device data nor performs a hidden copy/cast. A provider that needs a conversion
+must declare a separate materialization path rather than weakening the run
+contract.
+
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.
 

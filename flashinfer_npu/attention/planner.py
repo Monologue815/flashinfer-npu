@@ -86,6 +86,12 @@ class AttentionFrameworkPlan:
             self.spec.head_dim_qk,
         )
 
+    @property
+    def expected_query_shape(self) -> Tuple[int, ...]:
+        """Exact public query shape bound to this reusable plan."""
+
+        return self._expected_query_shape()
+
     def _expected_output_shape(self) -> Tuple[int, ...]:
         q_shape = self._expected_query_shape()
         return q_shape[:-1] + (int(self.spec.head_dim_vo),)

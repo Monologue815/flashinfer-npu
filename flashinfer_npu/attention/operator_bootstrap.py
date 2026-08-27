@@ -56,7 +56,6 @@ from .operator_quantization import (
     AttentionOperatorQuantizationBinding,
     AttentionOperatorQuantizationPlanGate,
     AttentionOperatorQuantizationRunAdapterFactory,
-    AttentionOperatorTensorMetadataInspector,
     validate_attention_operator_quantization_bindings,
 )
 from .quant_physical_layout import (
@@ -68,10 +67,16 @@ from .operator_resolver import (
     AttentionOperatorRuntimeImplementationRegistry,
     AttentionOperatorRuntimeResolverRegistry,
 )
-from .operator_run import AttentionOperatorRunAdapter
+from .operator_run import (
+    AttentionOperatorQueryValidationRunAdapterFactory,
+    AttentionOperatorRunAdapter,
+    AttentionOperatorRunAdapterFactoryChain,
+    AttentionOperatorTensorMetadataInspector,
+)
+from .tensor_contract import AttentionTensorAccessPolicy
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 6
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 7
 
 
 @dataclass(frozen=True)
@@ -89,10 +94,9 @@ class AttentionOperatorPackageRuntimeSpec:
     logical_factory: AttentionOperatorPlanFactory
     logical_run_adapter: AttentionOperatorRunAdapter
     tensor_materializer: AttentionOperatorTensorMaterializer
+    tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector
+    tensor_access_policy: AttentionTensorAccessPolicy
     quantization_bindings: Tuple[AttentionOperatorQuantizationBinding, ...] = ()
-    tensor_metadata_inspector: Optional[
-        AttentionOperatorTensorMetadataInspector
-    ] = None
     quant_physical_layout_catalog: QuantPhysicalLayoutCatalog = (
         EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG
     )
@@ -169,9 +173,9 @@ class AttentionOperatorPackageRuntimeSpec:
             raise TypeError(
                 "bootstrap quantization_bindings must contain quantization bindings"
             )
-        if quantization_bindings and self.tensor_metadata_inspector is None:
+        if self.tensor_metadata_inspector is None:
             raise SchemaError(
-                "bootstrap quantization bindings require a tensor metadata inspector"
+                "bootstrap provider runtime requires a tensor metadata inspector"
             )
         if self.tensor_metadata_inspector is not None and not isinstance(
             self.tensor_metadata_inspector,
@@ -180,6 +184,10 @@ class AttentionOperatorPackageRuntimeSpec:
             raise TypeError(
                 "tensor_metadata_inspector must implement "
                 "AttentionOperatorTensorMetadataInspector"
+            )
+        if not isinstance(self.tensor_access_policy, AttentionTensorAccessPolicy):
+            raise TypeError(
+                "tensor_access_policy must be AttentionTensorAccessPolicy"
             )
         if not isinstance(
             self.quant_physical_layout_catalog, QuantPhysicalLayoutCatalog
@@ -295,19 +303,32 @@ def build_attention_operator_package_runtime(
     plan_gate = AttentionOperatorQuantizationPlanGate(
         spec.plan_gate, operation, quantization_bindings
     )
-    run_adapter_factory = (
-        AttentionOperatorQuantizationRunAdapterFactory(
-            operation,
-            quantization_bindings,
-            spec.tensor_metadata_inspector,
-            spec.quant_physical_layout_catalog,
-            spec.profiles,
-            spec.descriptors,
-            spec.observed_environment,
-            physical_layout_evidence,
+    run_adapter_factories = []
+    if quantization_bindings:
+        run_adapter_factories.append(
+            AttentionOperatorQuantizationRunAdapterFactory(
+                operation,
+                quantization_bindings,
+                spec.tensor_metadata_inspector,
+                spec.quant_physical_layout_catalog,
+                spec.profiles,
+                spec.descriptors,
+                spec.observed_environment,
+                physical_layout_evidence,
+            )
         )
-        if quantization_bindings
-        else None
+    run_adapter_factories.append(
+        AttentionOperatorQueryValidationRunAdapterFactory(
+            operation.provider_id,
+            operation.operation_id,
+            spec.tensor_metadata_inspector,
+            spec.tensor_access_policy,
+        )
+    )
+    run_adapter_factory = AttentionOperatorRunAdapterFactoryChain(
+        operation.provider_id,
+        operation.operation_id,
+        run_adapter_factories,
     )
     compatibility = AttentionOperatorPackageCompatibility(
         provider_id=operation.provider_id,
