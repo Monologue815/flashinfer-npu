@@ -133,7 +133,7 @@ Decode `plan` 同上游保留 deprecated positional args + keyword normalizer，
 | window/soft cap/RoPE 参数 | 是 | 仅允许等于 plan | 避免 run 改变编译 feature |
 | page/ragged indptr 与长度 | metadata fingerprint | 图模式下受固定上界约束 | plan 可重建 |
 | Q/K/V 实际数据 | 否 | 是 | 热路径输入 |
-| scalar/per-head Q/K/V scale | scale 形态进入 plan；数值在 run | 是 | dtype/shape 必须固定 |
+| scalar/per-head Q/K/V scale | scale 形态进入 plan；single decode Q/K 标量值也进入一次性 plan | 其余数值可变 | dtype/shape 必须固定 |
 | out/lse buffer | shape contract | 是 | 不允许隐式 alias |
 | workspace 地址/容量 | wrapper resource | 可 reset，不能在 run 扩容 | caller-owned 优先 |
 
@@ -146,6 +146,11 @@ single prefill 的 `scale_q`/`scale_k`/`scale_v` 属于逐头量化 scale；同�
 参数位置，不接触项目扩展的 plan 或 provider wrapper。任一缺省 scale 采用 virtual unit
 scale；仅当 provider binding 明确声明省略相应参数等价于 scale=1 时允许该路径，不会猜测
 设备 tensor 或在 run 热路径临时分配。
+
+当 single decode 的 Q/K/V 是同一种 FP8 dtype 时，facade 使用 per-tensor `QuantSpec` 包装
+裸 K/V；内部 scalar virtual unit scale 只描述逻辑值 1，不持有设备地址。`q_scale` 与
+`k_scale` 乘入 plan softmax scale，`v_scale` 作为输出倍率进入精确 provider binding。
+provider 未证明省略 K/V scale 参数等价于 1 时，该候选在 bootstrap 阶段失败。
 
 ## 6. CUDA 名称的兼容策略
 

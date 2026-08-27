@@ -67,10 +67,24 @@ class OperatorQuantizationBindingCheckpoint(unittest.TestCase):
 
         self.assertEqual(scale.to_dict()["shape"], [8])
         self.assertEqual(len(scale.fingerprint), 64)
+        scalar = AttentionOperatorImplicitUnitScale(
+            source="kv.key.scale",
+            shape=(),
+            dtype="float32",
+            device="npu:0",
+        )
+        self.assertEqual(scalar.to_dict()["shape"], [])
         with self.assertRaisesRegex(SchemaError, "unknown.*source"):
             AttentionOperatorImplicitUnitScale(
                 source="run.unknown_scale",
                 shape=(8,),
+                dtype="float32",
+                device="npu:0",
+            )
+        with self.assertRaisesRegex(SchemaError, "scalar or.*rank-1"):
+            AttentionOperatorImplicitUnitScale(
+                source="kv.key.scale",
+                shape=(1, 1),
                 dtype="float32",
                 device="npu:0",
             )

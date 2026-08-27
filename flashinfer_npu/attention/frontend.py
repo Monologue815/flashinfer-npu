@@ -218,6 +218,22 @@ def single_fp8_per_head_quant_spec(
     )
 
 
+def single_fp8_per_tensor_quant_spec(storage_dtype: str) -> QuantSpec:
+    """Canonical QuantSpec for FlashInfer single-decode FP8 calibration."""
+
+    dtype = canonicalize_dtype_name(storage_dtype)
+    if dtype not in {"float8_e4m3fn", "float8_e5m2"}:
+        raise SchemaError("single-decode FP8 storage dtype is unsupported")
+    return QuantSpec(
+        scheme="symmetric",
+        storage_dtype=dtype,
+        compute_dtype="float32",
+        accumulator_dtype="float32",
+        scale_dtype="float32",
+        granularity="tensor",
+    )
+
+
 def canonicalize_dtype_name(value) -> str:
     """Normalize string and torch-style dtype objects without importing torch."""
 

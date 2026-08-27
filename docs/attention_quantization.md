@@ -125,6 +125,10 @@ Host FP8 oracle 把 `ReferenceTensor` 中的数值视为已经按对应 FP8 格�
   `QuantSpec`，调用者不需要构造项目扩展 wrapper。任一缺省 scale 被表示为带 shape、dtype、
   device 和逻辑来源的 virtual unit scale；只有 provider binding 明确证明省略对应 package
   参数等价于 scale=1 时，该 candidate 才能在 bootstrap 阶段通过。
+- single decode 的裸 NPU FP8 Q/K/V canonicalize 为内部 per-tensor `QuantSpec`。K/V 使用
+  scalar virtual unit scale，`q_scale` 与 `k_scale` 只进入 canonical plan 的 softmax scale，
+  `v_scale` 保持为输出倍率。provider 必须证明 K/V scale 参数省略等价于 1，调用者仍不需要
+  构造项目扩展 wrapper。
 - batch prefill/decode 和 mixed `BatchAttention`：`plan(..., kv_data_type=quant_spec)`；
   Host run 传入 `ReferenceQuantizedKVData`。Provider paged/mixed run 的单一 cache 参数传入
   `AttentionOperatorQuantizedKVInput`；ragged run 的分离 K/V 参数分别传入
@@ -153,8 +157,8 @@ device 与 provider query 一致；这些检查先于 package callable。
 `kv.key.scale`/`kv.value.scale`，不会再次注入 `run.k_head_scale`/`run.v_head_scale`；
 `scale_q` 仍作为 `run.q_head_scale`。这避免同一 scale 被 provider 应用两次。
 缺省项不会伪造设备地址或在 run 热路径临时分配 tensor：框架验证 virtual unit scale 的
-head shape、float32 dtype 和 device 后，按 `implicit_unit_scale_sources` 省略已获授权的
-provider 参数。未声明该语义的 FP8 provider 不能注册为完整 single-prefill candidate。
+scalar/head shape、float32 dtype 和 device 后，按 `implicit_unit_scale_sources` 省略已获授权的
+provider 参数。未声明该语义的 FP8 provider 不能注册为完整 single-attention candidate。
 
 ragged prefill 的公开 `o_scale` 独立建模为 `run.o_scale`。它不是 K/V 反量化 scale，也不能
 仅凭 provider 参数名相似就转发。绑定除声明精确 catalog argument 外，还必须列出允许的

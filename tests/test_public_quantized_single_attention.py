@@ -32,7 +32,10 @@ from flashinfer_npu.attention import (
 )
 from flashinfer_npu.decode import single_decode_with_kv_cache
 from flashinfer_npu.prefill import single_prefill_with_kv_cache
-from flashinfer_npu.attention.frontend import single_fp8_per_head_quant_spec
+from flashinfer_npu.attention.frontend import (
+    single_fp8_per_head_quant_spec,
+    single_fp8_per_tensor_quant_spec,
+)
 from flashinfer_npu.runtime import KernelCapabilityBinding, QuantSpec, SchemaError
 from tests.test_attention_capability import (
     attention_artifact,
@@ -310,7 +313,11 @@ def public_single_quantized_runtime(
                 (
                     "kv.key.scale",
                     "kv.value.scale",
-                    "run.q_head_scale",
+                )
+                + (
+                    ("run.q_head_scale",)
+                    if AttentionMode.SINGLE_PREFILL in modes
+                    else ()
                 )
                 if quant_spec.storage_dtype
                 in {"float8_e4m3fn", "float8_e5m2"}
@@ -603,6 +610,54 @@ class PublicQuantizedSingleAttentionTests(unittest.TestCase):
         self.assertIs(partial_call[12], q_scale)
         self.assertEqual(implicit_call[6:8], (None, None))
         self.assertIsNone(implicit_call[12])
+
+    def test_bare_fp8_single_decode_canonicalizes_calibration_scales(self):
+        quant_spec = single_fp8_per_tensor_quant_spec("float8_e4m3fn")
+        self.assertEqual(quant_spec.granularity, "tensor")
+        self.assertIsNone(quant_spec.axis)
+        with self.assertRaisesRegex(
+            SchemaError, "must authorize implicit unit scales"
+        ):
+            public_single_quantized_runtime(
+                runtime_scales=False,
+                quant_spec=quant_spec,
+                q_dtype="float8_e4m3fn",
+                o_dtype="float8_e4m3fn",
+                modes=(AttentionMode.SINGLE_DECODE,),
+            )
+
+        values, _, registry = public_single_quantized_runtime(
+            quant_spec=quant_spec,
+            q_dtype="float8_e4m3fn",
+            o_dtype="float8_e4m3fn",
+            modes=(AttentionMode.SINGLE_DECODE,),
+        )
+        install_attention_operator_runtime_resolvers(
+            registry, operation_catalog=values["catalog"]
+        )
+        package_attention.calls[:] = []
+        q = FakeNpuTensor("q-decode-fp8", (2, 1), dtype="float8_e4m3fn")
+        k = metadata_tensor("k-decode-fp8", (3, 1, 1), "float8_e4m3fn")
+        v = metadata_tensor("v-decode-fp8", (3, 1, 1), "float8_e4m3fn")
+
+        implicit_output = single_decode_with_kv_cache(q, k, v)
+        calibrated_output = single_decode_with_kv_cache(
+            q, k, v, q_scale=2.0, k_scale=1.5, v_scale=0.5
+        )
+
+        self.assertEqual(implicit_output, "package-output:q-decode-fp8")
+        self.assertEqual(calibrated_output, "package-output:q-decode-fp8")
+        implicit_call, calibrated_call = package_attention.calls
+        self.assertIs(implicit_call[1], k)
+        self.assertIs(implicit_call[2], v)
+        self.assertEqual(implicit_call[4], 1.0)
+        self.assertEqual(implicit_call[6:11], (None, None, None, None, None))
+        self.assertIs(calibrated_call[1], k)
+        self.assertIs(calibrated_call[2], v)
+        self.assertEqual(calibrated_call[4], 3.0)
+        self.assertEqual(
+            calibrated_call[6:11], (None, None, None, 0.5, None)
+        )
 
 if __name__ == "__main__":
     unittest.main()

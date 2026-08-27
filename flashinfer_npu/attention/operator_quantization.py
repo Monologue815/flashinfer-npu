@@ -55,7 +55,7 @@ from .tensor_contract import (
 )
 
 
-ATTENTION_OPERATOR_QUANTIZATION_VERSION = 5
+ATTENTION_OPERATOR_QUANTIZATION_VERSION = 6
 
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _QUANT_ARGUMENT_SOURCES = {
@@ -132,8 +132,10 @@ class AttentionOperatorImplicitUnitScale:
         if self.source not in _IMPLICIT_UNIT_SCALE_SOURCES:
             raise SchemaError("unknown Attention implicit unit-scale source")
         shape = tuple(int(item) for item in self.shape)
-        if len(shape) != 1 or shape[0] <= 0:
-            raise SchemaError("implicit unit scale must be a non-empty rank-1 tensor")
+        if len(shape) > 1 or any(item <= 0 for item in shape):
+            raise SchemaError(
+                "implicit unit scale must be scalar or a non-empty rank-1 tensor"
+            )
         if not str(self.dtype) or not str(self.device):
             raise SchemaError("implicit unit scale dtype/device must be non-empty")
         object.__setattr__(self, "shape", shape)
@@ -714,29 +716,32 @@ def validate_attention_operator_quantization_bindings(
                 "runtime o_scale output dtype has no capability rule: %s"
                 % sorted(undeclared_output_dtypes)[0]
             )
-        fp8_single_prefill = (
+        fp8_single_modes = {
+            mode
+            for profile in profile_values
+            for rule in profile.rules
+            if any(
+                item.fingerprint == binding.quant_spec.fingerprint
+                for item in rule.quant_specs
+            )
+            for mode in rule.modes
+            if mode in operation.candidate_modes
+            and mode in {AttentionMode.SINGLE_PREFILL, AttentionMode.SINGLE_DECODE}
+        }
+        required_unit_sources = set()
+        if (
             binding.quant_spec.storage_dtype
             in {"float8_e4m3fn", "float8_e5m2"}
-            and any(
-                AttentionMode.SINGLE_PREFILL in rule.modes
-                and any(
-                    item.fingerprint == binding.quant_spec.fingerprint
-                    for item in rule.quant_specs
-                )
-                for profile in profile_values
-                for rule in profile.rules
-            )
-        )
-        required_unit_sources = {
-            "kv.key.scale",
-            "kv.value.scale",
-            "run.q_head_scale",
-        }
-        if fp8_single_prefill and not required_unit_sources.issubset(
+            and fp8_single_modes
+        ):
+            required_unit_sources.update(("kv.key.scale", "kv.value.scale"))
+            if AttentionMode.SINGLE_PREFILL in fp8_single_modes:
+                required_unit_sources.add("run.q_head_scale")
+        if required_unit_sources and not required_unit_sources.issubset(
             binding.implicit_unit_scale_sources
         ):
             raise SchemaError(
-                "FP8 single-prefill binding must authorize implicit unit scales"
+                "FP8 single-attention binding must authorize implicit unit scales"
             )
     profile_quant_specs = {
         quant_spec.fingerprint: quant_spec

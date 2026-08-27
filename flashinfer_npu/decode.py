@@ -19,6 +19,7 @@ from .attention.frontend import (
     parse_pos_encoding_mode,
     framework_index_values,
     reference_index_values,
+    single_fp8_per_tensor_quant_spec,
 )
 from .attention.planner import AttentionFrameworkSession
 from .attention.reference import ReferenceAttentionExecutor, ReferenceTensor
@@ -31,6 +32,7 @@ from .attention.jit_protocol import (
 )
 from .attention.schema import AttentionMode, AttentionPlanSpec, PagedKVMetadata
 from .attention.operator_quantization import (
+    AttentionOperatorImplicitUnitScale,
     AttentionOperatorQuantizedTensorInput,
     combine_attention_operator_quantized_kv_input,
 )
@@ -56,13 +58,53 @@ def single_decode_with_kv_cache(
     """Execute single-request decode through reference or automatic provider."""
 
     if not isinstance(q, ReferenceTensor):
+        provider_key = k
+        provider_value = v
         adapted_provider = adapt_framework_single_qkv(
             q,
-            k,
-            v,
+            provider_key,
+            provider_value,
             mode=AttentionMode.SINGLE_DECODE,
             kv_layout=kv_layout,
         )
+        fp8_dtypes_match = (
+            adapted_provider.q_dtype == adapted_provider.kv_dtype
+            and adapted_provider.q_dtype
+            in {"float8_e4m3fn", "float8_e5m2"}
+        )
+        if adapted_provider.kv_quant_spec is None and fp8_dtypes_match:
+            fp8_quant_spec = single_fp8_per_tensor_quant_spec(
+                adapted_provider.kv_dtype
+            )
+            provider_key = AttentionOperatorQuantizedTensorInput(
+                quant_spec=fp8_quant_spec,
+                logical_shape=tuple(int(dim) for dim in k.shape),
+                storage=k,
+                scale=AttentionOperatorImplicitUnitScale(
+                    source="kv.key.scale",
+                    shape=(),
+                    dtype=fp8_quant_spec.scale_dtype,
+                    device=adapted_provider.device,
+                ),
+            )
+            provider_value = AttentionOperatorQuantizedTensorInput(
+                quant_spec=fp8_quant_spec,
+                logical_shape=tuple(int(dim) for dim in v.shape),
+                storage=v,
+                scale=AttentionOperatorImplicitUnitScale(
+                    source="kv.value.scale",
+                    shape=(),
+                    dtype=fp8_quant_spec.scale_dtype,
+                    device=adapted_provider.device,
+                ),
+            )
+            adapted_provider = adapt_framework_single_qkv(
+                q,
+                provider_key,
+                provider_value,
+                mode=AttentionMode.SINGLE_DECODE,
+                kv_layout=kv_layout,
+            )
         if use_tensor_cores:
             raise NotImplementedError(
                 "provider single-decode matrix-core preference is not bound"
@@ -127,7 +169,9 @@ def single_decode_with_kv_cache(
         )
         runtime.plan(spec, adapted_provider.metadata)
         if adapted_provider.kv_quant_spec is not None:
-            provider_kv_input = combine_attention_operator_quantized_kv_input(k, v)
+            provider_kv_input = combine_attention_operator_quantized_kv_input(
+                provider_key, provider_value
+            )
         else:
             if isinstance(k, AttentionOperatorQuantizedTensorInput) or isinstance(
                 v, AttentionOperatorQuantizedTensorInput
