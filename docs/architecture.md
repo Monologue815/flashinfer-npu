@@ -472,6 +472,10 @@ scorer。plan 发布后，`run()` 不重新评分、不重选 provider，也不�
 scorer 是纯 Host 策略：不得导入 CANN/flash-attention-npu、探测 NPU、读取 tensor
 内容、执行算子或触发在线 tuning。这样用户只提供 plan，框架即可在已有 package
 能力之间自动选择，同时决策仍可复现、可解释并绑定到具体 provider operation。
+provider 偏好可使用版本化的声明式规则表达；精确 workload tuning record 的
+precedence 高于 mode/layout/dtype/QuantSpec/page-size/token-range heuristic，同层规则
+重叠必须失败封闭。完整契约见
+[Attention plan scoring policy](attention_plan_scoring_policy.md)。
 
 ### 11.3 Autotuning
 

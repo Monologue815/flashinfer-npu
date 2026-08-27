@@ -29,7 +29,7 @@ from .operation_catalog import (
 from .operator_bootstrap import AttentionOperatorPackageRuntimeSpec
 
 
-ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION = 1
+ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION = 2
 
 _ROLE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -480,6 +480,16 @@ def describe_attention_operator_package_runtime(
         ),
         _component("tensor_metadata_inspector", spec.tensor_metadata_inspector),
     ]
+    if spec.plan_scorer is not None:
+        components.append(
+            _component(
+                "plan_scorer",
+                spec.plan_scorer,
+                provider_id=spec.plan_scorer.provider_id,
+                operation_id=spec.plan_scorer.operation_id,
+                policy_fingerprint=getattr(spec.plan_scorer, "fingerprint", None),
+            )
+        )
     for role, value in (
         ("jit_plan_resolver", spec.jit_plan_resolver),
         ("jit_artifact_resolver", spec.jit_artifact_resolver),

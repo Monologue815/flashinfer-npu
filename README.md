@@ -68,6 +68,12 @@ and flash-attention-npu operations. The score carries an inspectable source and
 reason; ties fail closed, and `run()` never rescores or falls back. Package
 imports, device probes and operator calls are forbidden during scoring.
 
+Provider preferences can be supplied as a versioned declarative policy rather
+than custom selection code. Exact workload tuning records and broader mode,
+layout, dtype, QuantSpec, page-size or token-range buckets use explicit
+precedence and fail closed on overlap. See
+[Attention plan scoring policy](docs/attention_plan_scoring_policy.md).
+
 Quantized provider candidates have an additional admission boundary: every
 capability `QuantSpec` must map key/value scale and, when applicable,
 independent zero-point sources to exact quantization arguments in the selected

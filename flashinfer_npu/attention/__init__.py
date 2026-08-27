@@ -406,6 +406,12 @@ from .operator_resolver import (
     AttentionOperatorRuntimeResolverRegistry,
     AttentionResolvedOperatorRuntime,
 )
+from .operator_scoring import (
+    ATTENTION_OPERATOR_SCORING_VERSION,
+    AttentionOperatorPlanScoreRule,
+    AttentionOperatorPlanScoringError,
+    AttentionOperatorPlanScoringPolicy,
+)
 from .operator_execution import (
     ATTENTION_OPERATOR_EXECUTION_VERSION,
     AttentionInjectedCallableExecutor,
@@ -567,6 +573,7 @@ __all__ = [
     "ATTENTION_OPERATOR_CALLABLE_VERSION",
     "ATTENTION_PROVIDER_ADAPTER_VERSION",
     "ATTENTION_OPERATOR_RESOLVER_VERSION",
+    "ATTENTION_OPERATOR_SCORING_VERSION",
     "ATTENTION_OPERATOR_PLAN_SCORE_MIN",
     "ATTENTION_OPERATOR_PLAN_SCORE_MAX",
     "ATTENTION_OPERATOR_EXECUTION_VERSION",
@@ -736,6 +743,9 @@ __all__ = [
     "AttentionOperatorRuntimeImplementationRegistry",
     "AttentionOperatorRuntimePlanScore",
     "AttentionOperatorRuntimePlanScorer",
+    "AttentionOperatorPlanScoreRule",
+    "AttentionOperatorPlanScoringError",
+    "AttentionOperatorPlanScoringPolicy",
     "AttentionOperatorRuntimeResolutionError",
     "AttentionOperatorRuntimeResolutionReport",
     "AttentionOperatorRuntimeResolver",

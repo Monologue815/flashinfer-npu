@@ -207,6 +207,8 @@ probe a device, read tensor contents, run an operator or perform online tuning.
 `explain()` exposes gate reasons and score evidence without package loading or
 device work, and its fingerprint therefore binds the decision to the plan.
 `run()` never rescales, rescores, retries or switches the selected provider.
+The versioned rule schema and ambiguity rules are defined in
+[Attention plan scoring policy](attention_plan_scoring_policy.md).
 
 ## 7. Operation catalog
 
