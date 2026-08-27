@@ -375,6 +375,14 @@ declarations keep rejecting caller-owned buffers. Original tensor objects are
 forwarded unchanged after validation; this layer neither reads device data nor
 performs a hidden copy/cast. A provider that needs a conversion must declare a
 separate materialization path rather than weakening the run contract.
+After the provider callable completes, the executor validates the public return
+arity again. A single-output run must return one non-container value; an LSE run
+must return exactly `(output, softmax_lse)`, and neither public value may be
+missing. When the caller supplied `out` or `lse`, the corresponding returned
+object must be that exact buffer object. The completion receipt records which
+public results retained caller ownership. This follows the FlashInfer wrapper
+contract and prevents an external package from silently replacing a validated
+buffer with a newly allocated tensor or an unrelated view.
 
 Provider-specific arguments are produced internally. Unknown arguments, missing
 bindings, stale receipts or identity drift are hard errors.

@@ -23,7 +23,7 @@ from .operator_callable import (
 from .operator_run import AttentionLoweredOperatorCall
 
 
-ATTENTION_OPERATOR_EXECUTION_VERSION = 1
+ATTENTION_OPERATOR_EXECUTION_VERSION = 2
 
 
 def _canonical_hash(value: Mapping[str, Any]) -> str:
@@ -53,6 +53,7 @@ class AttentionOperatorExecutionReceipt:
     provider_id: str
     operation_id: str
     return_names: Tuple[str, ...]
+    caller_owned_return_names: Tuple[str, ...] = ()
     schema_version: int = ATTENTION_OPERATOR_EXECUTION_VERSION
 
     def __post_init__(self) -> None:
@@ -69,7 +70,15 @@ class AttentionOperatorExecutionReceipt:
         returns = tuple(str(item) for item in self.return_names)
         if not returns or len(set(returns)) != len(returns):
             raise SchemaError("execution receipt return names must be unique")
+        caller_owned = tuple(str(item) for item in self.caller_owned_return_names)
+        if len(set(caller_owned)) != len(caller_owned) or not set(
+            caller_owned
+        ).issubset(returns):
+            raise SchemaError("execution receipt caller-owned returns are invalid")
+        if caller_owned != tuple(item for item in returns if item in caller_owned):
+            raise SchemaError("execution receipt caller-owned returns are out of order")
         object.__setattr__(self, "return_names", returns)
+        object.__setattr__(self, "caller_owned_return_names", caller_owned)
 
     def to_dict(self):
         return {
@@ -79,6 +88,7 @@ class AttentionOperatorExecutionReceipt:
             "provider_id": self.provider_id,
             "operation_id": self.operation_id,
             "return_names": list(self.return_names),
+            "caller_owned_return_names": list(self.caller_owned_return_names),
         }
 
     @property
@@ -180,24 +190,61 @@ class AttentionInjectedCallableExecutor:
             raise SchemaError("executor keyword arguments differ from operation")
         if not set(call.return_names).issubset(self._operation.return_names):
             raise SchemaError("executor return names differ from operation")
+        if not set(call.mutable_argument_names).issubset(
+            self._operation.mutable_arguments
+        ):
+            raise SchemaError("executor mutable arguments differ from operation")
 
         positional_values = tuple(value for _, value in call.positional_arguments)
         keyword_values = dict(call.keyword_arguments)
+        caller_buffers = {}
+        for return_name, argument_name in (
+            ("output", self._operation.output_buffer_argument),
+            ("softmax_lse", self._operation.lse_buffer_argument),
+        ):
+            if argument_name is None or keyword_values.get(argument_name) is None:
+                continue
+            if argument_name not in call.mutable_argument_names:
+                raise SchemaError(
+                    "caller-owned Attention buffer is not lowered as mutable"
+                )
+            if return_name not in call.return_names:
+                raise SchemaError(
+                    "caller-owned Attention buffer has no public return"
+                )
+            caller_buffers[return_name] = keyword_values[argument_name]
+
         raw_result = self._callable_object(*positional_values, **keyword_values)
         if len(call.return_names) == 1:
+            if isinstance(raw_result, (tuple, list)):
+                raise SchemaError("Attention callable return arity differs from lowering")
             public_result = raw_result
+            returned_values = (raw_result,)
         else:
             if not isinstance(raw_result, (tuple, list)):
                 raise SchemaError("Attention callable must return multiple values")
             if len(raw_result) != len(call.return_names):
                 raise SchemaError("Attention callable return arity differs from lowering")
             public_result = tuple(raw_result)
+            returned_values = public_result
+        if any(value is None for value in returned_values):
+            raise SchemaError("Attention callable returned no value for a public result")
+        for return_name, returned_value in zip(call.return_names, returned_values):
+            caller_buffer = caller_buffers.get(return_name)
+            if caller_buffer is not None and returned_value is not caller_buffer:
+                raise SchemaError(
+                    "Attention callable did not return the caller-owned %s buffer"
+                    % return_name
+                )
         self._last_execution_receipt = AttentionOperatorExecutionReceipt(
             runtime_binding_fingerprint=runtime.fingerprint,
             active_plan_fingerprint=call.active_plan_fingerprint,
             provider_id=self.provider_id,
             operation_id=self.operation_id,
             return_names=call.return_names,
+            caller_owned_return_names=tuple(
+                name for name in call.return_names if name in caller_buffers
+            ),
         )
         return public_result
 

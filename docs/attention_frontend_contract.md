@@ -93,6 +93,9 @@ return_lse=False
 与 return schema，不能总是计算后再静默丢弃。caller-owned `out/lse` 只有在选中 operation
 明确声明对应 mutable argument 后才能使用；当前返回 tensor 的 package API 不具备该绑定，
 所以这两个参数在 package invocation 前显式失败。
+provider callable 完成后，执行层再次检查公开返回数量和非空性；调用方提供 `out/lse` 时，
+对应返回对象必须与原 buffer 是同一个 Python 对象，并在 completion receipt 中记录其
+caller-owned 语义。框架不会把 provider 新分配的 tensor 或 view 静默伪装成调用方 buffer。
 ragged prefill 继续公开 `q_scale/k_scale/v_scale/o_scale`。其中 `o_scale` 是输出 scale，
 只有选中 operation 的量化 binding 同时声明精确参数名和允许的 plan 输出 dtype 时才会传入；
 它不会改变 plan 选择，也不会被解释成 KV scale。
