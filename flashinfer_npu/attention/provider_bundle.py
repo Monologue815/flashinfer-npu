@@ -28,9 +28,13 @@ from .operator_scoring import (
     AttentionOperatorPlanScoringManifest,
     AttentionOperatorPlanScoringPolicy,
 )
+from .provider_contribution import (
+    AttentionOperatorProviderIntegrationContribution,
+    AttentionOperatorProviderIntegrationContributionBinding,
+)
 
 
-ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 1
+ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 2
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -94,6 +98,9 @@ class AttentionOperatorProviderIntegrationBundleBinding:
     package_loader_id: str
     package_loader_type: str
     registration_bindings: Tuple[Tuple[str, str, str], ...]
+    contribution_bindings: Tuple[
+        AttentionOperatorProviderIntegrationContributionBinding, ...
+    ] = ()
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
 
     def __post_init__(self) -> None:
@@ -148,6 +155,44 @@ class AttentionOperatorProviderIntegrationBundleBinding:
             "registration_bindings",
             tuple(sorted(normalized, key=lambda item: item[:2])),
         )
+        contribution_bindings = tuple(self.contribution_bindings)
+        if any(
+            not isinstance(
+                item,
+                AttentionOperatorProviderIntegrationContributionBinding,
+            )
+            for item in contribution_bindings
+        ):
+            raise TypeError(
+                "contribution_bindings must contain provider contribution bindings"
+            )
+        contribution_ids = tuple(
+            item.contribution_id for item in contribution_bindings
+        )
+        if len(set(contribution_ids)) != len(contribution_ids):
+            raise SchemaError("Attention provider bundle contribution ids duplicate")
+        contribution_identities = tuple(
+            identity
+            for contribution in contribution_bindings
+            for identity in contribution.identities
+        )
+        if contribution_bindings and (
+            len(set(contribution_identities)) != len(contribution_identities)
+            or set(contribution_identities) != set(identities)
+        ):
+            raise SchemaError(
+                "Attention provider bundle contribution identity set differs"
+            )
+        object.__setattr__(
+            self,
+            "contribution_bindings",
+            tuple(
+                sorted(
+                    contribution_bindings,
+                    key=lambda item: item.contribution_id,
+                )
+            ),
+        )
         for name in (
             "bundle_id",
             "bundle_fingerprint",
@@ -178,6 +223,9 @@ class AttentionOperatorProviderIntegrationBundleBinding:
             "registration_bindings": [
                 list(item) for item in self.registration_bindings
             ],
+            "contribution_bindings": [
+                item.to_dict() for item in self.contribution_bindings
+            ],
         }
 
 
@@ -198,6 +246,9 @@ class AttentionOperatorProviderIntegrationBundle:
     package_loader: AttentionOperatorPackageLoader = field(
         repr=False, compare=False
     )
+    contribution_bindings: Tuple[
+        AttentionOperatorProviderIntegrationContributionBinding, ...
+    ] = ()
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
     _package_loader_id: str = field(init=False, repr=False, compare=False)
     _package_loader_type: str = field(init=False, repr=False, compare=False)
@@ -261,6 +312,34 @@ class AttentionOperatorProviderIntegrationBundle:
             raise SchemaError(
                 "provider integration bundle declarations duplicate"
             )
+        contribution_bindings = tuple(self.contribution_bindings)
+        if any(
+            not isinstance(
+                item,
+                AttentionOperatorProviderIntegrationContributionBinding,
+            )
+            for item in contribution_bindings
+        ):
+            raise TypeError(
+                "contribution_bindings must contain provider contribution bindings"
+            )
+        contribution_ids = tuple(
+            item.contribution_id for item in contribution_bindings
+        )
+        if len(set(contribution_ids)) != len(contribution_ids):
+            raise SchemaError("provider integration bundle contribution ids duplicate")
+        contribution_identities = tuple(
+            identity
+            for contribution in contribution_bindings
+            for identity in contribution.identities
+        )
+        if contribution_bindings and (
+            len(set(contribution_identities)) != len(contribution_identities)
+            or set(contribution_identities) != set(registration_identities)
+        ):
+            raise SchemaError(
+                "provider integration bundle contribution identity set differs"
+            )
         bind_attention_operator_plan_scoring_manifest(
             tuple(item.runtime_spec for item in registrations),
             self.scoring_manifest,
@@ -270,6 +349,16 @@ class AttentionOperatorProviderIntegrationBundle:
         object.__setattr__(self, "bundle_id", str(self.bundle_id))
         object.__setattr__(self, "_package_loader_id", loader_id)
         object.__setattr__(self, "_package_loader_type", loader_type)
+        object.__setattr__(
+            self,
+            "contribution_bindings",
+            tuple(
+                sorted(
+                    contribution_bindings,
+                    key=lambda item: item.contribution_id,
+                )
+            ),
+        )
         object.__setattr__(
             self,
             "registrations",
@@ -334,6 +423,9 @@ class AttentionOperatorProviderIntegrationBundle:
                 }
                 for item in self.registrations
             ],
+            "contributions": [
+                item.to_dict() for item in self.contribution_bindings
+            ],
         }
 
     @property
@@ -359,6 +451,7 @@ class AttentionOperatorProviderIntegrationBundle:
                 )
                 for item in self.registrations
             ),
+            contribution_bindings=self.contribution_bindings,
         )
 
 
@@ -393,6 +486,7 @@ def assemble_attention_operator_provider_integration_bundle(
     runtime_specs,
     scoring_policies,
     package_loader_routes,
+    contribution_bindings=(),
 ) -> AttentionOperatorProviderIntegrationBundle:
     """Derive one reviewable bundle from complete, exact provider inputs.
 
@@ -458,6 +552,64 @@ def assemble_attention_operator_provider_integration_bundle(
         registrations=registrations,
         scoring_manifest=scoring_manifest,
         package_loader=package_loader,
+        contribution_bindings=tuple(contribution_bindings),
+    )
+
+
+def assemble_attention_operator_provider_integration_contributions(
+    *,
+    bundle_id: str,
+    catalog_name: str,
+    scoring_manifest_id: str,
+    contributions,
+) -> AttentionOperatorProviderIntegrationBundle:
+    """Merge exact provider-owned contributions into one deployment bundle.
+
+    Every contribution is fully revalidated before its executable inputs are
+    flattened.  Final declarations are then regenerated against the deployment
+    catalog; provider-local declarations are audit evidence only and are never
+    installed.  This function does not observe an external package or device.
+    """
+
+    values = tuple(contributions)
+    if not values or any(
+        not isinstance(item, AttentionOperatorProviderIntegrationContribution)
+        for item in values
+    ):
+        raise TypeError(
+            "contributions must contain provider integration contributions"
+        )
+    contribution_ids = tuple(item.contribution_id for item in values)
+    if len(set(contribution_ids)) != len(contribution_ids):
+        raise SchemaError("Attention provider contribution ids duplicate")
+    normalized = tuple(sorted(values, key=lambda item: item.contribution_id))
+    for contribution in normalized:
+        contribution.validate()
+    return assemble_attention_operator_provider_integration_bundle(
+        bundle_id=bundle_id,
+        catalog_name=catalog_name,
+        scoring_manifest_id=scoring_manifest_id,
+        operations=tuple(
+            operation
+            for contribution in normalized
+            for operation in contribution.operations
+        ),
+        runtime_specs=tuple(
+            spec
+            for contribution in normalized
+            for spec in contribution.runtime_specs
+        ),
+        scoring_policies=tuple(
+            policy
+            for contribution in normalized
+            for policy in contribution.scoring_policies
+        ),
+        package_loader_routes=tuple(
+            route
+            for contribution in normalized
+            for route in contribution.package_loader_routes
+        ),
+        contribution_bindings=tuple(item.binding for item in normalized),
     )
 
 
@@ -466,5 +618,6 @@ __all__ = [
     "AttentionOperatorProviderIntegrationBundle",
     "AttentionOperatorProviderIntegrationBundleBinding",
     "assemble_attention_operator_provider_integration_bundle",
+    "assemble_attention_operator_provider_integration_contributions",
     "install_attention_operator_provider_integration_bundle",
 ]

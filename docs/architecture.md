@@ -519,6 +519,12 @@ runtime specs、生成最终 declarations、组合 routed loader，最后构造 
 影响最终身份。详见
 [Attention provider bundle assembly](attention_provider_bundle_assembly.md)。
 
+独立维护的 CANN 与 flash-attention-npu 适配模块各自只拥有单 provider contribution；部署层
+复核并合并 contributions 后，针对最终 catalog 重新生成 declarations。contribution 的不可
+执行 fingerprint 进入最终 bundle 身份，但模型侧 `plan()` / `run()` 接口不感知该层。该边界
+防止 provider 模块直接拥有或增量修改全局 catalog，见
+[Attention provider contribution](attention_provider_contributions.md)。
+
 ### 11.3 Autotuning
 
 - 离线 tuning 是主要模式，结果随 wheel 发布。

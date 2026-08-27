@@ -33,6 +33,7 @@
    持有的 `plan()` / `run()` 生命周期与自动 provider 选择。
 6. [`attention_provider_onboarding.md`](attention_provider_onboarding.md) 与
    [`attention_provider_integration_bundle.md`](attention_provider_integration_bundle.md)、
+   [`attention_provider_contributions.md`](attention_provider_contributions.md)、
    [`attention_provider_bundle_assembly.md`](attention_provider_bundle_assembly.md)：
    将精确版本的 CANN 或 flash-attention-npu Attention 能力组成完整审核包并原子接入自动路由。
    当同一 bundle 需要不同 package 加载边界时，继续阅读

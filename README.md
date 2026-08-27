@@ -71,6 +71,11 @@ operator; those checks remain plan-time gates. See
 The canonical side-effect-free assembly entrypoint for complete operation,
 runtime-spec, scoring-policy and loader-route sets is documented in
 [Attention provider bundle assembly](docs/attention_provider_bundle_assembly.md).
+Independently maintained CANN and flash-attention-npu adapters can publish
+provider-owned input slices and let the deployment layer merge them without
+giving either adapter ownership of the global catalog; this contract is
+documented in
+[Attention provider contributions](docs/attention_provider_contributions.md).
 Bundles containing CANN and flash-attention-npu operations can use distinct,
 exact package/callable delegates through the routed loader described in
 [Attention package loader routing](docs/attention_package_loader_routing.md).
@@ -141,6 +146,9 @@ Multi-package loader composition is specified in
 [`docs/attention_package_loader_routing.md`](docs/attention_package_loader_routing.md).
 The preferred complete bootstrap assembly flow is specified in
 [`docs/attention_provider_bundle_assembly.md`](docs/attention_provider_bundle_assembly.md).
+The independently reviewable provider input and deployment-owned merge boundary
+is specified in
+[`docs/attention_provider_contributions.md`](docs/attention_provider_contributions.md).
 The executable Host contract for INT8/UINT8/packed-INT4 KV Cache is documented
 in [`docs/attention_quantization.md`](docs/attention_quantization.md).
 Versioned correctness trace and replay semantics are documented in

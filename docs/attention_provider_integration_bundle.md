@@ -57,6 +57,12 @@ specs、scoring policies 和 loader routes 一步派生 bundle。它固定“先
 最终 catalog declaration”的顺序，详见
 [Attention provider bundle assembly](attention_provider_bundle_assembly.md)。
 
+如果 CANN 与 flash-attention-npu 适配输入由不同模块维护，模块应分别构造
+`AttentionOperatorProviderIntegrationContribution`，由部署层合并并重新生成最终 catalog
+declarations。bundle 会保存每个 contribution 的不可执行 binding，且 contribution
+fingerprints 进入 bundle fingerprint。详见
+[Attention provider contribution](attention_provider_contributions.md)。
+
 以下低层示意展示 assembly 内部必须保持的等价顺序：
 
 ```python
@@ -113,8 +119,8 @@ installed = install_attention_operator_provider_integration_bundle(
 - provider integration bundle binding；
 - 新 registry generation。
 
-bundle binding 是非执行数据，只包含 bundle、catalog、manifest、loader 和 registration
-的身份与 fingerprint。`attention_operator_runtime_registry_snapshot()` 会重新检查这些身份
+bundle binding 是非执行数据，只包含 bundle、catalog、manifest、loader、registration 和
+可选 provider contributions 的身份与 fingerprint。`attention_operator_runtime_registry_snapshot()` 会重新检查这些身份
 是否与同一快照中的 catalog、manifest 和 declarations 一致。任何一项漂移都不能构造有效
 快照。
 

@@ -493,7 +493,13 @@ from .provider_bundle import (
     AttentionOperatorProviderIntegrationBundle,
     AttentionOperatorProviderIntegrationBundleBinding,
     assemble_attention_operator_provider_integration_bundle,
+    assemble_attention_operator_provider_integration_contributions,
     install_attention_operator_provider_integration_bundle,
+)
+from .provider_contribution import (
+    ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION,
+    AttentionOperatorProviderIntegrationContribution,
+    AttentionOperatorProviderIntegrationContributionBinding,
 )
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
@@ -615,6 +621,7 @@ __all__ = [
     "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
     "ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
+    "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION",
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION",
     "ATTENTION_OPERATOR_EVIDENCE_MANIFEST_VERSION",
@@ -820,7 +827,10 @@ __all__ = [
     "AttentionOperatorRuntimeDeclarationBinding",
     "AttentionOperatorProviderIntegrationBundle",
     "AttentionOperatorProviderIntegrationBundleBinding",
+    "AttentionOperatorProviderIntegrationContribution",
+    "AttentionOperatorProviderIntegrationContributionBinding",
     "assemble_attention_operator_provider_integration_bundle",
+    "assemble_attention_operator_provider_integration_contributions",
     "bind_attention_operator_plan_scoring_manifest",
     "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",

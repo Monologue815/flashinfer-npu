@@ -83,6 +83,13 @@ validation 仍按原有 plan/run 门禁执行。assembly 不能绕过这些运�
 低层手工构造 catalog、manifest、declarations、routed loader 与 bundle 的 API 继续保留给
 框架组合和定向检查；生产适配模块应优先使用 assembly 入口，减少顺序错误和不完整集合。
 
+当 CANN 与 flash-attention-npu 由不同适配模块独立维护时，每个模块先生成只属于自身
+provider 的 `AttentionOperatorProviderIntegrationContribution`，部署层再调用
+`assemble_attention_operator_provider_integration_contributions()`。该入口复用本文的全局组装
+顺序，并把 contribution fingerprints 纳入最终 bundle；局部 declarations 只用于审核，不会
+直接进入全局 registrations。完整所有权与合并契约见
+[Attention provider contribution](attention_provider_contributions.md)。
+
 最终 bundle 契约见
 [Attention provider 集成包](attention_provider_integration_bundle.md)，loader route 约束见
 [Attention package loader 路由](attention_package_loader_routing.md)。

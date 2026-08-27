@@ -124,6 +124,12 @@ scoped catalog 和 manifest，再绑定 policies、生成 declarations、组合 
 bundle，避免不同 provider 使用局部 catalog 提前生成声明。完整流程见
 [Attention provider bundle assembly](attention_provider_bundle_assembly.md)。
 
+当 provider 适配由独立模块交付时，每个模块应把自己的四类完整输入封装为单 provider
+`AttentionOperatorProviderIntegrationContribution`；部署层使用
+`assemble_attention_operator_provider_integration_contributions()` 合并。provider 模块不拥有
+全局 catalog，部署层也不复用局部 declarations。所有权、漂移校验和 provenance 传播见
+[Attention provider contribution](attention_provider_contributions.md)。
+
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成
 `AttentionOperatorPackageRuntimeDeclaration`。这是纯数据审计快照，包含 operation/catalog、
