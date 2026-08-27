@@ -121,6 +121,11 @@ JIT 的 module/callable executor binding 发生在最终 active-plan runtime bin
 `bind_runtime()` 可能产生不同 executor 对象。因此另建 JIT runtime-executor binding，绑定
 原 JIT executor receipt、operator runtime binding、active plan 与最终 executor 对象；每次
 run 前验证。严格 JIT provider 的 atomic run receipt 还包含这张 binding 的 fingerprint。
+所有有状态 batch facade（holistic、paged prefill、ragged prefill、paged decode）通过只读
+`last_run_receipt` 属性代理最近一次严格 provider run 的 atomic receipt；该属性不返回
+executor、provider handle 或 runtime handle。尚未成功执行、验证失败、replan 后未运行，
+以及 reference route 都显式报 state error，不伪造 receipt。无状态 single prefill/decode
+继续保持 FlashInfer 的 tensor 或 `(tensor, lse)` 返回面，不增加 receipt 返回开关。
 ragged prefill 继续公开 `q_scale/k_scale/v_scale/o_scale`。其中 `o_scale` 是输出 scale，
 只有选中 operation 的量化 binding 同时声明精确参数名和允许的 plan 输出 dtype 时才会传入；
 它不会改变 plan 选择，也不会被解释成 KV scale。

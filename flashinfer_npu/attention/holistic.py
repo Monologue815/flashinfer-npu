@@ -19,7 +19,7 @@ from .frontend import (
     reference_index_values,
     require_reference_tensor,
 )
-from .planner import AttentionFrameworkSession
+from .planner import AttentionFrameworkSession, AttentionStateError
 from .operator_resolver import (
     AttentionOperatorBatchRuntime,
     AttentionOperatorRuntimeResolverRegistry,
@@ -220,6 +220,16 @@ class BatchAttention:
                 ),
             )
         return build_reference_plan_selection(plan)
+
+    @property
+    def last_run_receipt(self):
+        """Return read-only evidence for the latest validated provider run."""
+
+        if self._operator_runtime is None:
+            raise AttentionStateError(
+                "reference Attention runs do not publish provider run receipts"
+            )
+        return self._operator_runtime.last_run_receipt
 
     @property
     def workspace_contract(self):
