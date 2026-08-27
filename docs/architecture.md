@@ -505,6 +505,13 @@ wrapper runtime 在 plan commit 前把最终选中 operation 的 declaration 再
 核对；bundle id/fingerprint 随后进入只读 plan selection、completion 成功后的原子 run
 receipt 和 Host 离线审计报告。reference/legacy 路径不伪造这些可选身份字段。
 
+同一 bundle 可通过 `AttentionOperatorRoutedPackageLoader` 为 CANN 与
+flash-attention-npu operation 绑定不同 delegate。路由集合必须与 scoped catalog identity
+集合完全相等，package name 与 callable path 都执行 exact lookup；route fingerprint 覆盖
+每个 delegate 的稳定 loader id/type 并进入 bundle loader id。任何子 loader 身份漂移会
+使整个复合 loader 失败，不能按前缀猜测、按导入成功顺序选择或隐式换 route。详见
+[Attention package loader routing](attention_package_loader_routing.md)。
+
 ### 11.3 Autotuning
 
 - 离线 tuning 是主要模式，结果随 wheel 发布。

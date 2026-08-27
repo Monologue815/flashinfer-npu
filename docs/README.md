@@ -34,6 +34,8 @@
 6. [`attention_provider_onboarding.md`](attention_provider_onboarding.md) 与
    [`attention_provider_integration_bundle.md`](attention_provider_integration_bundle.md)：
    将精确版本的 CANN 或 flash-attention-npu Attention 能力组成完整审核包并原子接入自动路由。
+   当同一 bundle 需要不同 package 加载边界时，继续阅读
+   [`attention_package_loader_routing.md`](attention_package_loader_routing.md)。
 7. [`attention_plan_scoring_policy.md`](attention_plan_scoring_policy.md) 与
    [`attention_plan_scoring_audit.md`](attention_plan_scoring_audit.md)：声明式 provider
    评分、manifest 绑定和离线选择证据复核。

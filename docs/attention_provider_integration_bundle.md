@@ -44,6 +44,11 @@ callable observation 前复核同一身份，因此安装后的漂移也不能�
 固定，而实际观察到的版本与 callable signature 会在 plan-time resolution report 中记录
 并继续接受独立校验。
 
+当同一 bundle 中的 CANN 与 flash-attention-npu operation 需要不同 delegate 时，使用
+`AttentionOperatorRoutedPackageLoader` 组成一个精确、可审计的 bundle loader。它的
+loader id 内含完整 route fingerprint，且每条 route 与 scoped catalog operation 一一对应；
+具体约束见 [Attention package loader 路由](attention_package_loader_routing.md)。
+
 ## 构建与安装
 
 示意流程如下：

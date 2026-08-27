@@ -452,6 +452,12 @@ from .operator_package import (
     AttentionResolvedOperatorPackage,
     ImportlibAttentionOperatorPackageLoader,
 )
+from .operator_loader_routing import (
+    ATTENTION_OPERATOR_PACKAGE_LOADER_ROUTING_VERSION,
+    AttentionOperatorPackageLoaderRoute,
+    AttentionOperatorPackageLoaderRouteBinding,
+    AttentionOperatorRoutedPackageLoader,
+)
 from .operator_integration import (
     ATTENTION_OPERATOR_INTEGRATION_VERSION,
     AttentionOperatorIntegrationError,
@@ -602,6 +608,7 @@ __all__ = [
     "ATTENTION_OPERATOR_COMPLETION_VERSION",
     "ATTENTION_OPERATOR_RUN_RECEIPT_VERSION",
     "ATTENTION_OPERATOR_PACKAGE_VERSION",
+    "ATTENTION_OPERATOR_PACKAGE_LOADER_ROUTING_VERSION",
     "ATTENTION_OPERATOR_INTEGRATION_VERSION",
     "ATTENTION_OPERATOR_AUTHORITY_VERSION",
     "ATTENTION_OPERATOR_BOOTSTRAP_VERSION",
@@ -796,6 +803,9 @@ __all__ = [
     "AttentionOperatorPackageResolver",
     "AttentionResolvedOperatorPackage",
     "ImportlibAttentionOperatorPackageLoader",
+    "AttentionOperatorPackageLoaderRoute",
+    "AttentionOperatorPackageLoaderRouteBinding",
+    "AttentionOperatorRoutedPackageLoader",
     "AttentionOperatorIntegrationError",
     "AttentionOperatorPackageRuntimeImplementation",
     "AttentionOperatorPlanGate",

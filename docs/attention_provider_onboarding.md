@@ -167,6 +167,9 @@ registration = AttentionDeclaredOperatorPackageRuntimeSpec(
     runtime_spec=spec,
 )
 
+# 多 package/provider 部署可先把每个 operation 的专属 loader 组合为
+# AttentionOperatorRoutedPackageLoader；单 package 部署也可以直接使用其 loader。
+
 bundle = AttentionOperatorProviderIntegrationBundle(
     bundle_id=bundle_id,
     operation_catalog=operation_catalog,
@@ -196,7 +199,8 @@ capability 可运行或设备结果正确。后续 metadata probe、authority、
 `install_declared_attention_operator_runtime_resolvers()` 保留给框架组合、兼容路径与合成
 检查；真实 provider bootstrap 使用完整 bundle 与单一 bundle installer，
 避免 catalog、声明、评分 manifest 或 loader 身份被分开替换。完整 bundle 契约见
-[Attention provider 集成包](attention_provider_integration_bundle.md)。
+[Attention provider 集成包](attention_provider_integration_bundle.md)；多 loader 的精确路由
+见 [Attention package loader 路由](attention_package_loader_routing.md)。
 
 bundle installer 将 resolver、operation catalog 和每个
 `(provider_id, operation_id, declaration_fingerprint)` 作为同一 registry generation 原子

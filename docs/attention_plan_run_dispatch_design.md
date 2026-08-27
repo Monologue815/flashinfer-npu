@@ -228,6 +228,14 @@ surface. It maps a framework operation to an exact external API contract:
 The catalog and provider factory share one rule source. A plan accepted by the
 catalog must not later be rejected by a duplicated, drifting eligibility rule.
 
+When one production bundle contains operations that require different loading
+boundaries, an `AttentionOperatorRoutedPackageLoader` maps every catalog
+operation to an exact delegate. Package names and callable paths use exact
+lookup, and the complete canonical route fingerprint enters the bundle loader
+identity. It performs no prefix guessing, import fallback or provider
+selection. See
+[Attention package loader routing](attention_package_loader_routing.md).
+
 ## 8. Package runtime authority
 
 Package metadata alone is insufficient authorization to execute. The package
