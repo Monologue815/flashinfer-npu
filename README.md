@@ -177,6 +177,9 @@ The top-level data-only deployment authority and one-step atomic install are in
 [`docs/attention_provider_bootstrap.md`](docs/attention_provider_bootstrap.md).
 The executable Host contract for INT8/UINT8/packed-INT4 KV Cache is documented
 in [`docs/attention_quantization.md`](docs/attention_quantization.md).
+The provider-independent shape, dtype, device and layout contract for NVFP4
+`kv_cache_sf` is documented in
+[`docs/attention_nvfp4_scale_factor.md`](docs/attention_nvfp4_scale_factor.md).
 Versioned correctness trace and replay semantics are documented in
 [`docs/attention_trace.md`](docs/attention_trace.md).
 The separate lifecycle/stream/resource-ownership trace schema for injected JIT

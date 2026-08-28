@@ -14,8 +14,9 @@
 3. Attention 在什么位置反量化 K/V。
 4. plan、run、workload fingerprint 如何保证使用同一个量化语义。
 
-本阶段不声称支持 CANN、torch_npu、设备级 FP8 编码或执行、NVFP4、MX、设备 swizzle，
-也不声称任何 NPU 性能结果。Host logical FP8 oracle 是 correctness contract，不是生产 fallback。
+本阶段不声称支持 CANN、torch_npu、设备级 FP8/NVFP4 编码或执行、MX、设备 swizzle，
+也不声称任何 NPU 性能结果。NVFP4 仅建立 `kv_cache_sf` metadata contract；Host logical
+FP8 oracle 是 correctness contract，不是生产 fallback。
 
 ## 2. 分层模型
 
@@ -138,7 +139,9 @@ per-head 或 per-tensor scale；它定义 Attention/scale 语义，不模拟硬�
   自动生成 per-tensor QuantSpec；Host oracle 继续直接读取 logical FP8 `ReferenceTensor`。
   分离的裸 `(K, V)` cache 在内部获得 scalar virtual unit scale；provider 未声明参数省略
   等价于 1 时不能注册。合并 cache 需要经过验证的 slot-view binding，当前不会猜测或切片。
-- `kv_cache_sf` 仍保留上游 NVFP4 含义，当前显式报未实现，不能借用该参数表达 INT8/INT4。
+- `kv_cache_sf` 保留上游 NVFP4 含义，已有独立 Host metadata 契约，但尚未绑定 provider
+  lowering 或执行；不能借用该参数表达 INT8/INT4。形状与失败关闭规则见
+  [Attention NVFP4 KV scale-factor 契约](attention_nvfp4_scale_factor.md)。
 
 single facade 不增加公开 plan handle。调用者仍只调用
 `single_prefill_with_kv_cache(q, k, v, ...)` 或

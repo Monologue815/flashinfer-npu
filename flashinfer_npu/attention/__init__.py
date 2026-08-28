@@ -510,6 +510,12 @@ from .provider_bootstrap import (
     load_attention_operator_provider_integration_bootstrap_document,
     load_attention_operator_provider_integration_bootstrap_manifest,
 )
+from .nvfp4_scale_factor import (
+    ATTENTION_NVFP4_SCALE_FACTOR_VERSION,
+    NVFP4_SCALE_FACTOR_DTYPE,
+    AttentionNvfp4ScaleFactorView,
+    inspect_attention_nvfp4_kv_scale_factors,
+)
 from .provider_contribution import (
     ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION,
     AttentionOperatorProviderIntegrationContribution,
@@ -663,6 +669,8 @@ __all__ = [
     "ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_BOOTSTRAP_VERSION",
+    "ATTENTION_NVFP4_SCALE_FACTOR_VERSION",
+    "NVFP4_SCALE_FACTOR_DTYPE",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION",
@@ -874,6 +882,7 @@ __all__ = [
     "AttentionOperatorProviderIntegrationBundleBinding",
     "AttentionOperatorProviderIntegrationBootstrapManifest",
     "AttentionOperatorProviderIntegrationBootstrapDocument",
+    "AttentionNvfp4ScaleFactorView",
     "AttentionOperatorProviderIntegrationContribution",
     "AttentionOperatorProviderIntegrationContributionBinding",
     "AttentionOperatorProviderContributionManifest",
@@ -1045,6 +1054,7 @@ __all__ = [
     "dtype_itemsize",
     "decode_attention_json",
     "infer_quant_scale_shape",
+    "inspect_attention_nvfp4_kv_scale_factors",
     "install_declared_attention_operator_runtime_resolvers",
     "install_attention_operator_provider_integration_bundle",
     "install_attention_operator_provider_integration_bootstrap",

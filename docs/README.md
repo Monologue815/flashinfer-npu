@@ -47,6 +47,8 @@
    [`attention_plan_scoring_audit.md`](attention_plan_scoring_audit.md)：声明式 provider
    评分、manifest 绑定和离线选择证据复核。
 8. [`attention_quantization.md`](attention_quantization.md)：量化 KV Cache 语义。
+   NVFP4 `kv_cache_sf` 的独立 metadata 边界见
+   [`attention_nvfp4_scale_factor.md`](attention_nvfp4_scale_factor.md)。
 9. [`attention_workspace.md`](attention_workspace.md)：workspace 查询、容量和所有权。
 10. [`attention_capability_profile.md`](attention_capability_profile.md) 与
    [`support_matrix.md`](support_matrix.md)：外部算子包进入可执行路由前必须满足的能力声明。
