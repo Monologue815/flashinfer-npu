@@ -126,3 +126,8 @@ contribution 内容见 [Attention provider contribution](attention_provider_cont
 部署允许清单见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)，
 最终安装边界见 [Attention provider 集成包](attention_provider_integration_bundle.md)。
+
+当 factories 来自独立 adapter packages 时，部署方使用版本固定的 source declarations 和
+注入式 factory loader 显式解析；adapter package/version/factory path 会进入 source origin
+binding。详见
+[Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。

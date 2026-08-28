@@ -82,6 +82,8 @@ bounded, non-executable approval manifest described in
 Explicit adapter factories are injected through the non-discovering source
 registry described in
 [Attention provider contribution sources](docs/attention_provider_contribution_sources.md).
+Version-pinned adapter packages and injected factory loading are specified in
+[Attention provider contribution loading](docs/attention_provider_contribution_loading.md).
 Bundles containing CANN and flash-attention-npu operations can use distinct,
 exact package/callable delegates through the routed loader described in
 [Attention package loader routing](docs/attention_package_loader_routing.md).
@@ -159,6 +161,8 @@ The deployment approval allow-list and exact contribution matching rules are in
 [`docs/attention_provider_contribution_manifest.md`](docs/attention_provider_contribution_manifest.md).
 The controlled adapter-factory source and materialization boundary is in
 [`docs/attention_provider_contribution_sources.md`](docs/attention_provider_contribution_sources.md).
+The manifest-gated adapter declaration and factory-loader boundary is in
+[`docs/attention_provider_contribution_loading.md`](docs/attention_provider_contribution_loading.md).
 The executable Host contract for INT8/UINT8/packed-INT4 KV Cache is documented
 in [`docs/attention_quantization.md`](docs/attention_quantization.md).
 Versioned correctness trace and replay semantics are documented in

@@ -100,6 +100,9 @@ adapter contribution 不通过环境扫描获得。部署方应显式注入
 `AttentionOperatorProviderContributionSourceRegistry`，先在零 factory 调用条件下核对 source
 集合，再由 sources 生成与本清单精确匹配的 contributions。详见
 [Attention provider contribution source registry](attention_provider_contribution_sources.md)。
+版本固定的 adapter source declarations 必须在任何 package observation 前先与本清单核对
+provider/contribution 集合；加载规则见
+[Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 
 provider 所有权和局部审核内容见
 [Attention provider contribution](attention_provider_contributions.md)，最终原子安装见

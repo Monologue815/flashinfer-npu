@@ -12,7 +12,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, Protocol, Tuple, runtime_checkable
+from typing import Any, Dict, Mapping, Optional, Protocol, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import SchemaError
 
@@ -24,7 +24,7 @@ from .provider_contribution_manifest import (
 )
 
 
-ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION = 1
+ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION = 2
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -65,6 +65,56 @@ class AttentionOperatorProviderContributionFactory(Protocol):
 
 
 @dataclass(frozen=True)
+class AttentionOperatorProviderContributionSourceOriginBinding:
+    """Reviewed adapter-package origin for one explicitly loaded factory."""
+
+    adapter_package_name: str
+    observed_package_version: str
+    factory_path: str
+    factory_loader_id: str
+    factory_loader_type: str
+    declaration_fingerprint: str
+    schema_version: int = ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION:
+            raise SchemaError("unsupported Attention contribution source origin")
+        for name in (
+            "adapter_package_name",
+            "observed_package_version",
+            "factory_path",
+            "factory_loader_id",
+            "factory_loader_type",
+        ):
+            value = str(getattr(self, name))
+            if not value or any(item.isspace() for item in value):
+                raise SchemaError("Attention contribution source origin is invalid")
+            object.__setattr__(self, name, value)
+        if not _HASH.fullmatch(str(self.declaration_fingerprint)):
+            raise SchemaError(
+                "Attention contribution source declaration fingerprint is invalid"
+            )
+        object.__setattr__(
+            self, "declaration_fingerprint", str(self.declaration_fingerprint)
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "adapter_package_name": self.adapter_package_name,
+            "observed_package_version": self.observed_package_version,
+            "factory_path": self.factory_path,
+            "factory_loader_id": self.factory_loader_id,
+            "factory_loader_type": self.factory_loader_type,
+            "declaration_fingerprint": self.declaration_fingerprint,
+        }
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_hash(self.to_dict())
+
+
+@dataclass(frozen=True)
 class AttentionOperatorProviderContributionSourceBinding:
     """Non-executable identity for one explicitly injected adapter source."""
 
@@ -74,6 +124,9 @@ class AttentionOperatorProviderContributionSourceBinding:
     contribution_id: str
     factory_id: str
     factory_type: str
+    origin_binding: Optional[
+        AttentionOperatorProviderContributionSourceOriginBinding
+    ] = None
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION
 
     def __post_init__(self) -> None:
@@ -97,6 +150,11 @@ class AttentionOperatorProviderContributionSourceBinding:
             "factory_type",
         ):
             object.__setattr__(self, name, str(getattr(self, name)))
+        if self.origin_binding is not None and not isinstance(
+            self.origin_binding,
+            AttentionOperatorProviderContributionSourceOriginBinding,
+        ):
+            raise TypeError("origin_binding has the wrong type")
 
     @property
     def contribution_identity(self) -> Tuple[str, str]:
@@ -111,6 +169,11 @@ class AttentionOperatorProviderContributionSourceBinding:
             "contribution_id": self.contribution_id,
             "factory_id": self.factory_id,
             "factory_type": self.factory_type,
+            "origin_binding": (
+                None
+                if self.origin_binding is None
+                else self.origin_binding.to_dict()
+            ),
         }
 
     @property
@@ -129,6 +192,9 @@ class AttentionOperatorProviderContributionSource:
     factory: AttentionOperatorProviderContributionFactory = field(
         repr=False, compare=False
     )
+    origin_binding: Optional[
+        AttentionOperatorProviderContributionSourceOriginBinding
+    ] = None
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION
     _factory_id: str = field(init=False, repr=False, compare=False)
     _factory_type: str = field(init=False, repr=False, compare=False)
@@ -152,6 +218,7 @@ class AttentionOperatorProviderContributionSource:
             contribution_id=self.contribution_id,
             factory_id=factory_id,
             factory_type=factory_type,
+            origin_binding=self.origin_binding,
         )
         for name in (
             "source_id",
@@ -180,6 +247,7 @@ class AttentionOperatorProviderContributionSource:
             contribution_id=self.contribution_id,
             factory_id=self.factory_id,
             factory_type=self.factory_type,
+            origin_binding=self.origin_binding,
         )
 
     def validate_factory_identity(self) -> None:
@@ -380,6 +448,7 @@ __all__ = [
     "AttentionOperatorProviderContributionFactory",
     "AttentionOperatorProviderContributionSource",
     "AttentionOperatorProviderContributionSourceBinding",
+    "AttentionOperatorProviderContributionSourceOriginBinding",
     "AttentionOperatorProviderContributionSourceRegistry",
     "AttentionOperatorProviderContributionSourceRegistryBinding",
 ]

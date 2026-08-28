@@ -136,6 +136,9 @@ contribution bindings；仅检测到模块或外部包不能自动获得路由�
 adapter 模块通过显式 `AttentionOperatorProviderContributionSourceRegistry` 注入，不允许环境
 扫描或隐式 entry-point 注册；source-set、factory 身份与生成结果的校验见
 [Attention provider contribution source registry](attention_provider_contribution_sources.md)。
+如果 adapter factory 位于独立 package，使用精确 source declaration 与注入式 loader；禁止
+按环境扫描结果隐式 import。流程见
+[Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成

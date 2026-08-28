@@ -494,6 +494,7 @@ from .provider_bundle import (
     AttentionOperatorProviderIntegrationBundleBinding,
     assemble_attention_operator_provider_integration_bundle,
     assemble_attention_operator_provider_integration_contributions,
+    assemble_attention_operator_provider_integration_source_declarations,
     assemble_attention_operator_provider_integration_sources,
     install_attention_operator_provider_integration_bundle,
 )
@@ -514,8 +515,15 @@ from .provider_contribution_source import (
     AttentionOperatorProviderContributionFactory,
     AttentionOperatorProviderContributionSource,
     AttentionOperatorProviderContributionSourceBinding,
+    AttentionOperatorProviderContributionSourceOriginBinding,
     AttentionOperatorProviderContributionSourceRegistry,
     AttentionOperatorProviderContributionSourceRegistryBinding,
+)
+from .provider_contribution_loader import (
+    ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_LOADER_VERSION,
+    AttentionOperatorProviderContributionFactoryLoader,
+    AttentionOperatorProviderContributionSourceDeclaration,
+    AttentionOperatorProviderContributionSourceDeclarationRegistry,
 )
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
@@ -640,6 +648,7 @@ __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION",
+    "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_LOADER_VERSION",
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION",
     "ATTENTION_OPERATOR_EVIDENCE_MANIFEST_VERSION",
@@ -852,11 +861,16 @@ __all__ = [
     "AttentionOperatorProviderContributionFactory",
     "AttentionOperatorProviderContributionSource",
     "AttentionOperatorProviderContributionSourceBinding",
+    "AttentionOperatorProviderContributionSourceOriginBinding",
     "AttentionOperatorProviderContributionSourceRegistry",
     "AttentionOperatorProviderContributionSourceRegistryBinding",
+    "AttentionOperatorProviderContributionFactoryLoader",
+    "AttentionOperatorProviderContributionSourceDeclaration",
+    "AttentionOperatorProviderContributionSourceDeclarationRegistry",
     "DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
+    "assemble_attention_operator_provider_integration_source_declarations",
     "assemble_attention_operator_provider_integration_sources",
     "load_attention_operator_provider_contribution_manifest",
     "bind_attention_operator_plan_scoring_manifest",

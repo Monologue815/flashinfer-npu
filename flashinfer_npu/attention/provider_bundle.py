@@ -35,13 +35,16 @@ from .provider_contribution import (
 from .provider_contribution_manifest import (
     AttentionOperatorProviderContributionManifest,
 )
+from .provider_contribution_loader import (
+    AttentionOperatorProviderContributionSourceDeclarationRegistry,
+)
 from .provider_contribution_source import (
     AttentionOperatorProviderContributionSourceRegistry,
     AttentionOperatorProviderContributionSourceRegistryBinding,
 )
 
 
-ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 4
+ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 5
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -818,12 +821,43 @@ def assemble_attention_operator_provider_integration_sources(
     )
 
 
+def assemble_attention_operator_provider_integration_source_declarations(
+    *,
+    bundle_id: str,
+    catalog_name: str,
+    scoring_manifest_id: str,
+    source_declarations: (
+        AttentionOperatorProviderContributionSourceDeclarationRegistry
+    ),
+    approval_manifest: AttentionOperatorProviderContributionManifest,
+) -> AttentionOperatorProviderIntegrationBundle:
+    """Explicitly load approved adapter factories and assemble one bundle."""
+
+    if not isinstance(
+        source_declarations,
+        AttentionOperatorProviderContributionSourceDeclarationRegistry,
+    ):
+        raise TypeError(
+            "source_declarations must be "
+            "AttentionOperatorProviderContributionSourceDeclarationRegistry"
+        )
+    source_registry = source_declarations.load_sources(approval_manifest)
+    return assemble_attention_operator_provider_integration_sources(
+        bundle_id=bundle_id,
+        catalog_name=catalog_name,
+        scoring_manifest_id=scoring_manifest_id,
+        source_registry=source_registry,
+        approval_manifest=approval_manifest,
+    )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "AttentionOperatorProviderIntegrationBundle",
     "AttentionOperatorProviderIntegrationBundleBinding",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
+    "assemble_attention_operator_provider_integration_source_declarations",
     "assemble_attention_operator_provider_integration_sources",
     "install_attention_operator_provider_integration_bundle",
 ]

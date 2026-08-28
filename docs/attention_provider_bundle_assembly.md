@@ -97,6 +97,10 @@ provider 的 `AttentionOperatorProviderIntegrationContribution`，部署层再�
 `assemble_attention_operator_provider_integration_sources()`；它先按 approval manifest 精确
 物化受控 source registry，再进入本文相同的全局组装顺序。详见
 [Attention provider contribution source registry](attention_provider_contribution_sources.md)。
+版本固定的 adapter packages 使用
+`assemble_attention_operator_provider_integration_source_declarations()` 入口；显式 package
+observation、factory resolution 和 origin binding 见
+[Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 
 最终 bundle 契约见
 [Attention provider 集成包](attention_provider_integration_bundle.md)，loader route 约束见

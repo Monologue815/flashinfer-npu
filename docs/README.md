@@ -36,6 +36,7 @@
    [`attention_provider_contributions.md`](attention_provider_contributions.md)、
    [`attention_provider_contribution_manifest.md`](attention_provider_contribution_manifest.md)、
    [`attention_provider_contribution_sources.md`](attention_provider_contribution_sources.md)、
+   [`attention_provider_contribution_loading.md`](attention_provider_contribution_loading.md)、
    [`attention_provider_bundle_assembly.md`](attention_provider_bundle_assembly.md)：
    将精确版本的 CANN 或 flash-attention-npu Attention 能力组成完整审核包并原子接入自动路由。
    当同一 bundle 需要不同 package 加载边界时，继续阅读

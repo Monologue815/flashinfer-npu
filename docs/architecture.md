@@ -532,6 +532,10 @@ adapter factories 通过显式 source registry 注入；框架不扫描 entry po
 包。source registry provenance 进入 bundle 身份，实际 package observation 仍延迟到
 `plan()`，见
 [Attention provider contribution source registry](attention_provider_contribution_sources.md)。
+独立 adapter packages 通过版本固定的 source declarations 与注入式 factory loader 显式
+解析；origin binding 覆盖观察版本、factory path、loader id/type 和 declaration fingerprint。
+该 bootstrap 代码加载边界见
+[Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 
 ### 11.3 Autotuning
 

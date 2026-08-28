@@ -69,6 +69,9 @@ contribution bindings。manifest id/fingerprint 同时进入 bundle 及其 snaps
 通过受控 adapter sources 生成的 bundle 还保存不可执行 source registry binding，并要求它
 与全部 contribution bindings 一一对应。该边界见
 [Attention provider contribution source registry](attention_provider_contribution_sources.md)。
+adapter package/version、factory path、factory loader 和 declaration fingerprint 作为 source
+origin 传递到该 registry binding；加载边界见
+[Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 
 以下低层示意展示 assembly 内部必须保持的等价顺序：
 
