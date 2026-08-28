@@ -24,7 +24,7 @@ from .provider_contribution_manifest import (
 )
 
 
-ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION = 2
+ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION = 3
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _PROVIDER_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
@@ -74,6 +74,8 @@ class AttentionOperatorProviderContributionSourceOriginBinding:
     factory_loader_id: str
     factory_loader_type: str
     declaration_fingerprint: str
+    declaration_manifest_id: Optional[str] = None
+    declaration_manifest_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION
 
     def __post_init__(self) -> None:
@@ -97,6 +99,31 @@ class AttentionOperatorProviderContributionSourceOriginBinding:
         object.__setattr__(
             self, "declaration_fingerprint", str(self.declaration_fingerprint)
         )
+        manifest_identity = (
+            self.declaration_manifest_id,
+            self.declaration_manifest_fingerprint,
+        )
+        if (manifest_identity[0] is None) != (manifest_identity[1] is None):
+            raise SchemaError(
+                "Attention source declaration manifest identity is incomplete"
+            )
+        if manifest_identity[0] is not None:
+            if not _IDENTIFIER.fullmatch(str(manifest_identity[0])):
+                raise SchemaError(
+                    "Attention source declaration manifest id is invalid"
+                )
+            if not _HASH.fullmatch(str(manifest_identity[1])):
+                raise SchemaError(
+                    "Attention source declaration manifest fingerprint is invalid"
+                )
+            object.__setattr__(
+                self, "declaration_manifest_id", str(manifest_identity[0])
+            )
+            object.__setattr__(
+                self,
+                "declaration_manifest_fingerprint",
+                str(manifest_identity[1]),
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -107,6 +134,10 @@ class AttentionOperatorProviderContributionSourceOriginBinding:
             "factory_loader_id": self.factory_loader_id,
             "factory_loader_type": self.factory_loader_type,
             "declaration_fingerprint": self.declaration_fingerprint,
+            "declaration_manifest_id": self.declaration_manifest_id,
+            "declaration_manifest_fingerprint": (
+                self.declaration_manifest_fingerprint
+            ),
         }
 
     @property

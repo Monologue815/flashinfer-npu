@@ -145,3 +145,7 @@ source registry 语义见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)，
 provider callable 路由见
 [Attention package loader 路由](attention_package_loader_routing.md)。
+
+source declarations 可先作为 bounded、data-only manifest 独立审核，再与本节 loader 绑定；
+manifest schema、限额和一步组装入口见
+[Attention provider source declaration manifest](attention_provider_source_manifest.md)。

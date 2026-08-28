@@ -36,6 +36,8 @@ from .provider_contribution_manifest import (
     AttentionOperatorProviderContributionManifest,
 )
 from .provider_contribution_loader import (
+    AttentionOperatorProviderContributionFactoryLoader,
+    AttentionOperatorProviderContributionSourceDeclarationManifest,
     AttentionOperatorProviderContributionSourceDeclarationRegistry,
 )
 from .provider_contribution_source import (
@@ -44,7 +46,7 @@ from .provider_contribution_source import (
 )
 
 
-ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 5
+ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 6
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -851,6 +853,34 @@ def assemble_attention_operator_provider_integration_source_declarations(
     )
 
 
+def assemble_attention_operator_provider_integration_source_manifest(
+    *,
+    bundle_id: str,
+    catalog_name: str,
+    scoring_manifest_id: str,
+    source_manifest: (
+        AttentionOperatorProviderContributionSourceDeclarationManifest
+    ),
+    factory_loader: AttentionOperatorProviderContributionFactoryLoader,
+    approval_manifest: AttentionOperatorProviderContributionManifest,
+) -> AttentionOperatorProviderIntegrationBundle:
+    """Bind a data-only source manifest to a loader and assemble one bundle."""
+
+    source_declarations = (
+        AttentionOperatorProviderContributionSourceDeclarationRegistry.from_manifest(
+            source_manifest,
+            factory_loader=factory_loader,
+        )
+    )
+    return assemble_attention_operator_provider_integration_source_declarations(
+        bundle_id=bundle_id,
+        catalog_name=catalog_name,
+        scoring_manifest_id=scoring_manifest_id,
+        source_declarations=source_declarations,
+        approval_manifest=approval_manifest,
+    )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "AttentionOperatorProviderIntegrationBundle",
@@ -858,6 +888,7 @@ __all__ = [
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
     "assemble_attention_operator_provider_integration_source_declarations",
+    "assemble_attention_operator_provider_integration_source_manifest",
     "assemble_attention_operator_provider_integration_sources",
     "install_attention_operator_provider_integration_bundle",
 ]

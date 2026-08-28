@@ -141,6 +141,8 @@ adapter 模块通过显式 `AttentionOperatorProviderContributionSourceRegistry`
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 标准 Python 路径可显式选择 importlib factory loader；distribution 缺失、版本不匹配或精确
 factory path 不可解析都在 contribution 构造前失败。
+生产配置应优先以 bounded source declaration manifest 交付和审核，再在 bootstrap 绑定 loader；
+见 [Attention provider source declaration manifest](attention_provider_source_manifest.md)。
 
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成

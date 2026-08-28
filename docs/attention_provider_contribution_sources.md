@@ -132,3 +132,5 @@ contribution 内容见 [Attention provider contribution](attention_provider_cont
 binding。详见
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 Python 部署可以使用其中的显式 importlib factory loader；它不会扫描或自动注册 adapter。
+可序列化的完整 source declaration 集合见
+[Attention provider source declaration manifest](attention_provider_source_manifest.md)。

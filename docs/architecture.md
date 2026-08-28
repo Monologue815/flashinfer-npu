@@ -538,6 +538,9 @@ adapter factories 通过显式 source registry 注入；框架不扫描 entry po
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
 提供的 importlib 实现只解析 declarations 指定的 distribution 与 factory path，不承担插件
 发现、包安装或 provider operator callable 加载。
+source declarations 可作为 bounded data-only manifest 独立交付；manifest identity 随 source
+origin 进入 bundle，见
+[Attention provider source declaration manifest](attention_provider_source_manifest.md)。
 
 ### 11.3 Autotuning
 
