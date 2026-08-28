@@ -524,6 +524,7 @@ from .provider_contribution_loader import (
     AttentionOperatorProviderContributionFactoryLoader,
     AttentionOperatorProviderContributionSourceDeclaration,
     AttentionOperatorProviderContributionSourceDeclarationRegistry,
+    ImportlibAttentionOperatorProviderContributionFactoryLoader,
 )
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
@@ -867,6 +868,7 @@ __all__ = [
     "AttentionOperatorProviderContributionFactoryLoader",
     "AttentionOperatorProviderContributionSourceDeclaration",
     "AttentionOperatorProviderContributionSourceDeclarationRegistry",
+    "ImportlibAttentionOperatorProviderContributionFactoryLoader",
     "DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",

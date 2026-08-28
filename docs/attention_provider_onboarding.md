@@ -139,6 +139,8 @@ adapter 模块通过显式 `AttentionOperatorProviderContributionSourceRegistry`
 如果 adapter factory 位于独立 package，使用精确 source declaration 与注入式 loader；禁止
 按环境扫描结果隐式 import。流程见
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
+标准 Python 路径可显式选择 importlib factory loader；distribution 缺失、版本不匹配或精确
+factory path 不可解析都在 contribution 构造前失败。
 
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成

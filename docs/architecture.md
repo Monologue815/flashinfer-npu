@@ -536,6 +536,8 @@ adapter factories 通过显式 source registry 注入；框架不扫描 entry po
 解析；origin binding 覆盖观察版本、factory path、loader id/type 和 declaration fingerprint。
 该 bootstrap 代码加载边界见
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
+提供的 importlib 实现只解析 declarations 指定的 distribution 与 factory path，不承担插件
+发现、包安装或 provider operator callable 加载。
 
 ### 11.3 Autotuning
 

@@ -37,10 +37,17 @@ provider handle。source id、contribution id、provider-contribution identity �
 - `package_version(package_name)`；
 - `resolve_factory(factory_path)`。
 
-框架只定义协议，不在当前阶段提供默认 importlib 实现，也不会自行安装 adapter package。
-部署系统可以注入受控 loader；loader 的 id/type 在 declaration registry 构造时冻结，并在每次
+框架同时提供 `ImportlibAttentionOperatorProviderContributionFactoryLoader` 作为显式 Python
+实现。它使用 distribution metadata 读取精确版本，并仅对 declaration 指定的模块限定
+factory path 调用 importlib；它不扫描 entry points、不枚举模块，也不会自行安装 adapter
+package。部署系统也可以注入其他受控 loader。loader 的 id/type 在 declaration registry 构造时冻结，并在每次
 package observation 和 factory resolution 后重新验证。局部类、lambda、空白 id 或调用过程
 中的 loader 身份变化都会失败关闭。
+
+importlib loader 在 distribution 不存在时返回 `None`，由 declaration registry 作为不支持
+版本拒绝，且不会继续 import 模块。factory path 必须包含有效模块名和属性名；模块不可导入
+或属性不存在会转换为明确的 framework schema error。解析出的任意对象仍必须通过 factory
+protocol、id 和稳定类型校验，不能仅凭属性名称获得 contribution 构造权限。
 
 ## 加载顺序
 

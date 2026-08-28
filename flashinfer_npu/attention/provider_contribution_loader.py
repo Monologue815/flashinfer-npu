@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
+import importlib.metadata
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, Protocol, Tuple, runtime_checkable
+from typing import Any, Dict, Mapping, Optional, Protocol, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import SchemaError
 
@@ -55,13 +57,49 @@ class AttentionOperatorProviderContributionFactoryLoader(Protocol):
     def loader_id(self) -> str:
         ...
 
-    def package_version(self, package_name: str) -> str:
+    def package_version(self, package_name: str) -> Optional[str]:
         ...
 
     def resolve_factory(
         self, factory_path: str
     ) -> AttentionOperatorProviderContributionFactory:
         ...
+
+
+class ImportlibAttentionOperatorProviderContributionFactoryLoader:
+    """Explicit Python adapter loader; never scans or registers entry points."""
+
+    loader_id = "python.importlib.metadata.attention-contribution-factory.v1"
+
+    def package_version(self, package_name: str) -> Optional[str]:
+        try:
+            return importlib.metadata.version(str(package_name))
+        except importlib.metadata.PackageNotFoundError:
+            return None
+
+    def resolve_factory(
+        self, factory_path: str
+    ) -> AttentionOperatorProviderContributionFactory:
+        path = str(factory_path)
+        if not _FACTORY_PATH.fullmatch(path):
+            raise SchemaError("Attention adapter factory path is invalid")
+        module_name, separator, attribute_name = path.rpartition(".")
+        if not separator or not module_name or not attribute_name:
+            raise SchemaError(
+                "Attention adapter factory path must include a module and name"
+            )
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as error:
+            raise SchemaError(
+                "Attention adapter factory module %r is unavailable" % module_name
+            ) from error
+        try:
+            return getattr(module, attribute_name)
+        except AttributeError as error:
+            raise SchemaError(
+                "Attention adapter factory %r is absent" % path
+            ) from error
 
 
 @dataclass(frozen=True)
@@ -266,10 +304,16 @@ class AttentionOperatorProviderContributionSourceDeclarationRegistry:
         for declaration in self.declarations:
             package_name = declaration.adapter_package_name
             if package_name not in observed_versions:
-                version = str(self.factory_loader.package_version(package_name))
+                observed_version = self.factory_loader.package_version(package_name)
                 self.validate_factory_loader_identity()
+                version = (
+                    None
+                    if observed_version is None
+                    else str(observed_version)
+                )
                 if (
-                    not version
+                    version is None
+                    or not version
                     or any(item.isspace() for item in version)
                     or version not in declaration.supported_package_versions
                 ):
@@ -328,4 +372,5 @@ __all__ = [
     "AttentionOperatorProviderContributionFactoryLoader",
     "AttentionOperatorProviderContributionSourceDeclaration",
     "AttentionOperatorProviderContributionSourceDeclarationRegistry",
+    "ImportlibAttentionOperatorProviderContributionFactoryLoader",
 ]

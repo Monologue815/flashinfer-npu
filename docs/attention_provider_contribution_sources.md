@@ -131,3 +131,4 @@ contribution 内容见 [Attention provider contribution](attention_provider_cont
 注入式 factory loader 显式解析；adapter package/version/factory path 会进入 source origin
 binding。详见
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
+Python 部署可以使用其中的显式 importlib factory loader；它不会扫描或自动注册 adapter。
