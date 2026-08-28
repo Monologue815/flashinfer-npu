@@ -528,6 +528,9 @@ from .nvfp4_packed_kv import (
     NVFP4_STORAGE_SHAPE_RULE,
     AttentionNvfp4PackedKVView,
     AttentionNvfp4PackedLayoutDescriptor,
+    AttentionOperatorNvfp4PackedKVBinding,
+    AttentionOperatorNvfp4PackedKVRunAdapter,
+    AttentionOperatorNvfp4PackedKVRunAdapterFactory,
     inspect_attention_nvfp4_packed_kv_input,
 )
 from .provider_contribution import (
@@ -902,6 +905,9 @@ __all__ = [
     "AttentionNvfp4ScaleFactorView",
     "AttentionNvfp4PackedKVView",
     "AttentionNvfp4PackedLayoutDescriptor",
+    "AttentionOperatorNvfp4PackedKVBinding",
+    "AttentionOperatorNvfp4PackedKVRunAdapter",
+    "AttentionOperatorNvfp4PackedKVRunAdapterFactory",
     "AttentionOperatorNvfp4ScaleFactorBinding",
     "AttentionOperatorNvfp4ScaleFactorRunAdapter",
     "AttentionOperatorNvfp4ScaleFactorRunAdapterFactory",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping, Optional, Tuple
 
 from flashinfer_npu.runtime import QuantSpec, SchemaError
@@ -13,11 +13,17 @@ from .nvfp4_scale_factor import (
     ATTENTION_NVFP4_SCALE_FACTOR_VERSION,
     NVFP4_SCALE_FACTOR_DTYPE,
     AttentionNvfp4ScaleFactorView,
+    AttentionOperatorNvfp4ScaleFactorBinding,
     infer_attention_nvfp4_packed_storage_shape,
     inspect_attention_nvfp4_kv_scale_factors,
     validate_attention_nvfp4_kv_quant_spec,
 )
+from .operation_catalog import AttentionOperatorOperationSpec
+from .operator_plan import AttentionOperatorActivePlan
 from .operator_run import (
+    AttentionLoweredOperatorCall,
+    AttentionOperatorRunAdapter,
+    AttentionOperatorRunRequest,
     AttentionOperatorTensorMetadataInspector,
 )
 from .planner import AttentionFrameworkPlan
@@ -29,7 +35,7 @@ from .schema import (
     PagedPrefillMetadata,
     SingleAttentionMetadata,
 )
-from .tensor_contract import TensorView
+from .tensor_contract import AttentionTensorAccessPolicy, TensorView
 
 
 ATTENTION_NVFP4_PACKED_KV_VERSION = 1
@@ -130,6 +136,60 @@ class AttentionNvfp4PackedLayoutDescriptor:
             raise SchemaError(
                 "NVFP4 packed layout descriptor fields are invalid"
             ) from error
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_hash(self.to_dict())
+
+
+@dataclass(frozen=True)
+class AttentionOperatorNvfp4PackedKVBinding:
+    """Bind one NVFP4 parameter mapping to one packed-layout contract."""
+
+    scale_factor_binding: AttentionOperatorNvfp4ScaleFactorBinding
+    layout_descriptor: AttentionNvfp4PackedLayoutDescriptor
+    schema_version: int = ATTENTION_NVFP4_PACKED_KV_VERSION
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_NVFP4_PACKED_KV_VERSION:
+            raise SchemaError("unsupported Attention NVFP4 packed binding version")
+        if not isinstance(
+            self.scale_factor_binding, AttentionOperatorNvfp4ScaleFactorBinding
+        ):
+            raise TypeError("scale_factor_binding has the wrong type")
+        if not isinstance(
+            self.layout_descriptor, AttentionNvfp4PackedLayoutDescriptor
+        ):
+            raise TypeError("layout_descriptor has the wrong type")
+        self.layout_descriptor.validate_quant_spec(
+            self.scale_factor_binding.quant_spec
+        )
+
+    @property
+    def provider_id(self) -> str:
+        return self.scale_factor_binding.provider_id
+
+    @property
+    def operation_id(self) -> str:
+        return self.scale_factor_binding.operation_id
+
+    @property
+    def quant_spec(self) -> QuantSpec:
+        return self.scale_factor_binding.quant_spec
+
+    @property
+    def accepted_structures(self) -> Tuple[str, ...]:
+        return self.scale_factor_binding.accepted_structures
+
+    def validate_operation(self, operation: AttentionOperatorOperationSpec) -> None:
+        self.scale_factor_binding.validate_operation(operation)
+
+    def to_dict(self):
+        return {
+            "schema_version": self.schema_version,
+            "scale_factor_binding": self.scale_factor_binding.to_dict(),
+            "layout_descriptor": self.layout_descriptor.to_dict(),
+        }
 
     @property
     def fingerprint(self) -> str:
@@ -475,11 +535,178 @@ def inspect_attention_nvfp4_packed_kv_input(
     return result
 
 
+class AttentionOperatorNvfp4PackedKVRunAdapter:
+    """Lower one exact public NVFP4 KV input without executing the operation."""
+
+    def __init__(
+        self,
+        base_adapter: AttentionOperatorRunAdapter,
+        operation: AttentionOperatorOperationSpec,
+        binding: AttentionOperatorNvfp4PackedKVBinding,
+        tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+        tensor_access_policy: AttentionTensorAccessPolicy,
+        expected_device: str,
+    ) -> None:
+        if not isinstance(base_adapter, AttentionOperatorRunAdapter):
+            raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
+        if not isinstance(operation, AttentionOperatorOperationSpec):
+            raise TypeError("operation must be AttentionOperatorOperationSpec")
+        if not isinstance(binding, AttentionOperatorNvfp4PackedKVBinding):
+            raise TypeError("binding must be AttentionOperatorNvfp4PackedKVBinding")
+        binding.validate_operation(operation)
+        if base_adapter.provider_id != operation.provider_id:
+            raise SchemaError("NVFP4 packed base adapter provider differs")
+        if not isinstance(
+            tensor_metadata_inspector, AttentionOperatorTensorMetadataInspector
+        ):
+            raise TypeError("tensor_metadata_inspector has the wrong type")
+        if not isinstance(tensor_access_policy, AttentionTensorAccessPolicy):
+            raise TypeError("tensor_access_policy has the wrong type")
+        if not str(expected_device):
+            raise SchemaError("NVFP4 packed expected_device must be non-empty")
+        self.provider_id = operation.provider_id
+        self.operation_id = operation.operation_id
+        self._base_adapter = base_adapter
+        self._binding = binding
+        self._inspector = tensor_metadata_inspector
+        self._access_policy = tensor_access_policy
+        self._expected_device = str(expected_device)
+
+    def lower(
+        self,
+        active_plan: AttentionOperatorActivePlan,
+        request: AttentionOperatorRunRequest,
+    ) -> AttentionLoweredOperatorCall:
+        if not isinstance(active_plan, AttentionOperatorActivePlan):
+            raise TypeError("active_plan must be AttentionOperatorActivePlan")
+        if not isinstance(request, AttentionOperatorRunRequest):
+            raise TypeError("request must be AttentionOperatorRunRequest")
+        if active_plan.prepared_plan.implementation_id != self.operation_id:
+            raise SchemaError("NVFP4 packed active operation differs from binding")
+        quant_spec = active_plan.framework_plan.spec.kv_quant_spec
+        matches = (
+            quant_spec is not None
+            and quant_spec.fingerprint == self._binding.quant_spec.fingerprint
+        )
+        if not matches:
+            if request.kv_cache_sf is not None:
+                raise SchemaError(
+                    "kv_cache_sf has no exact NVFP4 packed QuantSpec binding"
+                )
+            return self._base_adapter.lower(active_plan, request)
+        if request.kv_cache_sf is None:
+            raise SchemaError("bound NVFP4 packed KV requires kv_cache_sf")
+
+        packed_kv = inspect_attention_nvfp4_packed_kv_input(
+            active_plan.framework_plan,
+            request.kv_cache,
+            request.kv_cache_sf,
+            self._inspector,
+            self._expected_device,
+            self._binding.layout_descriptor,
+        )
+        if packed_kv.structure not in self._binding.accepted_structures:
+            raise SchemaError("NVFP4 packed KV structure is not bound by operation")
+        for name, view in packed_kv.named_views:
+            view.require_alignment(self._access_policy.required_alignment, name)
+            if self._access_policy.require_contiguous_kv and not view.is_contiguous:
+                raise SchemaError("%s must be contiguous for provider lowering" % name)
+        if not self._access_policy.permit_output_input_alias:
+            for output_name, output in (("out", request.out), ("lse", request.lse)):
+                if output is None:
+                    continue
+                output_view = self._inspector.to_view(
+                    output, name=output_name, writable=True
+                )
+                if not isinstance(output_view, TensorView):
+                    raise TypeError("tensor metadata inspector must return TensorView")
+                for input_name, input_view in packed_kv.named_views:
+                    if output_view.overlaps(input_view):
+                        raise SchemaError(
+                            "%s cannot alias %s" % (output_name, input_name)
+                        )
+
+        delegated_request = replace(request, kv_cache_sf=None)
+        lowered = self._base_adapter.lower(active_plan, delegated_request)
+        if not isinstance(lowered, AttentionLoweredOperatorCall):
+            raise TypeError("base run adapter returned an invalid call description")
+        scale_binding = self._binding.scale_factor_binding
+        if packed_kv.structure == "combined":
+            injected = ((scale_binding.combined_argument, request.kv_cache_sf),)
+        else:
+            injected = (
+                (scale_binding.key_argument, request.kv_cache_sf[0]),
+                (scale_binding.value_argument, request.kv_cache_sf[1]),
+            )
+        existing_arguments = {
+            name
+            for name, _ in lowered.positional_arguments + lowered.keyword_arguments
+        }
+        collision = existing_arguments.intersection(name for name, _ in injected)
+        if collision:
+            raise SchemaError(
+                "NVFP4 packed argument collides with provider lowering: %s"
+                % sorted(collision)[0]
+            )
+        existing_views = tuple(lowered.validated_input_views)
+        existing_view_names = {name for name, _ in existing_views}
+        if existing_view_names.intersection(name for name, _ in packed_kv.named_views):
+            raise SchemaError("NVFP4 packed validated input view name collides")
+        return replace(
+            lowered,
+            keyword_arguments=lowered.keyword_arguments + injected,
+            validated_input_views=existing_views + packed_kv.named_views,
+            consumed_request_fields=request.consumed_fields,
+        )
+
+
+class AttentionOperatorNvfp4PackedKVRunAdapterFactory:
+    """Late-bind the reviewed joint NVFP4 contract to a provider device."""
+
+    def __init__(
+        self,
+        operation: AttentionOperatorOperationSpec,
+        binding: AttentionOperatorNvfp4PackedKVBinding,
+        tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+        tensor_access_policy: AttentionTensorAccessPolicy,
+    ) -> None:
+        if not isinstance(binding, AttentionOperatorNvfp4PackedKVBinding):
+            raise TypeError("binding must be AttentionOperatorNvfp4PackedKVBinding")
+        binding.validate_operation(operation)
+        if not isinstance(
+            tensor_metadata_inspector, AttentionOperatorTensorMetadataInspector
+        ):
+            raise TypeError("tensor_metadata_inspector has the wrong type")
+        if not isinstance(tensor_access_policy, AttentionTensorAccessPolicy):
+            raise TypeError("tensor_access_policy has the wrong type")
+        self.provider_id = operation.provider_id
+        self.operation_id = operation.operation_id
+        self._operation = operation
+        self._binding = binding
+        self._inspector = tensor_metadata_inspector
+        self._access_policy = tensor_access_policy
+
+    def build(
+        self, base_adapter: AttentionOperatorRunAdapter, device: str
+    ) -> AttentionOperatorRunAdapter:
+        return AttentionOperatorNvfp4PackedKVRunAdapter(
+            base_adapter,
+            self._operation,
+            self._binding,
+            self._inspector,
+            self._access_policy,
+            str(device),
+        )
+
+
 __all__ = [
     "ATTENTION_NVFP4_PACKED_KV_VERSION",
     "NVFP4_SCALE_SHAPE_RULE",
     "NVFP4_STORAGE_SHAPE_RULE",
     "AttentionNvfp4PackedKVView",
     "AttentionNvfp4PackedLayoutDescriptor",
+    "AttentionOperatorNvfp4PackedKVBinding",
+    "AttentionOperatorNvfp4PackedKVRunAdapter",
+    "AttentionOperatorNvfp4PackedKVRunAdapterFactory",
     "inspect_attention_nvfp4_packed_kv_input",
 ]

@@ -102,14 +102,45 @@ tensor。
 这些身份可以继续进入 lowering、completion validation 和 execution receipt，但 view 自身不会使
 任何 provider 获得执行权限。
 
-## 6. Provider 接入边界
+## 6. 联合 lowering 边界
+
+`AttentionOperatorNvfp4PackedKVBinding` 把两项已经审核的身份组成一个不可变 binding：
+
+- `AttentionOperatorNvfp4ScaleFactorBinding`：provider/operation、完整 QuantSpec，以及
+  combined 或 separate scale-factor 参数映射；
+- `AttentionNvfp4PackedLayoutDescriptor`：packed storage/scale shape rule、packing order 和
+  最小对齐。
+
+两部分必须引用同一个 physical layout、packing order 和完整 QuantSpec。binding fingerprint
+覆盖两者，避免只替换 layout descriptor 或参数映射后仍复用旧的审核身份。
+
+`AttentionOperatorNvfp4PackedKVRunAdapter` 是公开 packed KV 与 provider lowering 之间唯一的
+联合消费边界：
+
+1. active plan 的完整 QuantSpec 不匹配时，只有未提供 `kv_cache_sf` 才允许交给其他 adapter；
+2. active plan 命中 binding 时，`kv_cache_sf` 必须存在；
+3. adapter 调用本文的联合 inspector，并再次应用 provider access policy；
+4. 输出不得与 packed storage 或 scale-factor alias；
+5. adapter 从交给 base adapter 的内部 request 中清除 `kv_cache_sf`，防止重复消费；
+6. base adapter 完成 query/KV 等普通参数 lowering 后，adapter 才注入精确的 scale keyword；
+7. packed storage 与 scale-factor 的全部命名 view 进入 `validated_input_views`；
+8. 参数名或 view 名与其他 adapter 冲突时失败关闭。
+
+不匹配的量化 plan 不会被该 adapter 截获。这样通用 INT8/INT4/FP8 quantization adapter 与
+NVFP4 packed route 可以在同一 operation runtime 中保持互斥语义，而不是根据 `uint8` dtype 或
+`kv_cache_sf` 参数名猜测格式。
+
+`AttentionOperatorNvfp4PackedKVRunAdapterFactory` 只在 provider device 已确定后绑定上述 adapter。
+factory 构造、binding 校验和 `lower()` 都不解析 package callable，也不执行外部代码。
+
+## 7. Provider 接入边界
 
 真实 provider 接入需要同时提供：
 
 1. capability rule：证明目标 mode、dtype、layout、head dimension 和完整 NVFP4 QuantSpec 可用；
 2. packed layout descriptor：与外部 package 的实际 storage/scale ABI 一致；
 3. operation catalog 与精确参数 binding：声明 combined 或 separate `kv_cache_sf` 参数；
-4. run adapter：先生成本文的联合 view，再把验证后的对象映射到外部 callable 参数；
+4. runtime bootstrap：把联合 binding/factory 加入 operation 的 adapter chain；
 5. package/version/artifact evidence：防止同名参数或不同版本被误当成相同语义；
 6. completion 与准确性证据：证明真实执行结果属于被选中的 plan 和 operation。
 

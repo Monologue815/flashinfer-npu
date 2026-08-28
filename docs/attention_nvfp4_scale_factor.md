@@ -91,6 +91,10 @@ execution receipt 和离线证据链继续追踪输入身份。adapter 随后清
 算子。真实 provider 必须通过 contribution/bundle bootstrap 交付相同 binding 身份后，才能
 进入自动路由。
 
+生产 runtime 不应只组合 scale-factor adapter。公开 packed KV route 应使用
+`AttentionOperatorNvfp4PackedKVBinding` 和 `AttentionOperatorNvfp4PackedKVRunAdapter`，使
+storage 与 scale 在同一个 lowering 边界闭合；scale-factor adapter 保留为参数映射的底层契约。
+
 ## 与量化绑定的关系
 
 `kv_cache_sf` 是 NVFP4 的 per-block scale-factor 载体，与公开 `k_scale`/`v_scale` calibration
