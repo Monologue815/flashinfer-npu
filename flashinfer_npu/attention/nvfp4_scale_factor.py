@@ -70,6 +70,27 @@ def attention_nvfp4_kv_quant_spec(
     )
 
 
+def validate_attention_nvfp4_kv_quant_spec(quant_spec: QuantSpec) -> QuantSpec:
+    """Require the canonical public NVFP4 KV quantization semantics."""
+
+    if not isinstance(quant_spec, QuantSpec):
+        raise TypeError("NVFP4 quant_spec must be QuantSpec")
+    if (
+        quant_spec.scheme != "symmetric"
+        or quant_spec.storage_dtype != "uint8"
+        or quant_spec.scale_dtype != NVFP4_SCALE_FACTOR_DTYPE
+        or quant_spec.granularity != "block"
+        or quant_spec.group_size != (16,)
+        or quant_spec.axis != (-1,)
+        or quant_spec.has_zero_point
+        or quant_spec.physical_layout == "logical"
+        or not quant_spec.physical_layout
+        or not quant_spec.packing_order
+    ):
+        raise SchemaError("NVFP4 QuantSpec is not canonical")
+    return quant_spec
+
+
 def infer_attention_nvfp4_packed_storage_shape(
     logical_shape,
 ) -> Tuple[int, ...]:
@@ -104,20 +125,10 @@ class AttentionOperatorNvfp4ScaleFactorBinding:
             raise SchemaError("unsupported Attention NVFP4 binding version")
         if not str(self.provider_id) or not str(self.operation_id):
             raise SchemaError("NVFP4 binding identities must be non-empty")
-        if not isinstance(self.quant_spec, QuantSpec):
-            raise TypeError("NVFP4 binding quant_spec must be QuantSpec")
-        if (
-            self.quant_spec.scheme != "symmetric"
-            or self.quant_spec.storage_dtype != "uint8"
-            or self.quant_spec.scale_dtype != NVFP4_SCALE_FACTOR_DTYPE
-            or self.quant_spec.granularity != "block"
-            or self.quant_spec.group_size != (16,)
-            or self.quant_spec.axis != (-1,)
-            or self.quant_spec.has_zero_point
-            or self.quant_spec.physical_layout == "logical"
-            or not self.quant_spec.packing_order
-        ):
-            raise SchemaError("NVFP4 binding QuantSpec is not canonical")
+        try:
+            validate_attention_nvfp4_kv_quant_spec(self.quant_spec)
+        except SchemaError as error:
+            raise SchemaError("NVFP4 binding QuantSpec is not canonical") from error
         if self.layout_id != "linear":
             raise SchemaError("NVFP4 binding layout is not registered")
         arguments = tuple(
@@ -507,4 +518,5 @@ __all__ = [
     "attention_nvfp4_kv_quant_spec",
     "infer_attention_nvfp4_packed_storage_shape",
     "inspect_attention_nvfp4_kv_scale_factors",
+    "validate_attention_nvfp4_kv_quant_spec",
 ]

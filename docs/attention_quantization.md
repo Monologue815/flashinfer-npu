@@ -140,9 +140,11 @@ per-head 或 per-tensor scale；它定义 Attention/scale 语义，不模拟硬�
   分离的裸 `(K, V)` cache 在内部获得 scalar virtual unit scale；provider 未声明参数省略
   等价于 1 时不能注册。合并 cache 需要经过验证的 slot-view binding，当前不会猜测或切片。
 - `kv_cache_sf` 保留上游 NVFP4 含义，已有独立 Host metadata 契约和精确 operation lowering
-  binding；binding 同时固定 packed NVFP4 QuantSpec 与 provider-explicit physical layout/packing。
+  binding；packed storage 与 scale-factor 还会组成一个 plan-bound 联合 view。binding 同时固定
+  packed NVFP4 QuantSpec 与 provider-explicit physical layout/packing。
   尚无真实 provider contribution 或执行授权，不能借用该参数表达 INT8/INT4。规则见
-  [Attention NVFP4 KV scale-factor 契约](attention_nvfp4_scale_factor.md)。
+  [Attention NVFP4 KV scale-factor 契约](attention_nvfp4_scale_factor.md)和
+  [Attention NVFP4 packed KV 联合输入契约](attention_nvfp4_packed_kv.md)。
 
 single facade 不增加公开 plan handle。调用者仍只调用
 `single_prefill_with_kv_cache(q, k, v, ...)` 或
@@ -244,5 +246,6 @@ case 清单或执行结果。
    真实昇腾 tensor 的 CANN/flash-attention-npu runtime spec。
 
 需要实际 unit-scale tensor、而不是参数缺省语义的 provider 尚需增加 plan-owned
-materialization；NVFP4、MX、真实非逻辑 layout descriptor/converter、K/V 不同
-`QuantSpec` 配置和量化 packed combined-KV allocation 仍是显式 gap。
+materialization；NVFP4 已有 framework-only packed KV/scale 联合 metadata 契约，但真实 provider
+descriptor、converter、operation 接线与执行仍是显式 gap。MX、K/V 不同 `QuantSpec` 配置和
+通用量化 packed combined-KV allocation 也尚未实现。

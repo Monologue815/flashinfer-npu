@@ -11,6 +11,10 @@ metadata 检查形成 `AttentionNvfp4ScaleFactorView`。只有显式构造
 `AttentionOperatorNvfp4ScaleFactorRunAdapter` 才能把 scale factor 加入 lowered call。
 仓库没有为任何真实 provider 注册该 binding，因此现有生产运行路径继续失败关闭。
 
+scale-factor 不能脱离 packed K/V storage 单独形成可执行授权。二者的联合 shape、layout、
+设备和 alias 闭合由
+[`Attention NVFP4 packed KV 联合输入契约`](attention_nvfp4_packed_kv.md)定义。
+
 ## 公开结构
 
 single Attention 只接受 `(k_scales, v_scales)`；scale tensor 与 K/V 的逻辑排列一致，最后一维
@@ -92,8 +96,8 @@ execution receipt 和离线证据链继续追踪输入身份。adapter 随后清
 `kv_cache_sf` 是 NVFP4 的 per-block scale-factor 载体，与公开 `k_scale`/`v_scale` calibration
 参数不同，也不能复用现有 INT8/INT4 的 key/value scale source。后续 operation binding 必须：
 
-1. 将本文已经固定的 NVFP4 storage `QuantSpec` 与带 provenance 的 physical-layout descriptor
-   和 capability rule 绑定；
+1. 将本文已经固定的 NVFP4 storage `QuantSpec` 与
+   `AttentionNvfp4PackedLayoutDescriptor`、联合 packed-KV view 和 capability rule 绑定；
 2. 使用本文的 operation binding 声明 provider callable 接收 combined 还是 separate scale factors；
 3. 把本契约产生的 tensor views 纳入 alignment、alias 和 execution identity；
 4. 在 lowering 中显式消费 `kv_cache_sf`，且不与 `k_scale`/`v_scale` 混淆；
