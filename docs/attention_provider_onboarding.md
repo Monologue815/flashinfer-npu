@@ -50,7 +50,8 @@ runtime spec 至少绑定：
 - exact provider-operation plan scoring policy（由审核后的 manifest 绑定）；
 - pure plan gate、logical plan factory 与 logical run adapter；
 - tensor materializer、metadata inspector 和 access policy；
-- 量化参数映射与非逻辑 physical layout 目录/证据（如适用）；
+- 通用量化参数映射，以及独立的 NVFP4 packed-KV binding（如适用）；
+- 非逻辑 physical layout 目录/证据与对应 KV POD v2 ABI（如适用）；
 - JIT resolver/binder 链（仅在该 provider 确实使用 JIT 时）。
 
 `validate_provider_results` 默认必须保持 `True`。只允许无真实 tensor 结果的合成测试
@@ -106,6 +107,12 @@ K/V scale、K/V zero point、Q/K/V/output runtime scale 和 per-head scale 彼�
 `AttentionOperatorQuantizedKVInput`；single/ragged 的独立 K/V 槽可承载
 `AttentionOperatorQuantizedTensorInput`。这些对象不暴露 provider plan 或 callable。
 
+NVFP4 不复用上述通用 quantized-input wrapper。provider 将完整 packed-storage/scale layout
+descriptor 和 scale-factor 参数映射组成 `AttentionOperatorNvfp4PackedKVBinding`，并放入
+runtime spec 的 `nvfp4_packed_kv_bindings`。通用 `quantization_bindings` 与 NVFP4 binding 的
+QuantSpec 集合必须互斥，二者并集精确覆盖 capability rules。non-logical NVFP4 layout 还要求
+kernel descriptor 使用 KV POD v2 launch/binary ABI；仅有 Python 参数映射不足以获得授权。
+
 ### 4.5 实现调用与完成校验
 
 logical run adapter 只把已经验证的 lowered call 映射到外部 callable 参数。算子返回后，
@@ -155,6 +162,8 @@ contribution approval、factory loader 与最终 bundle 命名，并通过一步
 包版本、环境、profile、kernel descriptor、量化/physical-layout evidence、结果校验开关和
 适配组件类型身份，但不包含 callable、opaque plan 或 tensor。声明的创建、JSON 加载和
 `validate_runtime_spec()` 漂移校验均不得查询外部包、导入 provider 或访问 device。
+NVFP4 runtime 还会把每个联合 binding fingerprint 写入声明；layout、packing、alignment 或
+scale 参数映射变化都会使旧声明失效。
 
 声明通过评审后，集成模块在进程 bootstrap 阶段构建 resolver，并原子安装：
 
@@ -175,6 +184,7 @@ spec = AttentionOperatorPackageRuntimeSpec(
     tensor_metadata_inspector=tensor_metadata_inspector,
     tensor_access_policy=tensor_access_policy,
     quantization_bindings=quantization_bindings,
+    nvfp4_packed_kv_bindings=nvfp4_packed_kv_bindings,
 )
 
 # scoring_manifest 先通过 bounded JSON loader；其 identity 集合必须与

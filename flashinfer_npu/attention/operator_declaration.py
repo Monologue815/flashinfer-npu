@@ -33,7 +33,7 @@ from .operator_bootstrap import (
 from .operator_scoring import AttentionOperatorPlanScoringManifest
 
 
-ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION = 2
+ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION = 3
 
 _ROLE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -160,6 +160,7 @@ class AttentionOperatorPackageRuntimeDeclaration:
     components: Tuple[AttentionOperatorRuntimeComponentDeclaration, ...]
     tensor_access_policy_fingerprint: str
     quantization_binding_fingerprints: Tuple[str, ...]
+    nvfp4_packed_kv_binding_fingerprints: Tuple[str, ...]
     quant_physical_layout_catalog_fingerprint: str
     physical_layout_evidence_bundle_fingerprint: Optional[str]
     numerics_policy_fingerprint: str
@@ -238,6 +239,11 @@ class AttentionOperatorPackageRuntimeDeclaration:
         quant = tuple(str(item) for item in self.quantization_binding_fingerprints)
         if any(not _HASH.fullmatch(item) for item in quant):
             raise SchemaError("quantization binding fingerprint must be SHA-256")
+        nvfp4 = tuple(
+            str(item) for item in self.nvfp4_packed_kv_binding_fingerprints
+        )
+        if any(not _HASH.fullmatch(item) for item in nvfp4):
+            raise SchemaError("NVFP4 packed binding fingerprint must be SHA-256")
         tuned = tuple(str(item) for item in self.tuned_kernel_ids)
         if any(not item for item in tuned) or len(set(tuned)) != len(tuned):
             raise SchemaError("runtime declaration tuned kernel ids are invalid")
@@ -250,6 +256,11 @@ class AttentionOperatorPackageRuntimeDeclaration:
         object.__setattr__(self, "descriptor_bindings", tuple(sorted(descriptors)))
         object.__setattr__(self, "components", tuple(sorted(components, key=lambda x: x.role)))
         object.__setattr__(self, "quantization_binding_fingerprints", tuple(sorted(quant)))
+        object.__setattr__(
+            self,
+            "nvfp4_packed_kv_binding_fingerprints",
+            tuple(sorted(nvfp4)),
+        )
         object.__setattr__(self, "tuned_kernel_ids", tuple(sorted(tuned)))
 
     def to_dict(self):
@@ -277,6 +288,9 @@ class AttentionOperatorPackageRuntimeDeclaration:
             "quantization_binding_fingerprints": list(
                 self.quantization_binding_fingerprints
             ),
+            "nvfp4_packed_kv_binding_fingerprints": list(
+                self.nvfp4_packed_kv_binding_fingerprints
+            ),
             "quant_physical_layout_catalog_fingerprint": (
                 self.quant_physical_layout_catalog_fingerprint
             ),
@@ -303,6 +317,7 @@ class AttentionOperatorPackageRuntimeDeclaration:
             "profile_bindings",
             "descriptor_bindings",
             "quantization_binding_fingerprints",
+            "nvfp4_packed_kv_binding_fingerprints",
             "tuned_kernel_ids",
         ):
             if not isinstance(data.get(name), (list, tuple)):
@@ -545,6 +560,9 @@ def describe_attention_operator_package_runtime(
         tensor_access_policy_fingerprint=spec.tensor_access_policy.fingerprint,
         quantization_binding_fingerprints=tuple(
             binding.fingerprint for binding in spec.quantization_bindings
+        ),
+        nvfp4_packed_kv_binding_fingerprints=tuple(
+            binding.fingerprint for binding in spec.nvfp4_packed_kv_bindings
         ),
         quant_physical_layout_catalog_fingerprint=(
             spec.quant_physical_layout_catalog.fingerprint

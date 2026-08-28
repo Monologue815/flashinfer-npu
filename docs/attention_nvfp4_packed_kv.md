@@ -133,14 +133,37 @@ NVFP4 packed route 可以在同一 operation runtime 中保持互斥语义，而
 `AttentionOperatorNvfp4PackedKVRunAdapterFactory` 只在 provider device 已确定后绑定上述 adapter。
 factory 构造、binding 校验和 `lower()` 都不解析 package callable，也不执行外部代码。
 
-## 7. Provider 接入边界
+## 7. Runtime spec 注册
+
+provider 通过 `AttentionOperatorPackageRuntimeSpec.nvfp4_packed_kv_bindings` 注册一个或多个联合
+binding。bootstrap 把 operation capability rules 中的全部 QuantSpec 划分为两个互斥集合：
+
+- `quantization_bindings`：通用 INT8/INT4/FP8 quantized-input route；
+- `nvfp4_packed_kv_bindings`：公开 packed KV + `kv_cache_sf` route。
+
+两个集合不能包含相同 QuantSpec fingerprint，其并集必须与该 operation 的 capability QuantSpec
+集合完全相等。缺失 binding、没有 capability 的孤立 binding、重复 routing、operation/provider
+identity 漂移都会在 package metadata probe 和 callable import 之前失败。
+
+通用 quantization adapter 会获得明确的 delegated QuantSpec 集合。遇到 NVFP4 plan 时它只把请求
+交给联合 adapter，遇到自己拥有的 QuantSpec 时才解析项目 quantized-input wrapper；因此 adapter
+顺序不再承担隐式格式选择。联合 factory 以完整 binding 集合构造一个 fingerprint-indexed route，
+没有命中的 `kv_cache_sf` 仍失败关闭。
+
+`AttentionOperatorPackageRuntimeDeclaration` 保存
+`nvfp4_packed_kv_binding_fingerprints`。layout、packing、alignment、operation 参数映射或完整
+QuantSpec 任一变化都会改变 declaration fingerprint，并被 `validate_runtime_spec()` 识别为审核后
+漂移。声明只保存 SHA-256 身份，不序列化 tensor、adapter 对象或 callable。
+
+## 8. Provider 接入边界
 
 真实 provider 接入需要同时提供：
 
 1. capability rule：证明目标 mode、dtype、layout、head dimension 和完整 NVFP4 QuantSpec 可用；
 2. packed layout descriptor：与外部 package 的实际 storage/scale ABI 一致；
 3. operation catalog 与精确参数 binding：声明 combined 或 separate `kv_cache_sf` 参数；
-4. runtime bootstrap：把联合 binding/factory 加入 operation 的 adapter chain；
+4. runtime bootstrap：在 `nvfp4_packed_kv_bindings` 注册联合 binding，并由框架把 factory 加入
+   operation 的 adapter chain；
 5. package/version/artifact evidence：防止同名参数或不同版本被误当成相同语义；
 6. completion 与准确性证据：证明真实执行结果属于被选中的 plan 和 operation。
 

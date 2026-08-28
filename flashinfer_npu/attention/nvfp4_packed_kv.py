@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, replace
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 from flashinfer_npu.runtime import QuantSpec, SchemaError
 
@@ -19,6 +19,7 @@ from .nvfp4_scale_factor import (
     validate_attention_nvfp4_kv_quant_spec,
 )
 from .operation_catalog import AttentionOperatorOperationSpec
+from .capability import AttentionBackendCapabilityProfile
 from .operator_plan import AttentionOperatorActivePlan
 from .operator_run import (
     AttentionLoweredOperatorCall,
@@ -194,6 +195,46 @@ class AttentionOperatorNvfp4PackedKVBinding:
     @property
     def fingerprint(self) -> str:
         return _canonical_hash(self.to_dict())
+
+
+def validate_attention_operator_nvfp4_packed_kv_bindings(
+    operation: AttentionOperatorOperationSpec,
+    profiles: Sequence[AttentionBackendCapabilityProfile],
+    bindings: Sequence[AttentionOperatorNvfp4PackedKVBinding],
+) -> Tuple[AttentionOperatorNvfp4PackedKVBinding, ...]:
+    """Require each packed binding to have exact catalog and capability authority."""
+
+    if not isinstance(operation, AttentionOperatorOperationSpec):
+        raise TypeError("operation must be AttentionOperatorOperationSpec")
+    profile_values = tuple(profiles)
+    if any(
+        not isinstance(item, AttentionBackendCapabilityProfile)
+        for item in profile_values
+    ):
+        raise TypeError("profiles must contain capability profiles")
+    binding_values = tuple(bindings)
+    if any(
+        not isinstance(item, AttentionOperatorNvfp4PackedKVBinding)
+        for item in binding_values
+    ):
+        raise TypeError("bindings must contain NVFP4 packed KV bindings")
+    fingerprints = tuple(item.quant_spec.fingerprint for item in binding_values)
+    if len(set(fingerprints)) != len(fingerprints):
+        raise SchemaError("duplicate NVFP4 packed QuantSpec binding")
+    capability_fingerprints = {
+        quant_spec.fingerprint
+        for profile in profile_values
+        for rule in profile.rules
+        if set(rule.modes).intersection(operation.candidate_modes)
+        for quant_spec in rule.quant_specs
+    }
+    for binding in binding_values:
+        binding.validate_operation(operation)
+        if binding.quant_spec.fingerprint not in capability_fingerprints:
+            raise SchemaError(
+                "NVFP4 packed binding has no capability QuantSpec"
+            )
+    return tuple(sorted(binding_values, key=lambda item: item.quant_spec.fingerprint))
 
 
 def _require_tensor(
@@ -542,7 +583,10 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
         self,
         base_adapter: AttentionOperatorRunAdapter,
         operation: AttentionOperatorOperationSpec,
-        binding: AttentionOperatorNvfp4PackedKVBinding,
+        bindings: Union[
+            AttentionOperatorNvfp4PackedKVBinding,
+            Sequence[AttentionOperatorNvfp4PackedKVBinding],
+        ],
         tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
         tensor_access_policy: AttentionTensorAccessPolicy,
         expected_device: str,
@@ -551,9 +595,21 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
             raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
         if not isinstance(operation, AttentionOperatorOperationSpec):
             raise TypeError("operation must be AttentionOperatorOperationSpec")
-        if not isinstance(binding, AttentionOperatorNvfp4PackedKVBinding):
-            raise TypeError("binding must be AttentionOperatorNvfp4PackedKVBinding")
-        binding.validate_operation(operation)
+        values = (
+            (bindings,)
+            if isinstance(bindings, AttentionOperatorNvfp4PackedKVBinding)
+            else tuple(bindings)
+        )
+        if not values or any(
+            not isinstance(item, AttentionOperatorNvfp4PackedKVBinding)
+            for item in values
+        ):
+            raise TypeError("bindings must contain NVFP4 packed KV bindings")
+        for binding in values:
+            binding.validate_operation(operation)
+        fingerprints = tuple(item.quant_spec.fingerprint for item in values)
+        if len(set(fingerprints)) != len(fingerprints):
+            raise SchemaError("duplicate NVFP4 packed QuantSpec binding")
         if base_adapter.provider_id != operation.provider_id:
             raise SchemaError("NVFP4 packed base adapter provider differs")
         if not isinstance(
@@ -567,7 +623,9 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
         self.provider_id = operation.provider_id
         self.operation_id = operation.operation_id
         self._base_adapter = base_adapter
-        self._binding = binding
+        self._bindings = {
+            item.quant_spec.fingerprint: item for item in values
+        }
         self._inspector = tensor_metadata_inspector
         self._access_policy = tensor_access_policy
         self._expected_device = str(expected_device)
@@ -584,11 +642,12 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
         if active_plan.prepared_plan.implementation_id != self.operation_id:
             raise SchemaError("NVFP4 packed active operation differs from binding")
         quant_spec = active_plan.framework_plan.spec.kv_quant_spec
-        matches = (
-            quant_spec is not None
-            and quant_spec.fingerprint == self._binding.quant_spec.fingerprint
+        binding = (
+            None
+            if quant_spec is None
+            else self._bindings.get(quant_spec.fingerprint)
         )
-        if not matches:
+        if binding is None:
             if request.kv_cache_sf is not None:
                 raise SchemaError(
                     "kv_cache_sf has no exact NVFP4 packed QuantSpec binding"
@@ -603,9 +662,9 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
             request.kv_cache_sf,
             self._inspector,
             self._expected_device,
-            self._binding.layout_descriptor,
+            binding.layout_descriptor,
         )
-        if packed_kv.structure not in self._binding.accepted_structures:
+        if packed_kv.structure not in binding.accepted_structures:
             raise SchemaError("NVFP4 packed KV structure is not bound by operation")
         for name, view in packed_kv.named_views:
             view.require_alignment(self._access_policy.required_alignment, name)
@@ -630,7 +689,7 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
         lowered = self._base_adapter.lower(active_plan, delegated_request)
         if not isinstance(lowered, AttentionLoweredOperatorCall):
             raise TypeError("base run adapter returned an invalid call description")
-        scale_binding = self._binding.scale_factor_binding
+        scale_binding = binding.scale_factor_binding
         if packed_kv.structure == "combined":
             injected = ((scale_binding.combined_argument, request.kv_cache_sf),)
         else:
@@ -666,13 +725,28 @@ class AttentionOperatorNvfp4PackedKVRunAdapterFactory:
     def __init__(
         self,
         operation: AttentionOperatorOperationSpec,
-        binding: AttentionOperatorNvfp4PackedKVBinding,
+        bindings: Union[
+            AttentionOperatorNvfp4PackedKVBinding,
+            Sequence[AttentionOperatorNvfp4PackedKVBinding],
+        ],
         tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
         tensor_access_policy: AttentionTensorAccessPolicy,
     ) -> None:
-        if not isinstance(binding, AttentionOperatorNvfp4PackedKVBinding):
-            raise TypeError("binding must be AttentionOperatorNvfp4PackedKVBinding")
-        binding.validate_operation(operation)
+        values = (
+            (bindings,)
+            if isinstance(bindings, AttentionOperatorNvfp4PackedKVBinding)
+            else tuple(bindings)
+        )
+        if not values or any(
+            not isinstance(item, AttentionOperatorNvfp4PackedKVBinding)
+            for item in values
+        ):
+            raise TypeError("bindings must contain NVFP4 packed KV bindings")
+        for binding in values:
+            binding.validate_operation(operation)
+        fingerprints = tuple(item.quant_spec.fingerprint for item in values)
+        if len(set(fingerprints)) != len(fingerprints):
+            raise SchemaError("duplicate NVFP4 packed QuantSpec binding")
         if not isinstance(
             tensor_metadata_inspector, AttentionOperatorTensorMetadataInspector
         ):
@@ -682,7 +756,7 @@ class AttentionOperatorNvfp4PackedKVRunAdapterFactory:
         self.provider_id = operation.provider_id
         self.operation_id = operation.operation_id
         self._operation = operation
-        self._binding = binding
+        self._bindings = values
         self._inspector = tensor_metadata_inspector
         self._access_policy = tensor_access_policy
 
@@ -692,7 +766,7 @@ class AttentionOperatorNvfp4PackedKVRunAdapterFactory:
         return AttentionOperatorNvfp4PackedKVRunAdapter(
             base_adapter,
             self._operation,
-            self._binding,
+            self._bindings,
             self._inspector,
             self._access_policy,
             str(device),
@@ -709,4 +783,5 @@ __all__ = [
     "AttentionOperatorNvfp4PackedKVRunAdapter",
     "AttentionOperatorNvfp4PackedKVRunAdapterFactory",
     "inspect_attention_nvfp4_packed_kv_input",
+    "validate_attention_operator_nvfp4_packed_kv_bindings",
 ]

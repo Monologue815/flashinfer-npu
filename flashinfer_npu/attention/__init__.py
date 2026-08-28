@@ -532,6 +532,7 @@ from .nvfp4_packed_kv import (
     AttentionOperatorNvfp4PackedKVRunAdapter,
     AttentionOperatorNvfp4PackedKVRunAdapterFactory,
     inspect_attention_nvfp4_packed_kv_input,
+    validate_attention_operator_nvfp4_packed_kv_bindings,
 )
 from .provider_contribution import (
     ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION,
@@ -908,6 +909,7 @@ __all__ = [
     "AttentionOperatorNvfp4PackedKVBinding",
     "AttentionOperatorNvfp4PackedKVRunAdapter",
     "AttentionOperatorNvfp4PackedKVRunAdapterFactory",
+    "validate_attention_operator_nvfp4_packed_kv_bindings",
     "AttentionOperatorNvfp4ScaleFactorBinding",
     "AttentionOperatorNvfp4ScaleFactorRunAdapter",
     "AttentionOperatorNvfp4ScaleFactorRunAdapterFactory",

@@ -59,6 +59,11 @@ from .operator_quantization import (
     AttentionOperatorQuantizationRunAdapterFactory,
     validate_attention_operator_quantization_bindings,
 )
+from .nvfp4_packed_kv import (
+    AttentionOperatorNvfp4PackedKVBinding,
+    AttentionOperatorNvfp4PackedKVRunAdapterFactory,
+    validate_attention_operator_nvfp4_packed_kv_bindings,
+)
 from .quant_physical_layout import (
     EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG,
     QuantPhysicalLayoutCatalog,
@@ -83,7 +88,7 @@ from .operator_run import (
 from .tensor_contract import AttentionTensorAccessPolicy
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 13
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 14
 
 
 @dataclass(frozen=True)
@@ -106,6 +111,9 @@ class AttentionOperatorPackageRuntimeSpec:
     plan_scorer: Optional[AttentionOperatorRuntimePlanScorer] = None
     validate_provider_results: bool = True
     quantization_bindings: Tuple[AttentionOperatorQuantizationBinding, ...] = ()
+    nvfp4_packed_kv_bindings: Tuple[
+        AttentionOperatorNvfp4PackedKVBinding, ...
+    ] = ()
     quant_physical_layout_catalog: QuantPhysicalLayoutCatalog = (
         EMPTY_QUANT_PHYSICAL_LAYOUT_CATALOG
     )
@@ -195,6 +203,30 @@ class AttentionOperatorPackageRuntimeSpec:
             raise TypeError(
                 "bootstrap quantization_bindings must contain quantization bindings"
             )
+        nvfp4_bindings = tuple(self.nvfp4_packed_kv_bindings)
+        if any(
+            not isinstance(item, AttentionOperatorNvfp4PackedKVBinding)
+            for item in nvfp4_bindings
+        ):
+            raise TypeError(
+                "bootstrap nvfp4_packed_kv_bindings must contain packed bindings"
+            )
+        nvfp4_fingerprints = tuple(
+            item.quant_spec.fingerprint for item in nvfp4_bindings
+        )
+        if len(set(nvfp4_fingerprints)) != len(nvfp4_fingerprints):
+            raise SchemaError("bootstrap contains duplicate NVFP4 QuantSpec binding")
+        general_fingerprints = {
+            item.quant_spec.fingerprint for item in quantization_bindings
+        }
+        if general_fingerprints.intersection(nvfp4_fingerprints):
+            raise SchemaError("bootstrap routes one QuantSpec through two bindings")
+        if any(
+            item.provider_id != self.plan_gate.provider_id
+            or item.operation_id != self.operation_id
+            for item in nvfp4_bindings
+        ):
+            raise SchemaError("bootstrap NVFP4 binding identity differs")
         if self.tensor_metadata_inspector is None:
             raise SchemaError(
                 "bootstrap provider runtime requires a tensor metadata inspector"
@@ -280,6 +312,9 @@ class AttentionOperatorPackageRuntimeSpec:
         object.__setattr__(self, "descriptors", descriptors)
         object.__setattr__(
             self, "quantization_bindings", quantization_bindings
+        )
+        object.__setattr__(
+            self, "nvfp4_packed_kv_bindings", nvfp4_bindings
         )
         object.__setattr__(self, "tuned_kernel_ids", tuned_ids)
         object.__setattr__(self, "replay_evidence", bool(self.replay_evidence))
@@ -374,8 +409,17 @@ def build_attention_operator_package_runtime(
     operation = operation_catalog.get(spec.operation_id)
     if operation.provider_id != spec.provider_id:
         raise SchemaError("bootstrap operation and plan gate providers differ")
+    nvfp4_bindings = validate_attention_operator_nvfp4_packed_kv_bindings(
+        operation, spec.profiles, spec.nvfp4_packed_kv_bindings
+    )
+    delegated_quant_specs = tuple(
+        item.quant_spec for item in nvfp4_bindings
+    )
     quantization_bindings = validate_attention_operator_quantization_bindings(
-        operation, spec.profiles, spec.quantization_bindings
+        operation,
+        spec.profiles,
+        spec.quantization_bindings,
+        delegated_quant_specs=delegated_quant_specs,
     )
     evidence_bundle = spec.physical_layout_evidence_bundle
     if evidence_bundle is not None:
@@ -389,7 +433,10 @@ def build_attention_operator_package_runtime(
     else:
         physical_layout_evidence = ()
     plan_gate = AttentionOperatorQuantizationPlanGate(
-        spec.plan_gate, operation, quantization_bindings
+        spec.plan_gate,
+        operation,
+        quantization_bindings,
+        delegated_quant_specs,
     )
     run_adapter_factories = []
     if quantization_bindings:
@@ -404,6 +451,16 @@ def build_attention_operator_package_runtime(
                 spec.descriptors,
                 spec.observed_environment,
                 physical_layout_evidence,
+                delegated_quant_specs,
+            )
+        )
+    if nvfp4_bindings:
+        run_adapter_factories.append(
+            AttentionOperatorNvfp4PackedKVRunAdapterFactory(
+                operation,
+                nvfp4_bindings,
+                spec.tensor_metadata_inspector,
+                spec.tensor_access_policy,
             )
         )
     run_adapter_factories.append(

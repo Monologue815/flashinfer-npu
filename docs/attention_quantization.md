@@ -142,7 +142,8 @@ per-head 或 per-tensor scale；它定义 Attention/scale 语义，不模拟硬�
 - `kv_cache_sf` 保留上游 NVFP4 含义，已有独立 Host metadata 契约和精确 operation lowering
   binding；packed storage 与 scale-factor 还会组成一个 plan-bound 联合 view，并由专用联合
   adapter 在同一个 lowering 边界消费。binding 同时固定 packed NVFP4 QuantSpec 与
-  provider-explicit physical layout/packing。
+  provider-explicit physical layout/packing，并通过 runtime spec 的独立 binding 集合进入
+  plan admission 和 adapter chain。
   尚无真实 provider contribution 或执行授权，不能借用该参数表达 INT8/INT4。规则见
   [Attention NVFP4 KV scale-factor 契约](attention_nvfp4_scale_factor.md)和
   [Attention NVFP4 packed KV 联合输入契约](attention_nvfp4_packed_kv.md)。

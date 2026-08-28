@@ -782,6 +782,8 @@ def validate_attention_operator_quantization_bindings(
     operation: AttentionOperatorOperationSpec,
     profiles: Sequence[AttentionBackendCapabilityProfile],
     bindings: Sequence[AttentionOperatorQuantizationBinding],
+    *,
+    delegated_quant_specs: Sequence[QuantSpec] = (),
 ) -> Tuple[AttentionOperatorQuantizationBinding, ...]:
     """Require exact agreement between capability rules and API arguments."""
 
@@ -804,6 +806,14 @@ def validate_attention_operator_quantization_bindings(
     )
     if len(set(binding_fingerprints)) != len(binding_fingerprints):
         raise SchemaError("duplicate operation QuantSpec binding")
+    delegated_values = tuple(delegated_quant_specs)
+    if any(not isinstance(item, QuantSpec) for item in delegated_values):
+        raise TypeError("delegated_quant_specs must contain QuantSpec values")
+    delegated_fingerprints = tuple(item.fingerprint for item in delegated_values)
+    if len(set(delegated_fingerprints)) != len(delegated_fingerprints):
+        raise SchemaError("duplicate delegated QuantSpec binding")
+    if set(binding_fingerprints).intersection(delegated_fingerprints):
+        raise SchemaError("QuantSpec cannot use general and delegated bindings")
     catalog_quant_arguments = set(operation.quant_arguments)
     for binding in binding_values:
         if (
@@ -910,7 +920,9 @@ def validate_attention_operator_quantization_bindings(
         for quant_spec in rule.quant_specs
     }
     profile_fingerprints = set(profile_quant_specs)
-    declared_fingerprints = set(binding_fingerprints)
+    declared_fingerprints = set(binding_fingerprints).union(
+        delegated_fingerprints
+    )
     if profile_fingerprints != declared_fingerprints:
         missing = profile_fingerprints.difference(declared_fingerprints)
         if missing:
@@ -973,6 +985,7 @@ class AttentionOperatorQuantizationPlanGate:
         base_gate: AttentionOperatorPlanGate,
         operation: AttentionOperatorOperationSpec,
         bindings: Sequence[AttentionOperatorQuantizationBinding],
+        delegated_quant_specs: Sequence[QuantSpec] = (),
     ) -> None:
         if not isinstance(base_gate, AttentionOperatorPlanGate):
             raise TypeError("base_gate must implement AttentionOperatorPlanGate")
@@ -998,12 +1011,20 @@ class AttentionOperatorQuantizationPlanGate:
         fingerprints = tuple(item.quant_spec.fingerprint for item in values)
         if len(set(fingerprints)) != len(fingerprints):
             raise SchemaError("quantization gate contains duplicate QuantSpec")
+        delegated_values = tuple(delegated_quant_specs)
+        if any(not isinstance(item, QuantSpec) for item in delegated_values):
+            raise TypeError("delegated_quant_specs must contain QuantSpec values")
+        delegated_fingerprints = tuple(item.fingerprint for item in delegated_values)
+        if len(set(delegated_fingerprints)) != len(delegated_fingerprints):
+            raise SchemaError("quantization gate contains duplicate delegated QuantSpec")
+        if set(fingerprints).intersection(delegated_fingerprints):
+            raise SchemaError("quantization gate routes one QuantSpec twice")
         self.provider_id = operation.provider_id
         self.operation_id = operation.operation_id
         self._base_gate = base_gate
-        self._bindings = {
-            item.quant_spec.fingerprint: item for item in values
-        }
+        self._bound_fingerprints = frozenset(fingerprints).union(
+            delegated_fingerprints
+        )
 
     def rejection_reasons(
         self, plan: AttentionFrameworkPlan, device: str
@@ -1016,7 +1037,7 @@ class AttentionOperatorQuantizationPlanGate:
         quant_spec = plan.spec.kv_quant_spec
         if (
             quant_spec is not None
-            and quant_spec.fingerprint not in self._bindings
+            and quant_spec.fingerprint not in self._bound_fingerprints
         ):
             reasons += (
                 "provider operation has no exact KV QuantSpec argument binding",
@@ -1042,6 +1063,7 @@ class AttentionOperatorQuantizationRunAdapter:
         physical_layout_evidence: Sequence[
             AttentionOperatorPhysicalLayoutEvidence
         ],
+        delegated_quant_specs: Sequence[QuantSpec] = (),
     ) -> None:
         if not isinstance(base_adapter, AttentionOperatorRunAdapter):
             raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
@@ -1098,12 +1120,23 @@ class AttentionOperatorQuantizationRunAdapter:
         fingerprints = tuple(item.quant_spec.fingerprint for item in values)
         if len(set(fingerprints)) != len(fingerprints):
             raise SchemaError("quantization run adapter contains duplicate QuantSpec")
+        delegated_values = tuple(delegated_quant_specs)
+        if any(not isinstance(item, QuantSpec) for item in delegated_values):
+            raise TypeError("delegated_quant_specs must contain QuantSpec values")
+        delegated_fingerprints = tuple(item.fingerprint for item in delegated_values)
+        if len(set(delegated_fingerprints)) != len(delegated_fingerprints):
+            raise SchemaError("quantization run adapter has duplicate delegated QuantSpec")
+        if set(fingerprints).intersection(delegated_fingerprints):
+            raise SchemaError("quantization run adapter routes one QuantSpec twice")
         self.provider_id = operation.provider_id
         self.operation_id = operation.operation_id
         self._base_adapter = base_adapter
         self._bindings = {
             item.quant_spec.fingerprint: item for item in values
         }
+        self._delegated_quant_spec_fingerprints = frozenset(
+            delegated_fingerprints
+        )
         self._tensor_metadata_inspector = tensor_metadata_inspector
         self._tensor_access_policy = tensor_access_policy
         self._expected_device = str(expected_device)
@@ -1127,6 +1160,8 @@ class AttentionOperatorQuantizationRunAdapter:
             return self._base_adapter.lower(active_plan, request)
         binding = self._bindings.get(quant_spec.fingerprint)
         if binding is None:
+            if quant_spec.fingerprint in self._delegated_quant_spec_fingerprints:
+                return self._base_adapter.lower(active_plan, request)
             raise SchemaError("active quantized plan has no exact API binding")
         kv_input = request.kv_cache
         if not isinstance(kv_input, AttentionOperatorQuantizedKVInput):
@@ -1383,6 +1418,7 @@ class AttentionOperatorQuantizationRunAdapterFactory:
         physical_layout_evidence: Sequence[
             AttentionOperatorPhysicalLayoutEvidence
         ],
+        delegated_quant_specs: Sequence[QuantSpec] = (),
     ) -> None:
         if not isinstance(operation, AttentionOperatorOperationSpec):
             raise TypeError("operation must be AttentionOperatorOperationSpec")
@@ -1422,6 +1458,17 @@ class AttentionOperatorQuantizationRunAdapterFactory:
         self._descriptors = tuple(descriptors)
         self._observed_environment = observed_environment
         self._physical_layout_evidence = tuple(physical_layout_evidence)
+        delegated_values = tuple(delegated_quant_specs)
+        if any(not isinstance(item, QuantSpec) for item in delegated_values):
+            raise TypeError("delegated_quant_specs must contain QuantSpec values")
+        delegated_fingerprints = tuple(item.fingerprint for item in delegated_values)
+        if len(set(delegated_fingerprints)) != len(delegated_fingerprints):
+            raise SchemaError("quantization run factory has duplicate delegated QuantSpec")
+        if {
+            item.quant_spec.fingerprint for item in values
+        }.intersection(delegated_fingerprints):
+            raise SchemaError("quantization run factory routes one QuantSpec twice")
+        self._delegated_quant_specs = delegated_values
 
     def build(
         self, base_adapter: AttentionOperatorRunAdapter, device: str
@@ -1440,6 +1487,7 @@ class AttentionOperatorQuantizationRunAdapterFactory:
             self._descriptors,
             self._observed_environment,
             self._physical_layout_evidence,
+            self._delegated_quant_specs,
         )
 
 
