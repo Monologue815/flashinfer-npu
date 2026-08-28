@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Any, Mapping, Optional, Tuple
 
-from flashinfer_npu.runtime import SchemaError
+from flashinfer_npu.runtime import QuantSpec, SchemaError
 
 from .operation_catalog import AttentionOperatorOperationSpec
 from .operator_plan import AttentionOperatorActivePlan
@@ -42,12 +42,57 @@ def _canonical_hash(value: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def attention_nvfp4_kv_quant_spec(
+    *,
+    physical_layout: str,
+    packing_order: str,
+    compute_dtype: str = "float32",
+    accumulator_dtype: str = "float32",
+) -> QuantSpec:
+    """Build the logical NVFP4 contract while keeping provider packing explicit."""
+
+    if str(physical_layout) == "logical" or not str(physical_layout):
+        raise SchemaError("NVFP4 requires a named non-logical physical layout")
+    if not str(packing_order):
+        raise SchemaError("NVFP4 requires an explicit provider packing order")
+    return QuantSpec(
+        scheme="symmetric",
+        storage_dtype="uint8",
+        compute_dtype=str(compute_dtype),
+        accumulator_dtype=str(accumulator_dtype),
+        scale_dtype=NVFP4_SCALE_FACTOR_DTYPE,
+        granularity="block",
+        group_size=(16,),
+        axis=(-1,),
+        has_zero_point=False,
+        physical_layout=str(physical_layout),
+        packing_order=str(packing_order),
+    )
+
+
+def infer_attention_nvfp4_packed_storage_shape(
+    logical_shape,
+) -> Tuple[int, ...]:
+    """Return two-E2M1-values-per-byte storage shape for logical K or V."""
+
+    try:
+        shape = tuple(int(item) for item in logical_shape)
+    except (TypeError, ValueError) as error:
+        raise SchemaError("NVFP4 logical shape must contain integers") from error
+    if not shape or any(item <= 0 for item in shape):
+        raise SchemaError("NVFP4 logical shape must be non-empty and positive")
+    if shape[-1] % 2:
+        raise SchemaError("NVFP4 logical head dimension must be even")
+    return shape[:-1] + (shape[-1] // 2,)
+
+
 @dataclass(frozen=True)
 class AttentionOperatorNvfp4ScaleFactorBinding:
     """Exact operation arguments authorized to consume public ``kv_cache_sf``."""
 
     provider_id: str
     operation_id: str
+    quant_spec: QuantSpec
     combined_argument: Optional[str] = None
     key_argument: Optional[str] = None
     value_argument: Optional[str] = None
@@ -59,6 +104,20 @@ class AttentionOperatorNvfp4ScaleFactorBinding:
             raise SchemaError("unsupported Attention NVFP4 binding version")
         if not str(self.provider_id) or not str(self.operation_id):
             raise SchemaError("NVFP4 binding identities must be non-empty")
+        if not isinstance(self.quant_spec, QuantSpec):
+            raise TypeError("NVFP4 binding quant_spec must be QuantSpec")
+        if (
+            self.quant_spec.scheme != "symmetric"
+            or self.quant_spec.storage_dtype != "uint8"
+            or self.quant_spec.scale_dtype != NVFP4_SCALE_FACTOR_DTYPE
+            or self.quant_spec.granularity != "block"
+            or self.quant_spec.group_size != (16,)
+            or self.quant_spec.axis != (-1,)
+            or self.quant_spec.has_zero_point
+            or self.quant_spec.physical_layout == "logical"
+            or not self.quant_spec.packing_order
+        ):
+            raise SchemaError("NVFP4 binding QuantSpec is not canonical")
         if self.layout_id != "linear":
             raise SchemaError("NVFP4 binding layout is not registered")
         arguments = tuple(
@@ -117,6 +176,7 @@ class AttentionOperatorNvfp4ScaleFactorBinding:
             "schema_version": self.schema_version,
             "provider_id": self.provider_id,
             "operation_id": self.operation_id,
+            "quant_spec": self.quant_spec.to_dict(),
             "combined_argument": self.combined_argument,
             "key_argument": self.key_argument,
             "value_argument": self.value_argument,
@@ -333,6 +393,12 @@ class AttentionOperatorNvfp4ScaleFactorRunAdapter:
             raise SchemaError("NVFP4 active operation differs from binding")
         if request.kv_cache_sf is None:
             return self._base_adapter.lower(active_plan, request)
+        quant_spec = active_plan.framework_plan.spec.kv_quant_spec
+        if (
+            quant_spec is None
+            or quant_spec.fingerprint != self._binding.quant_spec.fingerprint
+        ):
+            raise SchemaError("NVFP4 run does not match the bound QuantSpec")
         scale_factors = inspect_attention_nvfp4_kv_scale_factors(
             active_plan.framework_plan,
             request.kv_cache_sf,
@@ -392,11 +458,53 @@ class AttentionOperatorNvfp4ScaleFactorRunAdapter:
         )
 
 
+class AttentionOperatorNvfp4ScaleFactorRunAdapterFactory:
+    """Attach the reviewed NVFP4 binding after device resolution."""
+
+    def __init__(
+        self,
+        operation: AttentionOperatorOperationSpec,
+        binding: AttentionOperatorNvfp4ScaleFactorBinding,
+        tensor_metadata_inspector: AttentionOperatorTensorMetadataInspector,
+        tensor_access_policy: AttentionTensorAccessPolicy,
+    ) -> None:
+        if not isinstance(binding, AttentionOperatorNvfp4ScaleFactorBinding):
+            raise TypeError("binding must be AttentionOperatorNvfp4ScaleFactorBinding")
+        binding.validate_operation(operation)
+        if not isinstance(
+            tensor_metadata_inspector, AttentionOperatorTensorMetadataInspector
+        ):
+            raise TypeError("tensor_metadata_inspector has the wrong type")
+        if not isinstance(tensor_access_policy, AttentionTensorAccessPolicy):
+            raise TypeError("tensor_access_policy has the wrong type")
+        self.provider_id = operation.provider_id
+        self.operation_id = operation.operation_id
+        self._operation = operation
+        self._binding = binding
+        self._inspector = tensor_metadata_inspector
+        self._access_policy = tensor_access_policy
+
+    def build(
+        self, base_adapter: AttentionOperatorRunAdapter, device: str
+    ) -> AttentionOperatorRunAdapter:
+        return AttentionOperatorNvfp4ScaleFactorRunAdapter(
+            base_adapter,
+            self._operation,
+            self._binding,
+            self._inspector,
+            self._access_policy,
+            str(device),
+        )
+
+
 __all__ = [
     "ATTENTION_NVFP4_SCALE_FACTOR_VERSION",
     "NVFP4_SCALE_FACTOR_DTYPE",
     "AttentionNvfp4ScaleFactorView",
     "AttentionOperatorNvfp4ScaleFactorBinding",
     "AttentionOperatorNvfp4ScaleFactorRunAdapter",
+    "AttentionOperatorNvfp4ScaleFactorRunAdapterFactory",
+    "attention_nvfp4_kv_quant_spec",
+    "infer_attention_nvfp4_packed_storage_shape",
     "inspect_attention_nvfp4_kv_scale_factors",
 ]

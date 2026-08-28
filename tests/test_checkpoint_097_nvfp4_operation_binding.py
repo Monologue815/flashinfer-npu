@@ -13,6 +13,7 @@ from flashinfer_npu.attention import (
     AttentionPreparedOperatorPlan,
     AttentionTensorAccessPolicy,
     AttentionMode,
+    attention_nvfp4_kv_quant_spec,
 )
 from flashinfer_npu.runtime import Backend, SchemaError
 from tests.test_checkpoint_096_nvfp4_scale_factor_contract import (
@@ -23,6 +24,10 @@ from tests.test_checkpoint_096_nvfp4_scale_factor_contract import (
 
 
 OPERATION_ID = "test.nvfp4.attention@v1"
+NVFP4_QUANT_SPEC = attention_nvfp4_kv_quant_spec(
+    physical_layout="test_nvfp4_e2m1_packed",
+    packing_order="test_low_nibble_first",
+)
 
 
 def hash_value(character):
@@ -45,8 +50,8 @@ def operation(*, quant_arguments=("kv_cache_sf", "k_sf", "v_sf")):
     )
 
 
-def active_plan():
-    plan = paged_plan()
+def active_plan(quant_spec=NVFP4_QUANT_SPEC):
+    plan = paged_plan(quant_spec=quant_spec)
     receipt = AttentionDispatchReceipt(
         mode=plan.spec.mode,
         plan_fingerprint=plan.fingerprint,
@@ -142,6 +147,7 @@ class Nvfp4OperationBindingCheckpoint(unittest.TestCase):
     def test_binding_requires_exact_keyword_quant_arguments(self):
         binding = AttentionOperatorNvfp4ScaleFactorBinding(
             provider_id="cann", operation_id=OPERATION_ID,
+            quant_spec=NVFP4_QUANT_SPEC,
             combined_argument="kv_cache_sf",
         )
         binding.validate_operation(operation())
@@ -153,6 +159,7 @@ class Nvfp4OperationBindingCheckpoint(unittest.TestCase):
         with self.assertRaisesRegex(SchemaError, "requires K and V"):
             AttentionOperatorNvfp4ScaleFactorBinding(
                 provider_id="cann", operation_id=OPERATION_ID,
+                quant_spec=NVFP4_QUANT_SPEC,
                 key_argument="k_sf",
             )
 
@@ -161,6 +168,7 @@ class Nvfp4OperationBindingCheckpoint(unittest.TestCase):
         scale = FakeTensor("combined", (6, 2, 16, 2, 8))
         lowered = adapter(AttentionOperatorNvfp4ScaleFactorBinding(
             provider_id="cann", operation_id=OPERATION_ID,
+            quant_spec=NVFP4_QUANT_SPEC,
             combined_argument="kv_cache_sf",
         )).lower(active, request(active, scale))
 
@@ -179,6 +187,7 @@ class Nvfp4OperationBindingCheckpoint(unittest.TestCase):
         )
         lowered = adapter(AttentionOperatorNvfp4ScaleFactorBinding(
             provider_id="cann", operation_id=OPERATION_ID,
+            quant_spec=NVFP4_QUANT_SPEC,
             key_argument="k_sf", value_argument="v_sf",
         )).lower(active, request(active, scales))
 
@@ -196,6 +205,7 @@ class Nvfp4OperationBindingCheckpoint(unittest.TestCase):
         wrapped = adapter(
             AttentionOperatorNvfp4ScaleFactorBinding(
                 provider_id="cann", operation_id=OPERATION_ID,
+                quant_spec=NVFP4_QUANT_SPEC,
                 combined_argument="kv_cache_sf",
             ),
             base=base,
@@ -213,6 +223,7 @@ class Nvfp4OperationBindingCheckpoint(unittest.TestCase):
         active = active_plan()
         binding = AttentionOperatorNvfp4ScaleFactorBinding(
             provider_id="cann", operation_id=OPERATION_ID,
+            quant_spec=NVFP4_QUANT_SPEC,
             combined_argument="kv_cache_sf",
         )
         misaligned = FakeTensor("misaligned", (6, 2, 16, 2, 8))

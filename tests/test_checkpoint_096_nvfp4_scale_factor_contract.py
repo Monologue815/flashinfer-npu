@@ -45,7 +45,13 @@ def _numel(shape):
     return result
 
 
-def paged_plan(layout=KVLayout.NHD, *, head_dim_qk=128, head_dim_vo=128):
+def paged_plan(
+    layout=KVLayout.NHD,
+    *,
+    head_dim_qk=128,
+    head_dim_vo=128,
+    quant_spec=None,
+):
     spec = AttentionPlanSpec(
         mode=AttentionMode.BATCH_PREFILL_PAGED,
         num_qo_heads=8,
@@ -54,7 +60,8 @@ def paged_plan(layout=KVLayout.NHD, *, head_dim_qk=128, head_dim_vo=128):
         head_dim_vo=head_dim_vo,
         kv_layout=layout,
         q_dtype="bfloat16",
-        kv_dtype="uint8",
+        kv_dtype="uint8" if quant_spec is None else quant_spec.storage_dtype,
+        kv_quant_spec=quant_spec,
         o_dtype="bfloat16",
     )
     metadata = PagedPrefillMetadata(

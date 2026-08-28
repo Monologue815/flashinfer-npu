@@ -516,6 +516,9 @@ from .nvfp4_scale_factor import (
     AttentionNvfp4ScaleFactorView,
     AttentionOperatorNvfp4ScaleFactorBinding,
     AttentionOperatorNvfp4ScaleFactorRunAdapter,
+    AttentionOperatorNvfp4ScaleFactorRunAdapterFactory,
+    attention_nvfp4_kv_quant_spec,
+    infer_attention_nvfp4_packed_storage_shape,
     inspect_attention_nvfp4_kv_scale_factors,
 )
 from .provider_contribution import (
@@ -887,6 +890,9 @@ __all__ = [
     "AttentionNvfp4ScaleFactorView",
     "AttentionOperatorNvfp4ScaleFactorBinding",
     "AttentionOperatorNvfp4ScaleFactorRunAdapter",
+    "AttentionOperatorNvfp4ScaleFactorRunAdapterFactory",
+    "attention_nvfp4_kv_quant_spec",
+    "infer_attention_nvfp4_packed_storage_shape",
     "AttentionOperatorProviderIntegrationContribution",
     "AttentionOperatorProviderIntegrationContributionBinding",
     "AttentionOperatorProviderContributionManifest",

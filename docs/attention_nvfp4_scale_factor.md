@@ -48,7 +48,8 @@ single 模式使用相同的 NHD/HND 轴顺序，但没有 page 维。
 
 ## Operation 参数绑定
 
-一个 binding 固定 provider id、operation id、线性 layout，并声明以下一种或两种映射：
+一个 binding 固定 provider id、operation id、完整 NVFP4 `QuantSpec`、线性 scale-factor layout，
+并声明以下一种或两种映射：
 
 - combined：公开 combined tensor 映射到一个 provider keyword；
 - separate：公开 K/V tuple 映射到两个不同 provider keywords。
@@ -56,6 +57,25 @@ single 模式使用相同的 NHD/HND 轴顺序，但没有 page 维。
 所有目标参数必须同时是 operation catalog 的 keyword arguments 和 quant arguments。缺失 K/V
 之一、重复参数名、operation/provider 漂移、未声明 quant 参数或 positional-only 参数都会在
 lowering 前失败。
+
+binding 接受的 `QuantSpec` 必须同时满足：
+
+- symmetric、无 zero point；
+- packed storage dtype 为 `uint8`；
+- scale dtype 为 `float8_e4m3fn`；
+- 最后一维每 16 个逻辑值共享一个 block scale；
+- `axis=(-1,)`；
+- 使用非 `logical` physical layout；
+- 明确声明 provider packing order。
+
+`attention_nvfp4_kv_quant_spec()` 用于构造该逻辑契约，但不会猜测昇腾 provider 的 physical
+layout 或 nibble packing；两项必须由接入模块命名。`infer_attention_nvfp4_packed_storage_shape()`
+只冻结两个 E2M1 值存入一个 byte 的 shape 关系，因此逻辑最后一维 `D` 对应 packed storage
+最后一维 `D/2`。它不执行编码，也不决定两个值在 byte 内的顺序。
+
+lowering 会先比较 active plan 与 binding 的完整 QuantSpec fingerprint。layout、packing、block
+size、scale dtype 或 compute/accumulator dtype 任一漂移，都会在 tensor metadata observation
+和 base adapter 调用前失败。
 
 adapter 先执行本文的 metadata contract，再应用 provider access policy 的 alignment 和 output
 alias 规则。验证后的 scale-factor views 进入 `validated_input_views`，以便 completion validation、
@@ -72,7 +92,8 @@ execution receipt 和离线证据链继续追踪输入身份。adapter 随后清
 `kv_cache_sf` 是 NVFP4 的 per-block scale-factor 载体，与公开 `k_scale`/`v_scale` calibration
 参数不同，也不能复用现有 INT8/INT4 的 key/value scale source。后续 operation binding 必须：
 
-1. 固定 NVFP4 storage `QuantSpec` 和 physical layout；
+1. 将本文已经固定的 NVFP4 storage `QuantSpec` 与带 provenance 的 physical-layout descriptor
+   和 capability rule 绑定；
 2. 使用本文的 operation binding 声明 provider callable 接收 combined 还是 separate scale factors；
 3. 把本契约产生的 tensor views 纳入 alignment、alias 和 execution identity；
 4. 在 lowering 中显式消费 `kv_cache_sf`，且不与 `k_scale`/`v_scale` 混淆；
