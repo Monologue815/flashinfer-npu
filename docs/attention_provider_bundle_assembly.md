@@ -101,6 +101,11 @@ provider 的 `AttentionOperatorProviderIntegrationContribution`，部署层再�
 `assemble_attention_operator_provider_integration_source_declarations()` 入口；显式 package
 observation、factory resolution 和 origin binding 见
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)。
+生产部署的最高层入口是
+`assemble_attention_operator_provider_integration_bootstrap()` 或对应的一步 installer；它先用
+顶层纯数据 manifest 精确绑定 source manifest、approval manifest、factory loader 和最终
+bundle 命名，再进入本文相同的全局组装顺序。详见
+[Attention provider 顶层 bootstrap manifest](attention_provider_bootstrap.md)。
 
 最终 bundle 契约见
 [Attention provider 集成包](attention_provider_integration_bundle.md)，loader route 约束见

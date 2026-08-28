@@ -143,6 +143,9 @@ adapter 模块通过显式 `AttentionOperatorProviderContributionSourceRegistry`
 factory path 不可解析都在 contribution 构造前失败。
 生产配置应优先以 bounded source declaration manifest 交付和审核，再在 bootstrap 绑定 loader；
 见 [Attention provider source declaration manifest](attention_provider_source_manifest.md)。
+部署方再用顶层 `AttentionOperatorProviderIntegrationBootstrapManifest` 固定 source manifest、
+contribution approval、factory loader 与最终 bundle 命名，并通过一步 installer 原子发布；见
+[Attention provider 顶层 bootstrap manifest](attention_provider_bootstrap.md)。
 
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成

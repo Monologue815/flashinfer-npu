@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 from flashinfer_npu.runtime import SchemaError
@@ -35,6 +35,9 @@ from .provider_contribution import (
 from .provider_contribution_manifest import (
     AttentionOperatorProviderContributionManifest,
 )
+from .provider_bootstrap import (
+    AttentionOperatorProviderIntegrationBootstrapManifest,
+)
 from .provider_contribution_loader import (
     AttentionOperatorProviderContributionFactoryLoader,
     AttentionOperatorProviderContributionSourceDeclarationManifest,
@@ -46,7 +49,7 @@ from .provider_contribution_source import (
 )
 
 
-ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 6
+ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 7
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -118,6 +121,8 @@ class AttentionOperatorProviderIntegrationBundleBinding:
     contribution_source_registry_binding: Optional[
         AttentionOperatorProviderContributionSourceRegistryBinding
     ] = None
+    bootstrap_manifest_id: Optional[str] = None
+    bootstrap_manifest_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
 
     def __post_init__(self) -> None:
@@ -260,6 +265,31 @@ class AttentionOperatorProviderIntegrationBundleBinding:
                 raise SchemaError(
                     "Attention contribution source registry identity set differs"
                 )
+        bootstrap_identity = (
+            self.bootstrap_manifest_id,
+            self.bootstrap_manifest_fingerprint,
+        )
+        if (bootstrap_identity[0] is None) != (bootstrap_identity[1] is None):
+            raise SchemaError("Attention provider bootstrap identity is incomplete")
+        if bootstrap_identity[0] is not None:
+            if manifest_identity[0] is None or source_registry_binding is None:
+                raise SchemaError(
+                    "Attention provider bootstrap requires manifest-bound sources"
+                )
+            if not _IDENTIFIER.fullmatch(str(bootstrap_identity[0])):
+                raise SchemaError("Attention provider bootstrap id is invalid")
+            if not _HASH.fullmatch(str(bootstrap_identity[1])):
+                raise SchemaError(
+                    "Attention provider bootstrap fingerprint is invalid"
+                )
+            object.__setattr__(
+                self, "bootstrap_manifest_id", str(bootstrap_identity[0])
+            )
+            object.__setattr__(
+                self,
+                "bootstrap_manifest_fingerprint",
+                str(bootstrap_identity[1]),
+            )
         for name in (
             "bundle_id",
             "bundle_fingerprint",
@@ -302,6 +332,8 @@ class AttentionOperatorProviderIntegrationBundleBinding:
                 if self.contribution_source_registry_binding is None
                 else self.contribution_source_registry_binding.to_dict()
             ),
+            "bootstrap_manifest_id": self.bootstrap_manifest_id,
+            "bootstrap_manifest_fingerprint": self.bootstrap_manifest_fingerprint,
         }
 
 
@@ -331,6 +363,9 @@ class AttentionOperatorProviderIntegrationBundle:
     contribution_source_registry_binding: Optional[
         AttentionOperatorProviderContributionSourceRegistryBinding
     ] = None
+    bootstrap_manifest: Optional[
+        AttentionOperatorProviderIntegrationBootstrapManifest
+    ] = field(default=None, repr=False, compare=False)
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
     _package_loader_id: str = field(init=False, repr=False, compare=False)
     _package_loader_type: str = field(init=False, repr=False, compare=False)
@@ -481,6 +516,69 @@ class AttentionOperatorProviderIntegrationBundle:
                 raise SchemaError(
                     "provider contribution source registry identity set differs"
                 )
+        bootstrap_manifest = self.bootstrap_manifest
+        if bootstrap_manifest is not None:
+            if not isinstance(
+                bootstrap_manifest,
+                AttentionOperatorProviderIntegrationBootstrapManifest,
+            ):
+                raise TypeError(
+                    "bootstrap_manifest must be "
+                    "AttentionOperatorProviderIntegrationBootstrapManifest"
+                )
+            if contribution_manifest is None or source_registry_binding is None:
+                raise SchemaError(
+                    "provider bootstrap requires manifest-bound contribution sources"
+                )
+            if (
+                bootstrap_manifest.bundle_id != str(self.bundle_id)
+                or bootstrap_manifest.catalog_name != self.operation_catalog.name
+                or bootstrap_manifest.scoring_manifest_id
+                != self.scoring_manifest.manifest_id
+            ):
+                raise SchemaError("provider bootstrap bundle identity differs")
+            if (
+                bootstrap_manifest.contribution_manifest_id
+                != contribution_manifest.manifest_id
+                or bootstrap_manifest.contribution_manifest_fingerprint
+                != contribution_manifest.fingerprint
+            ):
+                raise SchemaError(
+                    "provider bootstrap contribution manifest identity differs"
+                )
+            origins = tuple(
+                item.origin_binding
+                for item in source_registry_binding.source_bindings
+            )
+            if any(item is None for item in origins):
+                raise SchemaError(
+                    "provider bootstrap requires source origin provenance"
+                )
+            source_identities = {
+                (
+                    item.declaration_manifest_id,
+                    item.declaration_manifest_fingerprint,
+                )
+                for item in origins
+            }
+            if source_identities != {
+                (
+                    bootstrap_manifest.source_manifest_id,
+                    bootstrap_manifest.source_manifest_fingerprint,
+                )
+            }:
+                raise SchemaError("provider bootstrap source manifest identity differs")
+            loader_identities = {
+                (item.factory_loader_id, item.factory_loader_type)
+                for item in origins
+            }
+            if loader_identities != {
+                (
+                    bootstrap_manifest.factory_loader_id,
+                    bootstrap_manifest.factory_loader_type,
+                )
+            }:
+                raise SchemaError("provider bootstrap factory loader identity differs")
         object.__setattr__(
             self,
             "registrations",
@@ -514,6 +612,18 @@ class AttentionOperatorProviderIntegrationBundle:
         if self.contribution_manifest is None:
             return None
         return self.contribution_manifest.fingerprint
+
+    @property
+    def bootstrap_manifest_id(self) -> Optional[str]:
+        if self.bootstrap_manifest is None:
+            return None
+        return self.bootstrap_manifest.bootstrap_id
+
+    @property
+    def bootstrap_manifest_fingerprint(self) -> Optional[str]:
+        if self.bootstrap_manifest is None:
+            return None
+        return self.bootstrap_manifest.fingerprint
 
     def validate_package_loader_identity(self) -> None:
         """Reject loader identity drift before registry composition."""
@@ -569,6 +679,8 @@ class AttentionOperatorProviderIntegrationBundle:
                 if self.contribution_source_registry_binding is None
                 else self.contribution_source_registry_binding.to_dict()
             ),
+            "bootstrap_manifest_id": self.bootstrap_manifest_id,
+            "bootstrap_manifest_fingerprint": self.bootstrap_manifest_fingerprint,
         }
 
     @property
@@ -602,6 +714,8 @@ class AttentionOperatorProviderIntegrationBundle:
             contribution_source_registry_binding=(
                 self.contribution_source_registry_binding
             ),
+            bootstrap_manifest_id=self.bootstrap_manifest_id,
+            bootstrap_manifest_fingerprint=self.bootstrap_manifest_fingerprint,
         )
 
 
@@ -881,14 +995,75 @@ def assemble_attention_operator_provider_integration_source_manifest(
     )
 
 
+def assemble_attention_operator_provider_integration_bootstrap(
+    *,
+    bootstrap_manifest: AttentionOperatorProviderIntegrationBootstrapManifest,
+    source_manifest: (
+        AttentionOperatorProviderContributionSourceDeclarationManifest
+    ),
+    factory_loader: AttentionOperatorProviderContributionFactoryLoader,
+    approval_manifest: AttentionOperatorProviderContributionManifest,
+) -> AttentionOperatorProviderIntegrationBundle:
+    """Validate one top-level authority and assemble its complete bundle."""
+
+    if not isinstance(
+        bootstrap_manifest,
+        AttentionOperatorProviderIntegrationBootstrapManifest,
+    ):
+        raise TypeError(
+            "bootstrap_manifest must be "
+            "AttentionOperatorProviderIntegrationBootstrapManifest"
+        )
+    bootstrap_manifest.validate_inputs(
+        source_manifest=source_manifest,
+        approval_manifest=approval_manifest,
+        factory_loader=factory_loader,
+    )
+    bundle = assemble_attention_operator_provider_integration_source_manifest(
+        bundle_id=bootstrap_manifest.bundle_id,
+        catalog_name=bootstrap_manifest.catalog_name,
+        scoring_manifest_id=bootstrap_manifest.scoring_manifest_id,
+        source_manifest=source_manifest,
+        factory_loader=factory_loader,
+        approval_manifest=approval_manifest,
+    )
+    return replace(bundle, bootstrap_manifest=bootstrap_manifest)
+
+
+def install_attention_operator_provider_integration_bootstrap(
+    *,
+    bootstrap_manifest: AttentionOperatorProviderIntegrationBootstrapManifest,
+    source_manifest: (
+        AttentionOperatorProviderContributionSourceDeclarationManifest
+    ),
+    factory_loader: AttentionOperatorProviderContributionFactoryLoader,
+    approval_manifest: AttentionOperatorProviderContributionManifest,
+    expected_generation=None,
+):
+    """Assemble reviewed inputs and atomically publish one registry generation."""
+
+    bundle = assemble_attention_operator_provider_integration_bootstrap(
+        bootstrap_manifest=bootstrap_manifest,
+        source_manifest=source_manifest,
+        factory_loader=factory_loader,
+        approval_manifest=approval_manifest,
+    )
+    return install_attention_operator_provider_integration_bundle(
+        bundle,
+        expected_generation=expected_generation,
+    )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "AttentionOperatorProviderIntegrationBundle",
     "AttentionOperatorProviderIntegrationBundleBinding",
+    "assemble_attention_operator_provider_integration_bootstrap",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
     "assemble_attention_operator_provider_integration_source_declarations",
     "assemble_attention_operator_provider_integration_source_manifest",
     "assemble_attention_operator_provider_integration_sources",
+    "install_attention_operator_provider_integration_bootstrap",
     "install_attention_operator_provider_integration_bundle",
 ]

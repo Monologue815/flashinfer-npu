@@ -541,6 +541,10 @@ adapter factories 通过显式 source registry 注入；框架不扫描 entry po
 source declarations 可作为 bounded data-only manifest 独立交付；manifest identity 随 source
 origin 进入 bundle，见
 [Attention provider source declaration manifest](attention_provider_source_manifest.md)。
+生产部署再由一份顶层、纯数据 bootstrap manifest 把 source manifest、contribution approval
+manifest、factory loader identity 与最终 bundle 命名固定为一个授权闭包；只有全部身份精确
+一致才允许加载 adapter factory，并在最终发布点原子写入一个 registry generation。详见
+[Attention provider 顶层 bootstrap manifest](attention_provider_bootstrap.md)。
 
 ### 11.3 Autotuning
 

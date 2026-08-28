@@ -90,3 +90,6 @@ adapter distribution 加载与错误边界见
 [Attention provider contribution adapter loading](attention_provider_contribution_loading.md)，
 最终 contribution 审核见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
+生产部署应再用
+[Attention provider 顶层 bootstrap manifest](attention_provider_bootstrap.md)
+把本 manifest、approval manifest、factory loader 与最终 bundle 命名固定为一个审核身份。

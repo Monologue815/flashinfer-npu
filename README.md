@@ -86,6 +86,10 @@ Version-pinned adapter packages and injected factory loading are specified in
 [Attention provider contribution loading](docs/attention_provider_contribution_loading.md).
 Reviewable bounded JSON for adapter source declarations is specified in
 [Attention provider source manifest](docs/attention_provider_source_manifest.md).
+A single reviewed, data-only authority can bind that source manifest, the
+contribution approval manifest, the controlled factory loader and the final
+bundle naming before one-step atomic installation; see
+[Attention provider bootstrap manifest](docs/attention_provider_bootstrap.md).
 Bundles containing CANN and flash-attention-npu operations can use distinct,
 exact package/callable delegates through the routed loader described in
 [Attention package loader routing](docs/attention_package_loader_routing.md).
@@ -167,6 +171,8 @@ The manifest-gated adapter declaration and factory-loader boundary is in
 [`docs/attention_provider_contribution_loading.md`](docs/attention_provider_contribution_loading.md).
 The data-only adapter source declaration manifest is in
 [`docs/attention_provider_source_manifest.md`](docs/attention_provider_source_manifest.md).
+The top-level data-only deployment authority and one-step atomic install are in
+[`docs/attention_provider_bootstrap.md`](docs/attention_provider_bootstrap.md).
 The executable Host contract for INT8/UINT8/packed-INT4 KV Cache is documented
 in [`docs/attention_quantization.md`](docs/attention_quantization.md).
 Versioned correctness trace and replay semantics are documented in

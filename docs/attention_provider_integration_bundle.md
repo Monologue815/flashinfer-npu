@@ -56,6 +56,10 @@ loader id 内含完整 route fingerprint，且每条 route 与 scoped catalog op
 specs、scoring policies 和 loader routes 一步派生 bundle。它固定“先绑定 policy、再生成
 最终 catalog declaration”的顺序，详见
 [Attention provider bundle assembly](attention_provider_bundle_assembly.md)。
+生产部署可以在 bundle 之上增加一份顶层、纯数据 bootstrap authority，使 source manifest、
+contribution approval manifest、factory loader 和 bundle 命名形成完整审核闭包，并使用一步
+installer 原子发布。见
+[Attention provider 顶层 bootstrap manifest](attention_provider_bootstrap.md)。
 
 如果 CANN 与 flash-attention-npu 适配输入由不同模块维护，模块应分别构造
 `AttentionOperatorProviderIntegrationContribution`，由部署层合并并重新生成最终 catalog
