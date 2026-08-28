@@ -93,6 +93,10 @@ provider 的 `AttentionOperatorProviderIntegrationContribution`，部署层再�
 `AttentionOperatorProviderContributionManifest`，使本次输入与审核后的完整 bindings 精确
 匹配；manifest id/fingerprint 随 bundle 身份发布。规则见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
+如果 contributions 由独立 adapter factory 生成，使用
+`assemble_attention_operator_provider_integration_sources()`；它先按 approval manifest 精确
+物化受控 source registry，再进入本文相同的全局组装顺序。详见
+[Attention provider contribution source registry](attention_provider_contribution_sources.md)。
 
 最终 bundle 契约见
 [Attention provider 集成包](attention_provider_integration_bundle.md)，loader route 约束见

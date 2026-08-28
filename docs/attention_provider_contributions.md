@@ -119,6 +119,8 @@ contribution 入口，使 provider 所有权、部署所有权和最终 provenan
 生产部署还应使用有界、不可执行的 approval manifest 固定本次允许的完整 contribution
 bindings；缺失、多余或漂移项都会在组装前失败。详见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
+独立 adapter factory 的显式注入、零自动发现和物化顺序见
+[Attention provider contribution source registry](attention_provider_contribution_sources.md)。
 
 最终 bundle 的原子安装与运行身份链见
 [Attention provider 集成包](attention_provider_integration_bundle.md)，固定的全局派生顺序见

@@ -494,6 +494,7 @@ from .provider_bundle import (
     AttentionOperatorProviderIntegrationBundleBinding,
     assemble_attention_operator_provider_integration_bundle,
     assemble_attention_operator_provider_integration_contributions,
+    assemble_attention_operator_provider_integration_sources,
     install_attention_operator_provider_integration_bundle,
 )
 from .provider_contribution import (
@@ -507,6 +508,14 @@ from .provider_contribution_manifest import (
     AttentionOperatorProviderContributionManifest,
     AttentionOperatorProviderContributionManifestLimits,
     load_attention_operator_provider_contribution_manifest,
+)
+from .provider_contribution_source import (
+    ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION,
+    AttentionOperatorProviderContributionFactory,
+    AttentionOperatorProviderContributionSource,
+    AttentionOperatorProviderContributionSourceBinding,
+    AttentionOperatorProviderContributionSourceRegistry,
+    AttentionOperatorProviderContributionSourceRegistryBinding,
 )
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
@@ -630,6 +639,7 @@ __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_VERSION",
+    "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_VERSION",
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION",
     "ATTENTION_OPERATOR_EVIDENCE_MANIFEST_VERSION",
@@ -839,9 +849,15 @@ __all__ = [
     "AttentionOperatorProviderIntegrationContributionBinding",
     "AttentionOperatorProviderContributionManifest",
     "AttentionOperatorProviderContributionManifestLimits",
+    "AttentionOperatorProviderContributionFactory",
+    "AttentionOperatorProviderContributionSource",
+    "AttentionOperatorProviderContributionSourceBinding",
+    "AttentionOperatorProviderContributionSourceRegistry",
+    "AttentionOperatorProviderContributionSourceRegistryBinding",
     "DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
+    "assemble_attention_operator_provider_integration_sources",
     "load_attention_operator_provider_contribution_manifest",
     "bind_attention_operator_plan_scoring_manifest",
     "build_declared_attention_operator_runtime_resolvers",

@@ -35,9 +35,13 @@ from .provider_contribution import (
 from .provider_contribution_manifest import (
     AttentionOperatorProviderContributionManifest,
 )
+from .provider_contribution_source import (
+    AttentionOperatorProviderContributionSourceRegistry,
+    AttentionOperatorProviderContributionSourceRegistryBinding,
+)
 
 
-ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 3
+ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 4
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -106,6 +110,9 @@ class AttentionOperatorProviderIntegrationBundleBinding:
     ] = ()
     contribution_manifest_id: Optional[str] = None
     contribution_manifest_fingerprint: Optional[str] = None
+    contribution_source_registry_binding: Optional[
+        AttentionOperatorProviderContributionSourceRegistryBinding
+    ] = None
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
 
     def __post_init__(self) -> None:
@@ -227,6 +234,27 @@ class AttentionOperatorProviderIntegrationBundleBinding:
                 "contribution_manifest_fingerprint",
                 str(manifest_identity[1]),
             )
+        source_registry_binding = self.contribution_source_registry_binding
+        if source_registry_binding is not None:
+            if not isinstance(
+                source_registry_binding,
+                AttentionOperatorProviderContributionSourceRegistryBinding,
+            ):
+                raise TypeError(
+                    "contribution_source_registry_binding has the wrong type"
+                )
+            if manifest_identity[0] is None:
+                raise SchemaError(
+                    "Attention contribution source registry requires a manifest"
+                )
+            expected_sources = {
+                (item.provider_id, item.contribution_id)
+                for item in contribution_bindings
+            }
+            if set(source_registry_binding.contribution_identities) != expected_sources:
+                raise SchemaError(
+                    "Attention contribution source registry identity set differs"
+                )
         for name in (
             "bundle_id",
             "bundle_fingerprint",
@@ -264,6 +292,11 @@ class AttentionOperatorProviderIntegrationBundleBinding:
             "contribution_manifest_fingerprint": (
                 self.contribution_manifest_fingerprint
             ),
+            "contribution_source_registry_binding": (
+                None
+                if self.contribution_source_registry_binding is None
+                else self.contribution_source_registry_binding.to_dict()
+            ),
         }
 
 
@@ -290,6 +323,9 @@ class AttentionOperatorProviderIntegrationBundle:
     contribution_manifest: Optional[
         AttentionOperatorProviderContributionManifest
     ] = field(default=None, repr=False, compare=False)
+    contribution_source_registry_binding: Optional[
+        AttentionOperatorProviderContributionSourceRegistryBinding
+    ] = None
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
     _package_loader_id: str = field(init=False, repr=False, compare=False)
     _package_loader_type: str = field(init=False, repr=False, compare=False)
@@ -419,6 +455,27 @@ class AttentionOperatorProviderIntegrationBundle:
                 raise SchemaError(
                     "provider integration bundle differs from contribution manifest"
                 )
+        source_registry_binding = self.contribution_source_registry_binding
+        if source_registry_binding is not None:
+            if not isinstance(
+                source_registry_binding,
+                AttentionOperatorProviderContributionSourceRegistryBinding,
+            ):
+                raise TypeError(
+                    "contribution_source_registry_binding has the wrong type"
+                )
+            if contribution_manifest is None:
+                raise SchemaError(
+                    "provider contribution source registry requires a manifest"
+                )
+            expected_sources = {
+                (item.provider_id, item.contribution_id)
+                for item in contribution_bindings
+            }
+            if set(source_registry_binding.contribution_identities) != expected_sources:
+                raise SchemaError(
+                    "provider contribution source registry identity set differs"
+                )
         object.__setattr__(
             self,
             "registrations",
@@ -502,6 +559,11 @@ class AttentionOperatorProviderIntegrationBundle:
             "contribution_manifest_fingerprint": (
                 self.contribution_manifest_fingerprint
             ),
+            "contribution_source_registry_binding": (
+                None
+                if self.contribution_source_registry_binding is None
+                else self.contribution_source_registry_binding.to_dict()
+            ),
         }
 
     @property
@@ -531,6 +593,9 @@ class AttentionOperatorProviderIntegrationBundle:
             contribution_manifest_id=self.contribution_manifest_id,
             contribution_manifest_fingerprint=(
                 self.contribution_manifest_fingerprint
+            ),
+            contribution_source_registry_binding=(
+                self.contribution_source_registry_binding
             ),
         )
 
@@ -568,6 +633,7 @@ def assemble_attention_operator_provider_integration_bundle(
     package_loader_routes,
     contribution_bindings=(),
     contribution_manifest=None,
+    contribution_source_registry_binding=None,
 ) -> AttentionOperatorProviderIntegrationBundle:
     """Derive one reviewable bundle from complete, exact provider inputs.
 
@@ -635,6 +701,9 @@ def assemble_attention_operator_provider_integration_bundle(
         package_loader=package_loader,
         contribution_bindings=tuple(contribution_bindings),
         contribution_manifest=contribution_manifest,
+        contribution_source_registry_binding=(
+            contribution_source_registry_binding
+        ),
     )
 
 
@@ -645,6 +714,7 @@ def assemble_attention_operator_provider_integration_contributions(
     scoring_manifest_id: str,
     contributions,
     approval_manifest=None,
+    contribution_source_registry_binding=None,
 ) -> AttentionOperatorProviderIntegrationBundle:
     """Merge exact provider-owned contributions into one deployment bundle.
 
@@ -705,6 +775,46 @@ def assemble_attention_operator_provider_integration_contributions(
         ),
         contribution_bindings=tuple(item.binding for item in normalized),
         contribution_manifest=approval_manifest,
+        contribution_source_registry_binding=(
+            contribution_source_registry_binding
+        ),
+    )
+
+
+def assemble_attention_operator_provider_integration_sources(
+    *,
+    bundle_id: str,
+    catalog_name: str,
+    scoring_manifest_id: str,
+    source_registry: AttentionOperatorProviderContributionSourceRegistry,
+    approval_manifest: AttentionOperatorProviderContributionManifest,
+) -> AttentionOperatorProviderIntegrationBundle:
+    """Materialize an approved explicit adapter registry into one bundle."""
+
+    if not isinstance(
+        source_registry,
+        AttentionOperatorProviderContributionSourceRegistry,
+    ):
+        raise TypeError(
+            "source_registry must be "
+            "AttentionOperatorProviderContributionSourceRegistry"
+        )
+    if not isinstance(
+        approval_manifest,
+        AttentionOperatorProviderContributionManifest,
+    ):
+        raise TypeError(
+            "approval_manifest must be "
+            "AttentionOperatorProviderContributionManifest"
+        )
+    contributions = source_registry.materialize(approval_manifest)
+    return assemble_attention_operator_provider_integration_contributions(
+        bundle_id=bundle_id,
+        catalog_name=catalog_name,
+        scoring_manifest_id=scoring_manifest_id,
+        contributions=contributions,
+        approval_manifest=approval_manifest,
+        contribution_source_registry_binding=source_registry.binding,
     )
 
 
@@ -714,5 +824,6 @@ __all__ = [
     "AttentionOperatorProviderIntegrationBundleBinding",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
+    "assemble_attention_operator_provider_integration_sources",
     "install_attention_operator_provider_integration_bundle",
 ]

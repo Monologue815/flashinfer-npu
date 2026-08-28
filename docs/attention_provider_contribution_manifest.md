@@ -96,6 +96,11 @@ registry snapshot、plan selection、成功 run receipt 和离线 scoring audit�
 未绑定 approval manifest 的低层 contribution assembly 路径仍保留给框架组合和定向开发；
 生产部署应提供 manifest，确保“发现”“审核”“组装”“安装”四个阶段分离。
 
+adapter contribution 不通过环境扫描获得。部署方应显式注入
+`AttentionOperatorProviderContributionSourceRegistry`，先在零 factory 调用条件下核对 source
+集合，再由 sources 生成与本清单精确匹配的 contributions。详见
+[Attention provider contribution source registry](attention_provider_contribution_sources.md)。
+
 provider 所有权和局部审核内容见
 [Attention provider contribution](attention_provider_contributions.md)，最终原子安装见
 [Attention provider 集成包](attention_provider_integration_bundle.md)。

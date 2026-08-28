@@ -528,6 +528,10 @@ runtime specs、生成最终 declarations、组合 routed loader，最后构造 
 缺失、多余或同 id 漂移均在全局组装和 package observation 前失败。approval manifest
 id/fingerprint 进入 bundle 身份链，见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
+adapter factories 通过显式 source registry 注入；框架不扫描 entry points 或已安装 provider
+包。source registry provenance 进入 bundle 身份，实际 package observation 仍延迟到
+`plan()`，见
+[Attention provider contribution source registry](attention_provider_contribution_sources.md)。
 
 ### 11.3 Autotuning
 

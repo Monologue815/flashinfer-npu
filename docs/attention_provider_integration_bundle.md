@@ -66,6 +66,9 @@ fingerprints 进入 bundle fingerprint。详见
 contribution bindings。manifest id/fingerprint 同时进入 bundle 及其 snapshot binding；
 精确匹配与升级规则见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
+通过受控 adapter sources 生成的 bundle 还保存不可执行 source registry binding，并要求它
+与全部 contribution bindings 一一对应。该边界见
+[Attention provider contribution source registry](attention_provider_contribution_sources.md)。
 
 以下低层示意展示 assembly 内部必须保持的等价顺序：
 

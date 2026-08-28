@@ -133,6 +133,9 @@ bundle，避免不同 provider 使用局部 catalog 提前生成声明。完整�
 contribution bindings；仅检测到模块或外部包不能自动获得路由权限。清单加载、精确匹配与
 升级规则见
 [Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
+adapter 模块通过显式 `AttentionOperatorProviderContributionSourceRegistry` 注入，不允许环境
+扫描或隐式 entry-point 注册；source-set、factory 身份与生成结果的校验见
+[Attention provider contribution source registry](attention_provider_contribution_sources.md)。
 
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成
