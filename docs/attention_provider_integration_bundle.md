@@ -62,6 +62,10 @@ specs、scoring policies 和 loader routes 一步派生 bundle。它固定“先
 declarations。bundle 会保存每个 contribution 的不可执行 binding，且 contribution
 fingerprints 进入 bundle fingerprint。详见
 [Attention provider contribution](attention_provider_contributions.md)。
+生产部署可进一步用 `AttentionOperatorProviderContributionManifest` 固定允许的完整
+contribution bindings。manifest id/fingerprint 同时进入 bundle 及其 snapshot binding；
+精确匹配与升级规则见
+[Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
 
 以下低层示意展示 assembly 内部必须保持的等价顺序：
 
@@ -119,8 +123,9 @@ installed = install_attention_operator_provider_integration_bundle(
 - provider integration bundle binding；
 - 新 registry generation。
 
-bundle binding 是非执行数据，只包含 bundle、catalog、manifest、loader、registration 和
-可选 provider contributions 的身份与 fingerprint。`attention_operator_runtime_registry_snapshot()` 会重新检查这些身份
+bundle binding 是非执行数据，只包含 bundle、catalog、scoring manifest、loader、
+registration、可选 provider contributions 及其 approval manifest 的身份与 fingerprint。
+`attention_operator_runtime_registry_snapshot()` 会重新检查这些身份
 是否与同一快照中的 catalog、manifest 和 declarations 一致。任何一项漂移都不能构造有效
 快照。
 

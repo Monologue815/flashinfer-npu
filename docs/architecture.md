@@ -524,6 +524,10 @@ runtime specs、生成最终 declarations、组合 routed loader，最后构造 
 执行 fingerprint 进入最终 bundle 身份，但模型侧 `plan()` / `run()` 接口不感知该层。该边界
 防止 provider 模块直接拥有或增量修改全局 catalog，见
 [Attention provider contribution](attention_provider_contributions.md)。
+生产 deployment 通过有界、不可执行的 contribution approval manifest 固定允许集合；
+缺失、多余或同 id 漂移均在全局组装和 package observation 前失败。approval manifest
+id/fingerprint 进入 bundle 身份链，见
+[Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
 
 ### 11.3 Autotuning
 

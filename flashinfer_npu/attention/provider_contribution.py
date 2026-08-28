@@ -130,6 +130,27 @@ class AttentionOperatorProviderIntegrationContributionBinding:
             "operation_bindings": [list(item) for item in self.operation_bindings],
         }
 
+    @classmethod
+    def from_dict(
+        cls, value: Mapping[str, Any]
+    ) -> "AttentionOperatorProviderIntegrationContributionBinding":
+        data = dict(value)
+        if set(data) != set(cls.__dataclass_fields__):
+            raise SchemaError(
+                "Attention provider contribution binding fields are invalid"
+            )
+        if not isinstance(data.get("operation_bindings"), (list, tuple)):
+            raise SchemaError(
+                "Attention contribution operation bindings must be an array"
+            )
+        data["operation_bindings"] = tuple(data["operation_bindings"])
+        try:
+            return cls(**data)
+        except (TypeError, ValueError) as error:
+            raise SchemaError(
+                "Attention provider contribution binding fields are invalid"
+            ) from error
+
     @property
     def fingerprint(self) -> str:
         return _canonical_hash(self.to_dict())

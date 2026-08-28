@@ -501,6 +501,13 @@ from .provider_contribution import (
     AttentionOperatorProviderIntegrationContribution,
     AttentionOperatorProviderIntegrationContributionBinding,
 )
+from .provider_contribution_manifest import (
+    ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_VERSION,
+    DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS,
+    AttentionOperatorProviderContributionManifest,
+    AttentionOperatorProviderContributionManifestLimits,
+    load_attention_operator_provider_contribution_manifest,
+)
 from .operator_quantization import (
     ATTENTION_OPERATOR_QUANTIZATION_VERSION,
     AttentionOperatorImplicitUnitScale,
@@ -622,6 +629,7 @@ __all__ = [
     "ATTENTION_OPERATOR_RUNTIME_DECLARATION_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_VERSION",
+    "ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_VERSION",
     "ATTENTION_OPERATOR_QUANTIZATION_VERSION",
     "ATTENTION_OPERATOR_PHYSICAL_EVIDENCE_VERSION",
     "ATTENTION_OPERATOR_EVIDENCE_MANIFEST_VERSION",
@@ -829,8 +837,12 @@ __all__ = [
     "AttentionOperatorProviderIntegrationBundleBinding",
     "AttentionOperatorProviderIntegrationContribution",
     "AttentionOperatorProviderIntegrationContributionBinding",
+    "AttentionOperatorProviderContributionManifest",
+    "AttentionOperatorProviderContributionManifestLimits",
+    "DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
+    "load_attention_operator_provider_contribution_manifest",
     "bind_attention_operator_plan_scoring_manifest",
     "build_declared_attention_operator_runtime_resolvers",
     "describe_attention_operator_package_runtime",

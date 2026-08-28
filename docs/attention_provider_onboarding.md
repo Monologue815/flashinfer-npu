@@ -129,6 +129,10 @@ bundle，避免不同 provider 使用局部 catalog 提前生成声明。完整�
 `assemble_attention_operator_provider_integration_contributions()` 合并。provider 模块不拥有
 全局 catalog，部署层也不复用局部 declarations。所有权、漂移校验和 provenance 传播见
 [Attention provider contribution](attention_provider_contributions.md)。
+生产部署应再提供 `AttentionOperatorProviderContributionManifest`，固定已经审核的
+contribution bindings；仅检测到模块或外部包不能自动获得路由权限。清单加载、精确匹配与
+升级规则见
+[Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
 
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成

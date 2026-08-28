@@ -6,7 +6,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from flashinfer_npu.runtime import SchemaError
 
@@ -32,9 +32,12 @@ from .provider_contribution import (
     AttentionOperatorProviderIntegrationContribution,
     AttentionOperatorProviderIntegrationContributionBinding,
 )
+from .provider_contribution_manifest import (
+    AttentionOperatorProviderContributionManifest,
+)
 
 
-ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 2
+ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION = 3
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -101,6 +104,8 @@ class AttentionOperatorProviderIntegrationBundleBinding:
     contribution_bindings: Tuple[
         AttentionOperatorProviderIntegrationContributionBinding, ...
     ] = ()
+    contribution_manifest_id: Optional[str] = None
+    contribution_manifest_fingerprint: Optional[str] = None
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
 
     def __post_init__(self) -> None:
@@ -193,6 +198,35 @@ class AttentionOperatorProviderIntegrationBundleBinding:
                 )
             ),
         )
+        manifest_identity = (
+            self.contribution_manifest_id,
+            self.contribution_manifest_fingerprint,
+        )
+        if (manifest_identity[0] is None) != (manifest_identity[1] is None):
+            raise SchemaError(
+                "Attention provider contribution manifest identity is incomplete"
+            )
+        if manifest_identity[0] is not None:
+            if not contribution_bindings:
+                raise SchemaError(
+                    "Attention provider contribution manifest requires contributions"
+                )
+            if not _IDENTIFIER.fullmatch(str(manifest_identity[0])):
+                raise SchemaError(
+                    "Attention provider contribution manifest id is invalid"
+                )
+            if not _HASH.fullmatch(str(manifest_identity[1])):
+                raise SchemaError(
+                    "Attention provider contribution manifest fingerprint is invalid"
+                )
+            object.__setattr__(
+                self, "contribution_manifest_id", str(manifest_identity[0])
+            )
+            object.__setattr__(
+                self,
+                "contribution_manifest_fingerprint",
+                str(manifest_identity[1]),
+            )
         for name in (
             "bundle_id",
             "bundle_fingerprint",
@@ -226,6 +260,10 @@ class AttentionOperatorProviderIntegrationBundleBinding:
             "contribution_bindings": [
                 item.to_dict() for item in self.contribution_bindings
             ],
+            "contribution_manifest_id": self.contribution_manifest_id,
+            "contribution_manifest_fingerprint": (
+                self.contribution_manifest_fingerprint
+            ),
         }
 
 
@@ -249,6 +287,9 @@ class AttentionOperatorProviderIntegrationBundle:
     contribution_bindings: Tuple[
         AttentionOperatorProviderIntegrationContributionBinding, ...
     ] = ()
+    contribution_manifest: Optional[
+        AttentionOperatorProviderContributionManifest
+    ] = field(default=None, repr=False, compare=False)
     schema_version: int = ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION
     _package_loader_id: str = field(init=False, repr=False, compare=False)
     _package_loader_type: str = field(init=False, repr=False, compare=False)
@@ -359,6 +400,25 @@ class AttentionOperatorProviderIntegrationBundle:
                 )
             ),
         )
+        contribution_manifest = self.contribution_manifest
+        if contribution_manifest is not None:
+            if not isinstance(
+                contribution_manifest,
+                AttentionOperatorProviderContributionManifest,
+            ):
+                raise TypeError(
+                    "contribution_manifest must be "
+                    "AttentionOperatorProviderContributionManifest"
+                )
+            if contribution_manifest.contribution_bindings != tuple(
+                sorted(
+                    contribution_bindings,
+                    key=lambda item: item.contribution_id,
+                )
+            ):
+                raise SchemaError(
+                    "provider integration bundle differs from contribution manifest"
+                )
         object.__setattr__(
             self,
             "registrations",
@@ -380,6 +440,18 @@ class AttentionOperatorProviderIntegrationBundle:
     @property
     def package_loader_type(self) -> str:
         return self._package_loader_type
+
+    @property
+    def contribution_manifest_id(self) -> Optional[str]:
+        if self.contribution_manifest is None:
+            return None
+        return self.contribution_manifest.manifest_id
+
+    @property
+    def contribution_manifest_fingerprint(self) -> Optional[str]:
+        if self.contribution_manifest is None:
+            return None
+        return self.contribution_manifest.fingerprint
 
     def validate_package_loader_identity(self) -> None:
         """Reject loader identity drift before registry composition."""
@@ -426,6 +498,10 @@ class AttentionOperatorProviderIntegrationBundle:
             "contributions": [
                 item.to_dict() for item in self.contribution_bindings
             ],
+            "contribution_manifest_id": self.contribution_manifest_id,
+            "contribution_manifest_fingerprint": (
+                self.contribution_manifest_fingerprint
+            ),
         }
 
     @property
@@ -452,6 +528,10 @@ class AttentionOperatorProviderIntegrationBundle:
                 for item in self.registrations
             ),
             contribution_bindings=self.contribution_bindings,
+            contribution_manifest_id=self.contribution_manifest_id,
+            contribution_manifest_fingerprint=(
+                self.contribution_manifest_fingerprint
+            ),
         )
 
 
@@ -487,6 +567,7 @@ def assemble_attention_operator_provider_integration_bundle(
     scoring_policies,
     package_loader_routes,
     contribution_bindings=(),
+    contribution_manifest=None,
 ) -> AttentionOperatorProviderIntegrationBundle:
     """Derive one reviewable bundle from complete, exact provider inputs.
 
@@ -553,6 +634,7 @@ def assemble_attention_operator_provider_integration_bundle(
         scoring_manifest=scoring_manifest,
         package_loader=package_loader,
         contribution_bindings=tuple(contribution_bindings),
+        contribution_manifest=contribution_manifest,
     )
 
 
@@ -562,6 +644,7 @@ def assemble_attention_operator_provider_integration_contributions(
     catalog_name: str,
     scoring_manifest_id: str,
     contributions,
+    approval_manifest=None,
 ) -> AttentionOperatorProviderIntegrationBundle:
     """Merge exact provider-owned contributions into one deployment bundle.
 
@@ -572,19 +655,30 @@ def assemble_attention_operator_provider_integration_contributions(
     """
 
     values = tuple(contributions)
-    if not values or any(
-        not isinstance(item, AttentionOperatorProviderIntegrationContribution)
-        for item in values
-    ):
-        raise TypeError(
-            "contributions must contain provider integration contributions"
-        )
-    contribution_ids = tuple(item.contribution_id for item in values)
-    if len(set(contribution_ids)) != len(contribution_ids):
-        raise SchemaError("Attention provider contribution ids duplicate")
-    normalized = tuple(sorted(values, key=lambda item: item.contribution_id))
-    for contribution in normalized:
-        contribution.validate()
+    if approval_manifest is not None:
+        if not isinstance(
+            approval_manifest,
+            AttentionOperatorProviderContributionManifest,
+        ):
+            raise TypeError(
+                "approval_manifest must be "
+                "AttentionOperatorProviderContributionManifest"
+            )
+        normalized = approval_manifest.validate_contributions(values)
+    else:
+        if not values or any(
+            not isinstance(item, AttentionOperatorProviderIntegrationContribution)
+            for item in values
+        ):
+            raise TypeError(
+                "contributions must contain provider integration contributions"
+            )
+        contribution_ids = tuple(item.contribution_id for item in values)
+        if len(set(contribution_ids)) != len(contribution_ids):
+            raise SchemaError("Attention provider contribution ids duplicate")
+        normalized = tuple(sorted(values, key=lambda item: item.contribution_id))
+        for contribution in normalized:
+            contribution.validate()
     return assemble_attention_operator_provider_integration_bundle(
         bundle_id=bundle_id,
         catalog_name=catalog_name,
@@ -610,6 +704,7 @@ def assemble_attention_operator_provider_integration_contributions(
             for route in contribution.package_loader_routes
         ),
         contribution_bindings=tuple(item.binding for item in normalized),
+        contribution_manifest=approval_manifest,
     )
 
 

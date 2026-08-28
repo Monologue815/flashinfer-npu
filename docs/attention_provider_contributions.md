@@ -82,6 +82,7 @@ bundle = assemble_attention_operator_provider_integration_contributions(
     catalog_name="deployment-attention-catalog-v1",
     scoring_manifest_id="deployment.attention.scoring.v1",
     contributions=(cann, flash_attention_npu),
+    approval_manifest=approved_contributions,
 )
 ```
 
@@ -114,6 +115,10 @@ fingerprint，并进一步改变最终 bundle fingerprint。运行接口不增�
 `assemble_attention_operator_provider_integration_bundle()` 继续作为完整四集合的低层组装入口，
 适合单一部署模块或框架定向组合。多个独立 provider 模块共同进入同一部署时，优先使用
 contribution 入口，使 provider 所有权、部署所有权和最终 provenance 保持清晰。
+
+生产部署还应使用有界、不可执行的 approval manifest 固定本次允许的完整 contribution
+bindings；缺失、多余或漂移项都会在组装前失败。详见
+[Attention provider contribution approval manifest](attention_provider_contribution_manifest.md)。
 
 最终 bundle 的原子安装与运行身份链见
 [Attention provider 集成包](attention_provider_integration_bundle.md)，固定的全局派生顺序见
