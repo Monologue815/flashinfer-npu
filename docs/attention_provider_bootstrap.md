@@ -82,6 +82,26 @@ authority、declaration bindings、source provenance、bundle identity 和 boots
 SHA-256 fingerprint 格式。JSON 只保存身份引用；下级 manifests 仍分别交付，并在组装时按
 fingerprint 重新核对。
 
+## 单文件交付
+
+需要把完整配置作为一个文件进入配置中心、制品仓库或部署镜像时，使用
+`AttentionOperatorProviderIntegrationBootstrapDocument`。document 内嵌：
+
+- 顶层 bootstrap manifest；
+- 完整 source declaration manifest；
+- 完整 contribution approval manifest。
+
+document 构造和 JSON 加载都会立即核对顶层记录的下级 id/fingerprint，并要求 source
+declarations 的 `(provider_id, contribution_id)` 集合与 approval bindings 完全一致。
+`load_attention_operator_provider_integration_bootstrap_document()` 对整个 JSON 应用共享 envelope
+限额，同时继续应用 source manifest 的 declaration/version 限额和 contribution manifest 的
+contribution/operation 限额；嵌套对象不能绕过各自 schema。
+
+factory loader 是部署进程注入的代码边界，不进入 document。加载 document 后可直接调用
+`install_attention_operator_provider_integration_bootstrap_document()`：框架先核对 loader
+id/type，再复用相同的 source loading、contribution validation、bundle assembly 与原子发布
+流程。document 只减少配置文件数量，不改变任何授权或失败关闭规则。
+
 ## 模型侧边界
 
 bootstrap 只属于进程部署层。模型使用者仍只创建公开 Attention wrapper，调用 `plan()`，

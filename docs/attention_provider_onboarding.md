@@ -146,6 +146,8 @@ factory path 不可解析都在 contribution 构造前失败。
 部署方再用顶层 `AttentionOperatorProviderIntegrationBootstrapManifest` 固定 source manifest、
 contribution approval、factory loader 与最终 bundle 命名，并通过一步 installer 原子发布；见
 [Attention provider 顶层 bootstrap manifest](attention_provider_bootstrap.md)。
+配置中心需要单文件交付时，使用同一文档定义的 bootstrap document 内嵌两份下级 manifest；
+受控 factory loader 仍由部署进程注入，不序列化到配置文件。
 
 在构建 resolver 前，集成模块先用
 `describe_attention_operator_package_runtime()` 从 runtime spec 生成

@@ -90,6 +90,8 @@ A single reviewed, data-only authority can bind that source manifest, the
 contribution approval manifest, the controlled factory loader and the final
 bundle naming before one-step atomic installation; see
 [Attention provider bootstrap manifest](docs/attention_provider_bootstrap.md).
+The same contract also defines a bounded single-file bootstrap document that
+embeds both lower manifests while keeping the controlled loader outside data.
 Bundles containing CANN and flash-attention-npu operations can use distinct,
 exact package/callable delegates through the routed loader described in
 [Attention package loader routing](docs/attention_package_loader_routing.md).

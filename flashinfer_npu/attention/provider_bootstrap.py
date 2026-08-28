@@ -17,11 +17,15 @@ from .json_envelope import (
     decode_attention_json,
 )
 from .provider_contribution_loader import (
+    DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_DECLARATION_MANIFEST_LIMITS,
     AttentionOperatorProviderContributionFactoryLoader,
     AttentionOperatorProviderContributionSourceDeclarationManifest,
+    AttentionOperatorProviderContributionSourceDeclarationManifestLimits,
 )
 from .provider_contribution_manifest import (
+    DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS,
     AttentionOperatorProviderContributionManifest,
+    AttentionOperatorProviderContributionManifestLimits,
 )
 
 
@@ -256,6 +260,155 @@ class AttentionOperatorProviderIntegrationBootstrapManifest:
             raise SchemaError("Attention provider bootstrap fields are invalid") from error
 
 
+@dataclass(frozen=True)
+class AttentionOperatorProviderIntegrationBootstrapDocument:
+    """One bounded data document containing a complete bootstrap authority."""
+
+    bootstrap_manifest: AttentionOperatorProviderIntegrationBootstrapManifest
+    source_manifest: AttentionOperatorProviderContributionSourceDeclarationManifest
+    contribution_manifest: AttentionOperatorProviderContributionManifest
+    schema_version: int = ATTENTION_OPERATOR_PROVIDER_BOOTSTRAP_VERSION
+    kind: str = field(
+        default="attention_operator_provider_integration_bootstrap_document",
+        init=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self.schema_version != ATTENTION_OPERATOR_PROVIDER_BOOTSTRAP_VERSION:
+            raise SchemaError("unsupported Attention provider bootstrap document")
+        if self.kind != "attention_operator_provider_integration_bootstrap_document":
+            raise SchemaError("Attention provider bootstrap document kind is invalid")
+        if not isinstance(
+            self.bootstrap_manifest,
+            AttentionOperatorProviderIntegrationBootstrapManifest,
+        ):
+            raise TypeError("bootstrap_manifest has the wrong type")
+        if not isinstance(
+            self.source_manifest,
+            AttentionOperatorProviderContributionSourceDeclarationManifest,
+        ):
+            raise TypeError("source_manifest has the wrong type")
+        if not isinstance(
+            self.contribution_manifest,
+            AttentionOperatorProviderContributionManifest,
+        ):
+            raise TypeError("contribution_manifest has the wrong type")
+        if (
+            self.source_manifest.manifest_id
+            != self.bootstrap_manifest.source_manifest_id
+            or self.source_manifest.fingerprint
+            != self.bootstrap_manifest.source_manifest_fingerprint
+        ):
+            raise SchemaError("Attention bootstrap document source manifest differs")
+        if (
+            self.contribution_manifest.manifest_id
+            != self.bootstrap_manifest.contribution_manifest_id
+            or self.contribution_manifest.fingerprint
+            != self.bootstrap_manifest.contribution_manifest_fingerprint
+        ):
+            raise SchemaError(
+                "Attention bootstrap document contribution manifest differs"
+            )
+        source_identities = {
+            item.contribution_identity for item in self.source_manifest.declarations
+        }
+        approved_identities = {
+            (item.provider_id, item.contribution_id)
+            for item in self.contribution_manifest.contribution_bindings
+        }
+        if source_identities != approved_identities:
+            raise SchemaError(
+                "Attention bootstrap document source and contribution sets differ"
+            )
+
+    def validate_factory_loader(
+        self,
+        factory_loader: AttentionOperatorProviderContributionFactoryLoader,
+    ) -> None:
+        self.bootstrap_manifest.validate_inputs(
+            source_manifest=self.source_manifest,
+            approval_manifest=self.contribution_manifest,
+            factory_loader=factory_loader,
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "kind": self.kind,
+            "bootstrap_manifest": self.bootstrap_manifest.to_dict(),
+            "source_manifest": self.source_manifest.to_dict(),
+            "contribution_manifest": self.contribution_manifest.to_dict(),
+        }
+
+    def to_json(self, *, indent: Optional[int] = None) -> str:
+        return json.dumps(
+            self.to_dict(),
+            sort_keys=True,
+            separators=(",", ":") if indent is None else None,
+            ensure_ascii=True,
+            allow_nan=False,
+            indent=indent,
+        )
+
+    @property
+    def fingerprint(self) -> str:
+        return _canonical_hash(self.to_dict())
+
+    @classmethod
+    def from_dict(
+        cls,
+        value: Mapping[str, Any],
+        *,
+        source_manifest_limits: (
+            AttentionOperatorProviderContributionSourceDeclarationManifestLimits
+        ) = (
+            DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_DECLARATION_MANIFEST_LIMITS
+        ),
+        contribution_manifest_limits: (
+            AttentionOperatorProviderContributionManifestLimits
+        ) = DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS,
+    ) -> "AttentionOperatorProviderIntegrationBootstrapDocument":
+        data = dict(value)
+        if set(data) != set(cls.__dataclass_fields__):
+            raise SchemaError("Attention provider bootstrap document fields are invalid")
+        if data.pop("kind") != (
+            "attention_operator_provider_integration_bootstrap_document"
+        ):
+            raise SchemaError("Attention provider bootstrap document kind is invalid")
+        for name in (
+            "bootstrap_manifest",
+            "source_manifest",
+            "contribution_manifest",
+        ):
+            if not isinstance(data.get(name), Mapping):
+                raise SchemaError(
+                    "Attention provider bootstrap document manifest is invalid"
+                )
+        data["bootstrap_manifest"] = (
+            AttentionOperatorProviderIntegrationBootstrapManifest.from_dict(
+                data["bootstrap_manifest"]
+            )
+        )
+        data["source_manifest"] = (
+            AttentionOperatorProviderContributionSourceDeclarationManifest.from_dict(
+                data["source_manifest"],
+                limits=source_manifest_limits,
+            )
+        )
+        data["contribution_manifest"] = (
+            AttentionOperatorProviderContributionManifest.from_dict(
+                data["contribution_manifest"],
+                limits=contribution_manifest_limits,
+            )
+        )
+        try:
+            return cls(**data)
+        except (TypeError, ValueError) as error:
+            raise SchemaError(
+                "Attention provider bootstrap document fields are invalid"
+            ) from error
+
+
 def load_attention_operator_provider_integration_bootstrap_manifest(
     value: str,
     *,
@@ -275,8 +428,41 @@ def load_attention_operator_provider_integration_bootstrap_manifest(
     )
 
 
+def load_attention_operator_provider_integration_bootstrap_document(
+    value: str,
+    *,
+    limits: AttentionJsonEnvelopeLimits = DEFAULT_ATTENTION_JSON_ENVELOPE_LIMITS,
+    source_manifest_limits: (
+        AttentionOperatorProviderContributionSourceDeclarationManifestLimits
+    ) = (
+        DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_SOURCE_DECLARATION_MANIFEST_LIMITS
+    ),
+    contribution_manifest_limits: AttentionOperatorProviderContributionManifestLimits = (
+        DEFAULT_ATTENTION_OPERATOR_PROVIDER_CONTRIBUTION_MANIFEST_LIMITS
+    ),
+) -> Tuple[
+    AttentionOperatorProviderIntegrationBootstrapDocument,
+    AttentionJsonEnvelopeUsage,
+]:
+    """Decode one bounded deployment document and all nested manifests."""
+
+    decoded, usage = decode_attention_json(value, limits=limits)
+    if not isinstance(decoded, Mapping):
+        raise SchemaError("Attention provider bootstrap document root must be an object")
+    return (
+        AttentionOperatorProviderIntegrationBootstrapDocument.from_dict(
+            decoded,
+            source_manifest_limits=source_manifest_limits,
+            contribution_manifest_limits=contribution_manifest_limits,
+        ),
+        usage,
+    )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_BOOTSTRAP_VERSION",
+    "AttentionOperatorProviderIntegrationBootstrapDocument",
     "AttentionOperatorProviderIntegrationBootstrapManifest",
+    "load_attention_operator_provider_integration_bootstrap_document",
     "load_attention_operator_provider_integration_bootstrap_manifest",
 ]

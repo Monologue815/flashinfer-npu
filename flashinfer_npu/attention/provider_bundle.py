@@ -36,6 +36,7 @@ from .provider_contribution_manifest import (
     AttentionOperatorProviderContributionManifest,
 )
 from .provider_bootstrap import (
+    AttentionOperatorProviderIntegrationBootstrapDocument,
     AttentionOperatorProviderIntegrationBootstrapManifest,
 )
 from .provider_contribution_loader import (
@@ -1054,16 +1055,60 @@ def install_attention_operator_provider_integration_bootstrap(
     )
 
 
+def assemble_attention_operator_provider_integration_bootstrap_document(
+    *,
+    bootstrap_document: AttentionOperatorProviderIntegrationBootstrapDocument,
+    factory_loader: AttentionOperatorProviderContributionFactoryLoader,
+) -> AttentionOperatorProviderIntegrationBundle:
+    """Assemble one bounded deployment document with its controlled loader."""
+
+    if not isinstance(
+        bootstrap_document,
+        AttentionOperatorProviderIntegrationBootstrapDocument,
+    ):
+        raise TypeError(
+            "bootstrap_document must be "
+            "AttentionOperatorProviderIntegrationBootstrapDocument"
+        )
+    bootstrap_document.validate_factory_loader(factory_loader)
+    return assemble_attention_operator_provider_integration_bootstrap(
+        bootstrap_manifest=bootstrap_document.bootstrap_manifest,
+        source_manifest=bootstrap_document.source_manifest,
+        factory_loader=factory_loader,
+        approval_manifest=bootstrap_document.contribution_manifest,
+    )
+
+
+def install_attention_operator_provider_integration_bootstrap_document(
+    *,
+    bootstrap_document: AttentionOperatorProviderIntegrationBootstrapDocument,
+    factory_loader: AttentionOperatorProviderContributionFactoryLoader,
+    expected_generation=None,
+):
+    """Assemble one deployment document and atomically publish its bundle."""
+
+    bundle = assemble_attention_operator_provider_integration_bootstrap_document(
+        bootstrap_document=bootstrap_document,
+        factory_loader=factory_loader,
+    )
+    return install_attention_operator_provider_integration_bundle(
+        bundle,
+        expected_generation=expected_generation,
+    )
+
+
 __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "AttentionOperatorProviderIntegrationBundle",
     "AttentionOperatorProviderIntegrationBundleBinding",
     "assemble_attention_operator_provider_integration_bootstrap",
+    "assemble_attention_operator_provider_integration_bootstrap_document",
     "assemble_attention_operator_provider_integration_bundle",
     "assemble_attention_operator_provider_integration_contributions",
     "assemble_attention_operator_provider_integration_source_declarations",
     "assemble_attention_operator_provider_integration_source_manifest",
     "assemble_attention_operator_provider_integration_sources",
     "install_attention_operator_provider_integration_bootstrap",
+    "install_attention_operator_provider_integration_bootstrap_document",
     "install_attention_operator_provider_integration_bundle",
 ]
