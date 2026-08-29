@@ -66,6 +66,15 @@ class FakeNpuWorkspace:
     device = "npu:0"
 
 
+class FlexibleNvfp4LogicalRunAdapter(FakeLogicalRunAdapter):
+    """Synthetic provider adapter accepting both public paged KV structures."""
+
+    def lower(self, active_plan, request):
+        if not isinstance(request.kv_cache, (tuple, list)):
+            request = replace(request, kv_cache=(request.kv_cache, None))
+        return super().lower(active_plan, request)
+
+
 def explicit_uint8_spec():
     return QuantSpec(
         scheme="asymmetric",
@@ -84,8 +93,9 @@ def nvfp4_runtime():
     operation = replace(
         values["operation"],
         keyword_arguments=values["operation"].keyword_arguments
-        + ("k_sf", "v_sf"),
-        quant_arguments=values["operation"].quant_arguments + ("k_sf", "v_sf"),
+        + ("kv_cache_sf", "k_sf", "v_sf"),
+        quant_arguments=values["operation"].quant_arguments
+        + ("kv_cache_sf", "k_sf", "v_sf"),
     )
     catalog = AttentionOperatorOperationCatalog(
         name="checkpoint-102-public-nvfp4", operations=(operation,)
@@ -94,6 +104,7 @@ def nvfp4_runtime():
         provider_id=operation.provider_id,
         operation_id=operation.operation_id,
         quant_spec=quant_spec,
+        combined_argument="kv_cache_sf",
         key_argument="k_sf",
         value_argument="v_sf",
     )
@@ -123,6 +134,7 @@ def nvfp4_runtime():
         runtime_query_head_scale=None,
         runtime_key_head_scale=None,
         runtime_value_head_scale=None,
+        kv_cache_sf=None,
         k_sf=None,
         v_sf=None,
     ):
@@ -139,6 +151,7 @@ def nvfp4_runtime():
             "runtime_query_head_scale": runtime_query_head_scale,
             "runtime_key_head_scale": runtime_key_head_scale,
             "runtime_value_head_scale": runtime_value_head_scale,
+            "kv_cache_sf": kv_cache_sf,
             "k_sf": k_sf,
             "v_sf": v_sf,
         }
@@ -178,7 +191,7 @@ def nvfp4_runtime():
         plan_gate=values["gate"],
         authority_resolver=values["authority"],
         logical_factory=values["factory"],
-        logical_run_adapter=FakeLogicalRunAdapter(),
+        logical_run_adapter=FlexibleNvfp4LogicalRunAdapter(),
         tensor_materializer=values["materializer"],
         run_adapter_factory=AttentionOperatorNvfp4PackedKVRunAdapterFactory(
             operation,
