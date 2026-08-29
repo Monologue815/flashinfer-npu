@@ -70,6 +70,7 @@ def single_decode_with_kv_cache(
             provider_value,
             mode=AttentionMode.SINGLE_DECODE,
             kv_layout=kv_layout,
+            reject_unquantized_uint8=True,
         )
         fp8_dtypes_match = (
             adapted_provider.q_dtype == adapted_provider.kv_dtype

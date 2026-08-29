@@ -200,6 +200,9 @@ ragged prefill 的公开 `o_scale` 独立建模为 `run.o_scale`。它不是 K/V
 但运行时类型契约不是 upstream exact parity。一个必要例外是 FlashInfer 已定义的 paged
 NVFP4 约定：裸 `uint8` 是 NVFP4 packed storage 的保留写法。通用 UINT8 量化必须使用显式
 `QuantSpec`，不能仅凭 storage dtype 推断 granularity、zero-point 或 scale 语义。
+single prefill 的裸 `uint8` K/V 只有在同时提供 `kv_cache_sf` 时才解释为 NVFP4；single decode
+没有该公开 scale-factor 参数，因此裸 `uint8` 不形成可执行量化合同。两种 single 接口若要
+使用通用 UINT8，都必须传入显式量化输入 wrapper 和 `QuantSpec`。
 
 ## 7. Plan/run 一致性
 

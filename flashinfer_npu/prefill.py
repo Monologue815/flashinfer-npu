@@ -111,6 +111,7 @@ def single_prefill_with_kv_cache(
                 if kv_cache_sf is not None
                 else None
             ),
+            reject_unquantized_uint8=True,
         )
         head_scales = (scale_q, scale_k, scale_v)
         fp8_dtypes_match = (

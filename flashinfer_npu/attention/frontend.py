@@ -93,11 +93,14 @@ def adapt_framework_single_qkv(
     mode: AttentionMode,
     kv_layout: str,
     packed_kv_quant_spec: Optional[QuantSpec] = None,
+    reject_unquantized_uint8: bool = False,
 ) -> FrameworkSingleQKVPlanInput:
     """Build single-request plan facts without importing a tensor framework."""
 
     if mode not in (AttentionMode.SINGLE_PREFILL, AttentionMode.SINGLE_DECODE):
         raise SchemaError("framework single-QKV adapter requires a single mode")
+    if not isinstance(reject_unquantized_uint8, bool):
+        raise TypeError("reject_unquantized_uint8 must be boolean")
     layout = parse_kv_layout(kv_layout)
     q_shape, q_dtype, q_device = _framework_tensor_facts(q, "q")
     from .operator_quantization import AttentionOperatorQuantizedTensorInput
@@ -129,6 +132,14 @@ def adapt_framework_single_qkv(
         k_shape, k_dtype, k_device = _framework_tensor_facts(k, "k")
         v_shape, v_dtype, v_device = _framework_tensor_facts(v, "v")
         kv_quant_spec = packed_kv_quant_spec
+        if (
+            reject_unquantized_uint8
+            and packed_kv_quant_spec is None
+            and (k_dtype == "uint8" or v_dtype == "uint8")
+        ):
+            raise SchemaError(
+                "raw uint8 K/V requires kv_cache_sf or an explicit QuantSpec"
+            )
     expected_q_rank = 2 if mode == AttentionMode.SINGLE_DECODE else 3
     if len(q_shape) != expected_q_rank:
         raise SchemaError("%s q must be rank %d" % (mode.value, expected_q_rank))
