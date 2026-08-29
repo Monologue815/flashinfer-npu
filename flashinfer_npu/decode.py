@@ -13,6 +13,7 @@ from .attention.frontend import (
     adapt_paged_kv_data,
     adapt_single_qkv,
     canonicalize_dtype_name,
+    canonicalize_flashinfer_paged_kv_dtype,
     canonicalize_framework_paged_fp8_kv_input,
     canonicalize_kv_dtype,
     finite_scalar,
@@ -633,6 +634,10 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
                 kv_data_type = data_type
         q_dtype = canonicalize_dtype_name(q_data_type)
         kv_dtype, kv_quant_spec = canonicalize_kv_dtype(kv_data_type, q_dtype)
+        if self._operator_runtime is not None and kv_quant_spec is None:
+            kv_dtype, kv_quant_spec = canonicalize_flashinfer_paged_kv_dtype(
+                kv_dtype, q_dtype
+            )
         if (
             self._operator_runtime is not None
             and kv_quant_spec is None

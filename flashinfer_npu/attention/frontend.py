@@ -27,6 +27,10 @@ from .schema import (
     RaggedKVCacheSpec,
     SingleAttentionMetadata,
 )
+from .nvfp4_scale_factor import (
+    flashinfer_nvfp4_kv_quant_spec,
+    validate_attention_nvfp4_kv_quant_spec,
+)
 
 
 MaskInput = Optional[ReferenceTensor]
@@ -88,6 +92,7 @@ def adapt_framework_single_qkv(
     *,
     mode: AttentionMode,
     kv_layout: str,
+    packed_kv_quant_spec: Optional[QuantSpec] = None,
 ) -> FrameworkSingleQKVPlanInput:
     """Build single-request plan facts without importing a tensor framework."""
 
@@ -97,10 +102,16 @@ def adapt_framework_single_qkv(
     q_shape, q_dtype, q_device = _framework_tensor_facts(q, "q")
     from .operator_quantization import AttentionOperatorQuantizedTensorInput
 
+    if packed_kv_quant_spec is not None:
+        validate_attention_nvfp4_kv_quant_spec(packed_kv_quant_spec)
     quantized_kv = isinstance(k, AttentionOperatorQuantizedTensorInput) or isinstance(
         v, AttentionOperatorQuantizedTensorInput
     )
     if quantized_kv:
+        if packed_kv_quant_spec is not None:
+            raise SchemaError(
+                "packed NVFP4 K/V must be supplied as raw uint8 tensors"
+            )
         if not isinstance(k, AttentionOperatorQuantizedTensorInput) or not isinstance(
             v, AttentionOperatorQuantizedTensorInput
         ):
@@ -117,7 +128,7 @@ def adapt_framework_single_qkv(
     else:
         k_shape, k_dtype, k_device = _framework_tensor_facts(k, "k")
         v_shape, v_dtype, v_device = _framework_tensor_facts(v, "v")
-        kv_quant_spec = None
+        kv_quant_spec = packed_kv_quant_spec
     expected_q_rank = 2 if mode == AttentionMode.SINGLE_DECODE else 3
     if len(q_shape) != expected_q_rank:
         raise SchemaError("%s q must be rank %d" % (mode.value, expected_q_rank))
@@ -140,8 +151,21 @@ def adapt_framework_single_qkv(
     else:
         num_kv_heads, kv_len, k_head_dim = k_shape
         v_num_heads, v_kv_len, head_dim_vo = v_shape
-    if k_head_dim != head_dim_qk:
-        raise SchemaError("q and k head dimensions must match")
+    if packed_kv_quant_spec is None:
+        if k_head_dim != head_dim_qk:
+            raise SchemaError("q and k head dimensions must match")
+    else:
+        if k_dtype != "uint8":
+            raise SchemaError("packed NVFP4 k and v must use uint8 storage")
+        if head_dim_qk % 16 or head_dim_qk != k_head_dim * 2:
+            raise SchemaError(
+                "packed NVFP4 k last dimension must be logical head_dim_qk / 2"
+            )
+        if (v_shape[-1] * 2) % 16:
+            raise SchemaError(
+                "packed NVFP4 v logical head dimension must be divisible by 16"
+            )
+        head_dim_vo = head_dim_vo * 2
     if v_kv_len != kv_len:
         raise SchemaError("k and v sequence lengths must match")
     if v_num_heads != num_kv_heads:
@@ -196,6 +220,22 @@ def canonicalize_kv_dtype(value, q_dtype: str) -> Tuple[str, Optional[QuantSpec]
     if isinstance(value, QuantSpec):
         return value.storage_dtype, value
     return (q_dtype if value is None else canonicalize_dtype_name(value)), None
+
+
+def canonicalize_flashinfer_paged_kv_dtype(
+    value, q_dtype: str
+) -> Tuple[str, Optional[QuantSpec]]:
+    """Canonicalize the public paged-wrapper KV dtype.
+
+    FlashInfer reserves bare ``uint8`` paged KV storage for NVFP4.  General
+    UINT8 quantization remains available through an explicit ``QuantSpec``;
+    it is never inferred from storage dtype alone.
+    """
+
+    dtype, quant_spec = canonicalize_kv_dtype(value, q_dtype)
+    if quant_spec is None and dtype == "uint8":
+        quant_spec = flashinfer_nvfp4_kv_quant_spec()
+    return dtype, quant_spec
 
 
 def single_fp8_per_head_quant_spec(

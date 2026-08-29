@@ -3,8 +3,8 @@
 ## 范围
 
 `inspect_attention_nvfp4_kv_scale_factors()` 定义公开 `kv_cache_sf` 进入 provider lowering 前的
-Host 侧 metadata 契约。它对齐 FlashInfer 的 NVFP4 KV 表达，但不实现量化、反量化、layout
-转换或 NPU 算子。
+Host 侧 metadata 契约。公开 facade 会把 FlashInfer 形式的 NVFP4 输入规范化为固定的
+`AttentionPlanSpec.kv_quant_spec`，但不实现量化、反量化、layout 转换或 NPU 算子。
 
 metadata 检查形成 `AttentionNvfp4ScaleFactorView`。只有显式构造
 `AttentionOperatorNvfp4ScaleFactorBinding` 并把它与精确 operation catalog 行绑定后，
@@ -72,10 +72,17 @@ binding 接受的 `QuantSpec` 必须同时满足：
 - 使用非 `logical` physical layout；
 - 明确声明 provider packing order。
 
-`attention_nvfp4_kv_quant_spec()` 用于构造该逻辑契约，但不会猜测昇腾 provider 的 physical
-layout 或 nibble packing；两项必须由接入模块命名。`infer_attention_nvfp4_packed_storage_shape()`
-只冻结两个 E2M1 值存入一个 byte 的 shape 关系，因此逻辑最后一维 `D` 对应 packed storage
-最后一维 `D/2`。它不执行编码，也不决定两个值在 byte 内的顺序。
+`flashinfer_nvfp4_kv_quant_spec()` 固定 facade 接受的 provider-neutral 物化格式：
+`physical_layout="flashinfer_nvfp4_linear_e2m1x2_v1"`，并规定偶数逻辑元素位于低 nibble、奇数
+逻辑元素位于高 nibble。`attention_nvfp4_kv_quant_spec()` 仍可用于构造其他显式、版本化的内部
+契约，但它们不能冒充上述公开格式。`infer_attention_nvfp4_packed_storage_shape()` 冻结两个
+E2M1 值存入一个 byte 的 shape 关系，因此逻辑最后一维 `D` 对应 packed storage 最后一维
+`D/2`。这些 helper 只描述已经物化的输入，不执行编码。
+
+provider 能直接消费公开格式时，其 descriptor/binding 必须精确声明同一个 QuantSpec。若真实
+CANN 或 flash-attention-npu 算子要求转置、swizzle 或不同 nibble 编排，该变化属于 provider
+内部 converter/adapter，并必须以单独的 artifact、workspace 和 ABI 身份接受审核；私有布局
+不能回写到公开 plan，也不能要求模型调用方选择。
 
 lowering 会先比较 active plan 与 binding 的完整 QuantSpec fingerprint。layout、packing、block
 size、scale dtype 或 compute/accumulator dtype 任一漂移，都会在 tensor metadata observation

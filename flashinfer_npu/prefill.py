@@ -10,6 +10,7 @@ from .runtime import DispatchError, SchemaError
 from .attention.frontend import (
     adapt_batch_custom_mask,
     canonicalize_framework_paged_fp8_kv_input,
+    canonicalize_flashinfer_paged_kv_dtype,
     canonicalize_kv_dtype,
     adapt_head_scale,
     adapt_paged_kv_data,
@@ -28,6 +29,10 @@ from .attention.frontend import (
     reference_index_values,
     require_reference_backend,
     single_fp8_per_head_quant_spec,
+)
+from .attention.nvfp4_scale_factor import (
+    flashinfer_nvfp4_kv_quant_spec,
+    is_flashinfer_nvfp4_kv_quant_spec,
 )
 from .attention.batch import (
     HostBatchReferenceWrapper,
@@ -101,6 +106,11 @@ def single_prefill_with_kv_cache(
             provider_value,
             mode=AttentionMode.SINGLE_PREFILL,
             kv_layout=kv_layout,
+            packed_kv_quant_spec=(
+                flashinfer_nvfp4_kv_quant_spec()
+                if kv_cache_sf is not None
+                else None
+            ),
         )
         head_scales = (scale_q, scale_k, scale_v)
         fp8_dtypes_match = (
@@ -190,10 +200,6 @@ def single_prefill_with_kv_cache(
             raise NotImplementedError(
                 "provider single-prefill FP16 QK reduction is not bound"
             )
-        if kv_cache_sf is not None:
-            raise NotImplementedError(
-                "provider single-prefill NVFP4 scale-factor binding is not implemented"
-            )
         spec = AttentionPlanSpec(
             mode=AttentionMode.SINGLE_PREFILL,
             num_qo_heads=adapted_provider.num_qo_heads,
@@ -247,7 +253,9 @@ def single_prefill_with_kv_cache(
             ),
         )
         runtime.plan(spec, adapted_provider.metadata)
-        if adapted_provider.kv_quant_spec is not None:
+        if is_flashinfer_nvfp4_kv_quant_spec(adapted_provider.kv_quant_spec):
+            provider_kv_input = (provider_key, provider_value)
+        elif adapted_provider.kv_quant_spec is not None:
             provider_kv_input = combine_attention_operator_quantized_kv_input(
                 provider_key, provider_value
             )
@@ -271,6 +279,7 @@ def single_prefill_with_kv_cache(
             k_head_scale=provider_k_head_scale,
             v_head_scale=provider_v_head_scale,
             logits_soft_cap=spec.logits_soft_cap,
+            kv_cache_sf=kv_cache_sf,
         )
         if return_lse:
             if not isinstance(result, tuple) or len(result) != 2:
@@ -797,6 +806,10 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         vo_dim = head_dim_qk if head_dim_vo is None else head_dim_vo
         q_dtype = _canonical_dtype(q_data_type)
         kv_dtype, kv_quant_spec = canonicalize_kv_dtype(kv_data_type, q_dtype)
+        if self._operator_runtime is not None and kv_quant_spec is None:
+            kv_dtype, kv_quant_spec = canonicalize_flashinfer_paged_kv_dtype(
+                kv_dtype, q_dtype
+            )
         if (
             self._operator_runtime is not None
             and kv_quant_spec is None

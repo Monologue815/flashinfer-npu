@@ -90,7 +90,7 @@ class PublicSinglePrefillProviderRuntimeCheckpointTests(unittest.TestCase):
             single_prefill_with_kv_cache(q, k, v, custom_mask="mask")
         with self.assertRaisesRegex(NotImplementedError, "KV scale"):
             single_prefill_with_kv_cache(q, k, v, k_scale="scale")
-        with self.assertRaisesRegex(NotImplementedError, "NVFP4"):
+        with self.assertRaisesRegex(SchemaError, "uint8"):
             single_prefill_with_kv_cache(q, k, v, kv_cache_sf="scale")
         self.assertEqual(self.components["loader"].resolve_calls, 0)
         self.assertEqual(package_attention.calls, [])

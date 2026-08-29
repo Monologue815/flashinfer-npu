@@ -14,9 +14,10 @@
 3. Attention 在什么位置反量化 K/V。
 4. plan、run、workload fingerprint 如何保证使用同一个量化语义。
 
-本阶段不声称支持 CANN、torch_npu、设备级 FP8/NVFP4 编码或执行、MX、设备 swizzle，
-也不声称任何 NPU 性能结果。NVFP4 仅建立 `kv_cache_sf` metadata contract；Host logical
-FP8 oracle 是 correctness contract，不是生产 fallback。
+本阶段不声称支持 CANN、torch_npu、设备级 FP8/NVFP4 编码或真实算子执行、MX、设备
+swizzle，也不声称任何 NPU 性能结果。NVFP4 已覆盖 public-input canonicalization、plan、
+packed-KV/scale metadata 与 provider lowering route；Host logical FP8 oracle 是 correctness
+contract，不是生产 fallback。
 
 ## 2. 分层模型
 
@@ -139,11 +140,12 @@ per-head 或 per-tensor scale；它定义 Attention/scale 语义，不模拟硬�
   自动生成 per-tensor QuantSpec；Host oracle 继续直接读取 logical FP8 `ReferenceTensor`。
   分离的裸 `(K, V)` cache 在内部获得 scalar virtual unit scale；provider 未声明参数省略
   等价于 1 时不能注册。合并 cache 需要经过验证的 slot-view binding，当前不会猜测或切片。
-- `kv_cache_sf` 保留上游 NVFP4 含义，已有独立 Host metadata 契约和精确 operation lowering
-  binding；packed storage 与 scale-factor 还会组成一个 plan-bound 联合 view，并由专用联合
-  adapter 在同一个 lowering 边界消费。binding 同时固定 packed NVFP4 QuantSpec 与
-  provider-explicit physical layout/packing，并通过 runtime spec 的独立 binding 集合进入
-  plan admission 和 adapter chain。
+- `kv_cache_sf` 保留上游 NVFP4 含义。single prefill 在提供 `kv_cache_sf` 时，以及 paged
+  prefill/decode 的 provider plan 使用裸 `uint8` `kv_data_type` 时，facade 会生成同一个
+  FlashInfer-compatible NVFP4 `QuantSpec`，不增加公开参数。packed storage 与 scale-factor
+  组成 plan-bound 联合 view，并由专用联合 adapter 在同一个 lowering 边界消费。binding 同时
+  固定 canonical NVFP4 QuantSpec、layout/packing 和 operation 参数映射，并通过 runtime spec
+  的独立 binding 集合进入 plan admission 和 adapter chain。
   尚无真实 provider contribution 或执行授权，不能借用该参数表达 INT8/INT4。规则见
   [Attention NVFP4 KV scale-factor 契约](attention_nvfp4_scale_factor.md)和
   [Attention NVFP4 packed KV 联合输入契约](attention_nvfp4_packed_kv.md)。
@@ -195,8 +197,9 @@ ragged prefill 的公开 `o_scale` 独立建模为 `run.o_scale`。它不是 K/V
 还必须遵守该版本对输出 dtype、scale dtype 与 shape 的约束。
 
 把 `QuantSpec` 对象作为 `kv_data_type` 是本项目的框架扩展：Python signature 与上游一致，
-但运行时类型契约不是 upstream exact parity。未来 Torch frontend 可以增加清晰命名的
-量化 cache wrapper；不能把额外语义隐藏在裸字符串 dtype 中。
+但运行时类型契约不是 upstream exact parity。一个必要例外是 FlashInfer 已定义的 paged
+NVFP4 约定：裸 `uint8` 是 NVFP4 packed storage 的保留写法。通用 UINT8 量化必须使用显式
+`QuantSpec`，不能仅凭 storage dtype 推断 granularity、zero-point 或 scale 语义。
 
 ## 7. Plan/run 一致性
 
@@ -248,6 +251,7 @@ case 清单或执行结果。
    真实昇腾 tensor 的 CANN/flash-attention-npu runtime spec。
 
 需要实际 unit-scale tensor、而不是参数缺省语义的 provider 尚需增加 plan-owned
-materialization；NVFP4 已有 framework-only packed KV/scale 联合 metadata 契约，但真实 provider
-descriptor、converter、operation 接线与执行仍是显式 gap。MX、K/V 不同 `QuantSpec` 配置和
-通用量化 packed combined-KV allocation 也尚未实现。
+materialization；NVFP4 已有 public canonicalization、framework-only packed KV/scale 联合
+metadata 契约和 runtime binding route，但真实 provider capability/evidence、必要的私有布局
+converter、外部 package operation 接线与算子执行仍是显式 gap。MX、K/V 不同 `QuantSpec`
+配置和通用量化 packed combined-KV allocation 也尚未实现。

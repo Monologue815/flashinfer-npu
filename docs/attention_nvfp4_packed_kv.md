@@ -16,6 +16,12 @@ CANN 或 flash-attention-npu 的候选算子。
 - paged Attention 的 separate K/V；
 - paged Attention 的 combined K/V，第二维长度为 2。
 
+公开 canonical 格式由 `flashinfer_nvfp4_kv_quant_spec()` 唯一表示：每个 `uint8` 保存两个 E2M1
+值，低 nibble 对应偶数逻辑元素，高 nibble 对应奇数逻辑元素；每 16 个逻辑值使用一个
+`float8_e4m3fn` scale。paged wrapper 的 `plan(..., kv_data_type=uint8)` 按 FlashInfer 语义解释
+为该 NVFP4 格式，`run(..., kv_cache_sf=...)` 提供 K/V scale。通用 UINT8 量化必须传显式
+`QuantSpec`，不会与这个保留语义混淆。
+
 ragged NVFP4、layout conversion 和真实 provider 执行不由本文隐式推断。需要这些能力时，provider
 必须交付新的精确契约和证据。
 
@@ -45,14 +51,15 @@ FlashInfer NVFP4 KV scale 则保留 K/V 的 page、token/slot 和 head 外层坐
 - storage 与 scale 各自的最小地址对齐。
 
 当前 storage shape rule 表示两个逻辑 E2M1 值存入一个 `uint8`，所以逻辑 shape
-`[..., D]` 对应 storage shape `[..., D/2]`。它只定义 shape 和已经物化的输入布局，不定义两个
-4-bit 值的编码顺序；编码顺序由 `packing_order` 命名并进入 QuantSpec、descriptor 和 binding
-fingerprint。
+`[..., D]` 对应 storage shape `[..., D/2]`。公开 canonical descriptor 同时固定低 nibble/高
+nibble 的逻辑顺序；该顺序进入 QuantSpec、descriptor 和 binding fingerprint。
 
 scale shape rule 保留全部外层维，只把逻辑最后一维变为 `D/16`。`D` 必须能被 16 整除。
 
 descriptor 是 provider 声明，不是框架猜测。CANN 或 flash-attention-npu 接入模块只有在其真实
-tensor ABI 与这两个 shape rule 一致时才能复用该 descriptor；否则必须注册新的版本化规则。
+tensor ABI 可直接消费公开 canonical 格式时才能复用该 descriptor；否则必须在 provider 内部
+注册显式 converter 和新的版本化目标 descriptor。转换后的私有布局不参与 facade plan，也不
+改变模型侧接口。
 
 ## 4. Shape 契约
 
@@ -87,7 +94,7 @@ tensor。
 
 联合检查严格按以下语义闭合：
 
-1. plan 必须携带 canonical NVFP4 `QuantSpec`；
+1. plan 必须携带由公开输入规范化得到的 canonical NVFP4 `QuantSpec`；
 2. descriptor 的 layout 与 packing 必须和完整 QuantSpec 相同；
 3. storage 必须是合法的 separate 或 combined 结构；
 4. paged storage 的 page 容量必须覆盖 page table 的最大引用；

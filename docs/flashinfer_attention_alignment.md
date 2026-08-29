@@ -49,6 +49,7 @@ CANN、flash-attention-npu、Ascend C、包版本、算子名或 JIT artifact。
 | JIT 高级入口 | 独立的 `*_with_jit_module` 低层 API | 保留独立兼容层，不混入常规 `plan()` / `run()` |
 | 重规划 | 用户显式再次调用 `plan()` | 相同；`run()` 不 fallback、不重选、不隐式 replan |
 | workspace | wrapper 拥有或接收 workspace，plan 可物化 metadata | 相同所有权语义；具体容量由选中 provider 声明 |
+| paged NVFP4 | `plan(..., kv_data_type=uint8)`，`run(..., kv_cache_sf=...)` | 相同公开参数；内部生成固定 NVFP4 QuantSpec 后自动选择 provider |
 
 `backend="auto"` 是兼容入口，不是把 provider 名称变成模型配置。当前公共接口不会新增
 `cann`、`flash_attention_npu`、`ascendc` 或具体 `kernel_id` 作为模型侧 backend 值。
@@ -56,6 +57,11 @@ CANN、flash-attention-npu、Ascend C、包版本、算子名或 JIT artifact。
 
 `backend="reference"` 是本仓库 Host oracle 的显式开发入口，不代表生产 NPU fallback。
 `auto` 没有满足证据要求的 NPU candidate 时必须失败，不能静默改用 Host 计算。
+
+NVFP4 的公开输入同样遵守这条边界。模型代码只提交 FlashInfer-compatible packed `uint8` K/V
+和 `kv_cache_sf`；框架在内部固定 E2M1 nibble 顺序、每 16 个值一个 E4M3 scale 的计划语义。
+若选中的昇腾算子要求不同物理布局，转换由该 provider 的受审核 adapter 完成，不能变成新的
+公开 layout/provider 参数。
 
 ## 4. 相同合同与昇腾适配的边界
 

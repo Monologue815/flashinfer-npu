@@ -512,14 +512,18 @@ from .provider_bootstrap import (
 )
 from .nvfp4_scale_factor import (
     ATTENTION_NVFP4_SCALE_FACTOR_VERSION,
+    FLASHINFER_NVFP4_PACKING_ORDER,
+    FLASHINFER_NVFP4_PHYSICAL_LAYOUT,
     NVFP4_SCALE_FACTOR_DTYPE,
     AttentionNvfp4ScaleFactorView,
     AttentionOperatorNvfp4ScaleFactorBinding,
     AttentionOperatorNvfp4ScaleFactorRunAdapter,
     AttentionOperatorNvfp4ScaleFactorRunAdapterFactory,
     attention_nvfp4_kv_quant_spec,
+    flashinfer_nvfp4_kv_quant_spec,
     infer_attention_nvfp4_packed_storage_shape,
     inspect_attention_nvfp4_kv_scale_factors,
+    is_flashinfer_nvfp4_kv_quant_spec,
     validate_attention_nvfp4_kv_quant_spec,
 )
 from .nvfp4_packed_kv import (
@@ -688,6 +692,8 @@ __all__ = [
     "ATTENTION_OPERATOR_PROVIDER_INTEGRATION_BUNDLE_VERSION",
     "ATTENTION_OPERATOR_PROVIDER_BOOTSTRAP_VERSION",
     "ATTENTION_NVFP4_SCALE_FACTOR_VERSION",
+    "FLASHINFER_NVFP4_PACKING_ORDER",
+    "FLASHINFER_NVFP4_PHYSICAL_LAYOUT",
     "NVFP4_SCALE_FACTOR_DTYPE",
     "ATTENTION_NVFP4_PACKED_KV_VERSION",
     "NVFP4_SCALE_SHAPE_RULE",
@@ -914,8 +920,10 @@ __all__ = [
     "AttentionOperatorNvfp4ScaleFactorRunAdapter",
     "AttentionOperatorNvfp4ScaleFactorRunAdapterFactory",
     "attention_nvfp4_kv_quant_spec",
+    "flashinfer_nvfp4_kv_quant_spec",
     "infer_attention_nvfp4_packed_storage_shape",
     "inspect_attention_nvfp4_packed_kv_input",
+    "is_flashinfer_nvfp4_kv_quant_spec",
     "validate_attention_nvfp4_kv_quant_spec",
     "AttentionOperatorProviderIntegrationContribution",
     "AttentionOperatorProviderIntegrationContributionBinding",

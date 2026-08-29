@@ -32,6 +32,8 @@ from .tensor_contract import AttentionTensorAccessPolicy, TensorView
 
 ATTENTION_NVFP4_SCALE_FACTOR_VERSION = 1
 NVFP4_SCALE_FACTOR_DTYPE = "float8_e4m3fn"
+FLASHINFER_NVFP4_PHYSICAL_LAYOUT = "flashinfer_nvfp4_linear_e2m1x2_v1"
+FLASHINFER_NVFP4_PACKING_ORDER = "low_nibble_even_high_nibble_odd_v1"
 _ARGUMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -49,7 +51,7 @@ def attention_nvfp4_kv_quant_spec(
     compute_dtype: str = "float32",
     accumulator_dtype: str = "float32",
 ) -> QuantSpec:
-    """Build the logical NVFP4 contract while keeping provider packing explicit."""
+    """Build an NVFP4 contract for already-materialized packed input tensors."""
 
     if str(physical_layout) == "logical" or not str(physical_layout):
         raise SchemaError("NVFP4 requires a named non-logical physical layout")
@@ -67,6 +69,31 @@ def attention_nvfp4_kv_quant_spec(
         has_zero_point=False,
         physical_layout=str(physical_layout),
         packing_order=str(packing_order),
+    )
+
+
+def flashinfer_nvfp4_kv_quant_spec() -> QuantSpec:
+    """Return the provider-neutral NVFP4 KV contract of the public facade.
+
+    FlashInfer materializes two E2M1 values per ``uint8`` byte, with the even
+    logical element in the low nibble, and uses one linear E4M3 scale for each
+    block of 16 logical values.  Providers may lower this canonical input to a
+    private operator layout, but provider-private layouts never enter the
+    public Attention plan.
+    """
+
+    return attention_nvfp4_kv_quant_spec(
+        physical_layout=FLASHINFER_NVFP4_PHYSICAL_LAYOUT,
+        packing_order=FLASHINFER_NVFP4_PACKING_ORDER,
+    )
+
+
+def is_flashinfer_nvfp4_kv_quant_spec(value: Optional[QuantSpec]) -> bool:
+    """Whether ``value`` is the exact public FlashInfer NVFP4 KV contract."""
+
+    return (
+        isinstance(value, QuantSpec)
+        and value.fingerprint == flashinfer_nvfp4_kv_quant_spec().fingerprint
     )
 
 
@@ -510,13 +537,17 @@ class AttentionOperatorNvfp4ScaleFactorRunAdapterFactory:
 
 __all__ = [
     "ATTENTION_NVFP4_SCALE_FACTOR_VERSION",
+    "FLASHINFER_NVFP4_PACKING_ORDER",
+    "FLASHINFER_NVFP4_PHYSICAL_LAYOUT",
     "NVFP4_SCALE_FACTOR_DTYPE",
     "AttentionNvfp4ScaleFactorView",
     "AttentionOperatorNvfp4ScaleFactorBinding",
     "AttentionOperatorNvfp4ScaleFactorRunAdapter",
     "AttentionOperatorNvfp4ScaleFactorRunAdapterFactory",
     "attention_nvfp4_kv_quant_spec",
+    "flashinfer_nvfp4_kv_quant_spec",
     "infer_attention_nvfp4_packed_storage_shape",
+    "is_flashinfer_nvfp4_kv_quant_spec",
     "inspect_attention_nvfp4_kv_scale_factors",
     "validate_attention_nvfp4_kv_quant_spec",
 ]
