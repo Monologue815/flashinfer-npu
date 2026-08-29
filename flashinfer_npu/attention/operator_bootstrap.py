@@ -88,7 +88,7 @@ from .operator_run import (
 from .tensor_contract import AttentionTensorAccessPolicy
 
 
-ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 14
+ATTENTION_OPERATOR_BOOTSTRAP_VERSION = 15
 
 
 @dataclass(frozen=True)

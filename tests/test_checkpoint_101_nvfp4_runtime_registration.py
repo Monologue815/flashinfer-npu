@@ -39,9 +39,9 @@ def runtime_values():
     operation = replace(
         values["operation"],
         keyword_arguments=values["operation"].keyword_arguments
-        + ("kv_cache_sf",),
+        + ("kv_cache_sf", "k_sf", "v_sf"),
         quant_arguments=values["operation"].quant_arguments
-        + ("kv_cache_sf",),
+        + ("kv_cache_sf", "k_sf", "v_sf"),
     )
     catalog = AttentionOperatorOperationCatalog(
         name="checkpoint-101-nvfp4-runtime", operations=(operation,)
@@ -77,6 +77,8 @@ def runtime_values():
         operation_id=operation.operation_id,
         quant_spec=NVFP4_QUANT_SPEC,
         combined_argument="kv_cache_sf",
+        key_argument="k_sf",
+        value_argument="v_sf",
     )
     packed_binding = AttentionOperatorNvfp4PackedKVBinding(
         scale_binding,

@@ -152,6 +152,12 @@ binding。bootstrap 把 operation capability rules 中的全部 QuantSpec 划分
 集合完全相等。缺失 binding、没有 capability 的孤立 binding、重复 routing、operation/provider
 identity 漂移都会在 package metadata probe 和 callable import 之前失败。
 
+paged wrapper 的 `plan()` 不接收 combined/separate 结构，该信息只在 `run()` tensor 到达时可见，
+而 `run()` 不允许重新选择 provider。因此，任何声明 paged NVFP4 capability 的 binding 都必须
+同时覆盖 combined 和 separate 两种公开结构；只覆盖其中一种的 operation 不能作为完整 facade
+候选。single NVFP4 必须覆盖 separate K/V。ragged NVFP4 尚无公开 metadata contract，不能通过
+provider bootstrap 获得执行授权。这些检查都发生在 package probe 和 callable import 之前。
+
 通用 quantization adapter 会获得明确的 delegated QuantSpec 集合。遇到 NVFP4 plan 时它只把请求
 交给联合 adapter，遇到自己拥有的 QuantSpec 时才解析项目 quantized-input wrapper；因此 adapter
 顺序不再承担隐式格式选择。联合 factory 以完整 binding 集合构造一个 fingerprint-indexed route，

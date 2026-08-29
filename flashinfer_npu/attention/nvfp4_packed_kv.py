@@ -221,18 +221,42 @@ def validate_attention_operator_nvfp4_packed_kv_bindings(
     fingerprints = tuple(item.quant_spec.fingerprint for item in binding_values)
     if len(set(fingerprints)) != len(fingerprints):
         raise SchemaError("duplicate NVFP4 packed QuantSpec binding")
-    capability_fingerprints = {
-        quant_spec.fingerprint
-        for profile in profile_values
-        for rule in profile.rules
-        if set(rule.modes).intersection(operation.candidate_modes)
-        for quant_spec in rule.quant_specs
-    }
+    capability_modes = {}
+    for profile in profile_values:
+        for rule in profile.rules:
+            modes = set(rule.modes).intersection(operation.candidate_modes)
+            for quant_spec in rule.quant_specs:
+                capability_modes.setdefault(quant_spec.fingerprint, set()).update(
+                    modes
+                )
     for binding in binding_values:
         binding.validate_operation(operation)
-        if binding.quant_spec.fingerprint not in capability_fingerprints:
+        modes = capability_modes.get(binding.quant_spec.fingerprint, set())
+        if not modes:
             raise SchemaError(
                 "NVFP4 packed binding has no capability QuantSpec"
+            )
+        if AttentionMode.BATCH_PREFILL_RAGGED in modes:
+            raise SchemaError(
+                "NVFP4 packed binding cannot authorize ragged Attention"
+            )
+        accepted = set(binding.accepted_structures)
+        paged_modes = {
+            AttentionMode.BATCH_PREFILL_PAGED,
+            AttentionMode.BATCH_DECODE_PAGED,
+            AttentionMode.BATCH_MIXED_PAGED,
+        }
+        single_modes = {
+            AttentionMode.SINGLE_PREFILL,
+            AttentionMode.SINGLE_DECODE,
+        }
+        if modes.intersection(paged_modes) and accepted != {"combined", "separate"}:
+            raise SchemaError(
+                "paged NVFP4 binding must cover combined and separate public KV"
+            )
+        if modes.intersection(single_modes) and "separate" not in accepted:
+            raise SchemaError(
+                "single NVFP4 binding must cover separate public K/V"
             )
     return tuple(sorted(binding_values, key=lambda item: item.quant_spec.fingerprint))
 
