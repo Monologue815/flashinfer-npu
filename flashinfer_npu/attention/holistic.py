@@ -12,6 +12,7 @@ from .frontend import (
     adapt_head_scale,
     adapt_paged_kv_data,
     canonicalize_dtype_name,
+    canonicalize_flashinfer_paged_kv_dtype,
     canonicalize_kv_dtype,
     finalize_reference_result,
     finite_scalar,
@@ -593,6 +594,10 @@ class BatchAttention:
         )
         q_dtype = canonicalize_dtype_name(q_data_type)
         kv_dtype, kv_quant_spec = canonicalize_kv_dtype(kv_data_type, q_dtype)
+        if self._operator_runtime is not None and kv_quant_spec is None:
+            kv_dtype, kv_quant_spec = canonicalize_flashinfer_paged_kv_dtype(
+                kv_dtype, q_dtype
+            )
         spec = AttentionPlanSpec(
             mode=AttentionMode.BATCH_MIXED_PAGED,
             num_qo_heads=num_qo_heads,

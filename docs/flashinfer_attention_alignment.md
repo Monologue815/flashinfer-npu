@@ -51,6 +51,10 @@ CANN、flash-attention-npu、Ascend C、包版本、算子名或 JIT artifact。
 | workspace | wrapper 拥有或接收 workspace，plan 可物化 metadata | 相同所有权语义；具体容量由选中 provider 声明 |
 | paged NVFP4 | `plan(..., kv_data_type=uint8)`，`run(..., kv_cache_sf=...)` | 相同公开参数；内部生成固定 NVFP4 QuantSpec 后自动选择 provider |
 
+上表的 paged NVFP4 规则同时适用于 classic paged prefill/decode wrapper 和 unified
+`BatchAttention` mixed-paged wrapper。它们共享同一个 canonical QuantSpec 与 provider
+registration gate，不允许 unified 路径形成第二套量化语义。
+
 `backend="auto"` 是兼容入口，不是把 provider 名称变成模型配置。当前公共接口不会新增
 `cann`、`flash_attention_npu`、`ascendc` 或具体 `kernel_id` 作为模型侧 backend 值。
 集成者可在进程 bootstrap 时安装 provider；模型代码只看到统一 Attention 接口。

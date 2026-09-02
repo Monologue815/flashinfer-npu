@@ -140,8 +140,9 @@ per-head 或 per-tensor scale；它定义 Attention/scale 语义，不模拟硬�
   自动生成 per-tensor QuantSpec；Host oracle 继续直接读取 logical FP8 `ReferenceTensor`。
   分离的裸 `(K, V)` cache 在内部获得 scalar virtual unit scale；provider 未声明参数省略
   等价于 1 时不能注册。合并 cache 需要经过验证的 slot-view binding，当前不会猜测或切片。
-- `kv_cache_sf` 保留上游 NVFP4 含义。single prefill 在提供 `kv_cache_sf` 时，以及 paged
-  prefill/decode 的 provider plan 使用裸 `uint8` `kv_data_type` 时，facade 会生成同一个
+- `kv_cache_sf` 保留上游 NVFP4 含义。single prefill 在提供 `kv_cache_sf` 时，以及 classic
+  paged prefill/decode 和 unified `BatchAttention` 的 provider plan 使用裸 `uint8`
+  `kv_data_type` 时，facade 会生成同一个
   FlashInfer-compatible NVFP4 `QuantSpec`，不增加公开参数。packed storage 与 scale-factor
   组成 plan-bound 联合 view，并由专用联合 adapter 在同一个 lowering 边界消费。binding 同时
   固定 canonical NVFP4 QuantSpec、layout/packing 和 operation 参数映射，并通过 runtime spec
