@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import copy
+from operator import index as integer_index
 from typing import Optional, Sequence
 
 from flashinfer_npu.runtime import DispatchError, SchemaError
@@ -109,7 +110,7 @@ class HostBatchReferenceWrapper:
             float_workspace_buffer = validate_framework_workspace_buffer(
                 float_workspace_buffer, "float_workspace_buffer"
             )
-            shape = tuple(int(dim) for dim in float_workspace_buffer.shape)
+            shape = tuple(integer_index(dim) for dim in float_workspace_buffer.shape)
             device = str(float_workspace_buffer.device)
             if device.split(":", 1)[0] != "npu":
                 raise DispatchError(
@@ -353,8 +354,8 @@ class HostBatchReferenceWrapper:
                 raise SchemaError("float and int workspace buffers cannot alias")
             contract = self._workspace_contract.rebind(
                 device=str(float_buffer.device),
-                float_capacity_bytes=int(float_buffer.shape[0]),
-                int_capacity_bytes=int(int_buffer.shape[0]),
+                float_capacity_bytes=integer_index(float_buffer.shape[0]),
+                int_capacity_bytes=integer_index(int_buffer.shape[0]),
                 allow_device_change=False,
             )
             if self._operator_runtime.is_planned:

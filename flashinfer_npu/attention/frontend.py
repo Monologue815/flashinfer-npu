@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from operator import index as integer_index
 from dataclasses import dataclass
 from typing import Any, Optional, Sequence, Tuple, Union
 
@@ -427,9 +428,12 @@ def validate_framework_workspace_buffer(
         return validate_workspace_buffer(value, name, device=device)
     shape = getattr(value, "shape", None)
     try:
-        shape = tuple(int(dim) for dim in shape)
+        dimensions = tuple(shape)
+        if any(isinstance(dim, bool) for dim in dimensions):
+            raise TypeError("boolean workspace dimension")
+        shape = tuple(integer_index(dim) for dim in dimensions)
     except (TypeError, ValueError) as error:
-        raise SchemaError("%s must expose a rank-1 shape" % name) from error
+        raise SchemaError("%s must expose a rank-1 integer shape" % name) from error
     if len(shape) != 1 or shape[0] < 0:
         raise SchemaError("%s must be rank 1" % name)
     if canonicalize_dtype_name(getattr(value, "dtype", "")) != "uint8":

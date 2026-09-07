@@ -41,6 +41,10 @@ capacity 与已知 required bytes 必须是非负整数，binding/plan generatio
 改变 plan 身份。未知 requirement 和尚未关联的 plan generation 仍用 `None` 表示；验证失败
 不会修改已有的不可变合同。
 
+公开 provider wrapper 对 tensor-like workspace 的 shape 使用整数索引协议（`__index__`），
+构造与 reset 都先拒绝布尔、小数及字符串维度，再绑定容量。只提供可截断的 `__int__` 转换
+不满足此契约；校验阶段和容量提取阶段使用同一种整数解释。
+
 Workspace capacity 不进入 Attention 数学 workload fingerprint，因为更换更大的 caller buffer
 不应改变算子语义；它有自己的 resource fingerprint。
 
