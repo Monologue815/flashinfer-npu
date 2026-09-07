@@ -12,6 +12,7 @@ import json
 import math
 from dataclasses import dataclass
 from enum import Enum
+from operator import index as integer_index
 from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 from flashinfer_npu.runtime import QuantSpec, SchemaError, WorkloadSpec
@@ -60,7 +61,12 @@ def _strict_construct(cls, data: Mapping[str, Any], name: str):
 
 def _as_int_tuple(name: str, values: Tuple[int, ...]) -> Tuple[int, ...]:
     try:
-        return tuple(int(value) for value in values)
+        result = []
+        for value in values:
+            if isinstance(value, bool):
+                raise TypeError("boolean is not integer metadata")
+            result.append(integer_index(value))
+        return tuple(result)
     except (TypeError, ValueError) as error:
         raise SchemaError("%s must contain integers" % name) from error
 

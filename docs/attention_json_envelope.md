@@ -35,6 +35,12 @@ flowchart LR
 
 字符串中的 `[`、`{` 及转义引号不会被误计为结构深度。
 
+进入 Attention domain schema 后，tensor shape、CSR offset、page indices、last-page
+length 和 mixed KV length 数组必须由整数构成。浮点数（包括 `1.0`）、布尔值和数字
+字符串不会被转换为整数；非法元素抛出 `SchemaError`。直接使用 Python schema 时，
+也遵循相同规则，并接受实现 `__index__` 的整数对象，规范化为 Python `int`。
+该类型检查不替代后续的单调性、页容量、资源上限或 wire int32 范围检查。
+
 ## 3. v1 默认 limits
 
 | 维度 | 默认值 | 检查时点 |
