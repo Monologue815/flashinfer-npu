@@ -906,6 +906,8 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         use_fp16_softmax=None,
         uses_spcompress=None,
     ):
+        if self._operator_runtime is not None:
+            self._operator_runtime._clear_run_evidence()
         plan = self.plan_state
         if self._operator_runtime is not None:
             if args:
@@ -1290,6 +1292,8 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
         enable_pdl=None,
         kv_cache_sf=None,
     ):
+        if self._operator_runtime is not None:
+            self._operator_runtime._clear_run_evidence()
         plan = self.plan_state
         if self._operator_runtime is not None:
             if args:

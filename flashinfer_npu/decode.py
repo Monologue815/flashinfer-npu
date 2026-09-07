@@ -750,6 +750,8 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
         skip_softmax_threshold_scale_factor=None,
         kv_cache_sf=None,
     ):
+        if self._operator_runtime is not None:
+            self._operator_runtime._clear_run_evidence()
         plan = self.plan_state
         if q_len_per_req is not None:
             warnings.warn(

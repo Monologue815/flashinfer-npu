@@ -129,8 +129,16 @@ input view 重叠。receipt 同时记录 input 和 result view fingerprint，使
 结果发布形成完整 metadata 证据链。
 execution 与 completion 都成功后，runtime 才发布一张 atomic run receipt，绑定两张 receipt
 的 fingerprint；active plan、provider、operation 与有序 return schema 必须一致。callable、
-completion 任一失败或 replan 都会清除旧 run receipt，因此“确切算子已执行”与“确切返回值
+completion 任一失败或成功 replan 都会清除旧 run receipt，因此“确切算子已执行”与“确切返回值
 已接受”不会成为两条互不关联的状态。
+
+每次有状态 provider `run()` 进入函数体后，先清除上一轮的 atomic receipt、completion
+receipt 和 lowered-call 诊断，再检查前端选项、workspace、JIT binding 和输入张量。
+这些前置检查失败也不保留旧的成功记录，但不会废弃 active plan；修正输入后可继续运行。
+completion 验证和 atomic receipt 组装全部成功后才一起发布本轮记录，组装失败不留下
+半完成的 receipt。Python 在进入函数体前产生的参数绑定错误不属于 runtime run attempt。
+需要保留历史证据的调用方应在下一次 `run()` 前保存只读 receipt，而不是把
+`last_run_receipt` 当作历史记录容器。失败的重新规划仍保持先前已提交的计划和运行证据。
 
 JIT 的 module/callable executor binding 发生在最终 active-plan runtime binding 之前，
 `bind_runtime()` 可能产生不同 executor 对象。因此另建 JIT runtime-executor binding，绑定

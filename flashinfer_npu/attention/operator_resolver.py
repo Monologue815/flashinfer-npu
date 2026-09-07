@@ -1231,6 +1231,12 @@ class AttentionOperatorRuntime:
             candidate_runtime_provider_integration_bundle_binding
         )
 
+    def _clear_run_evidence(self):
+        """Invalidate runtime publication before a new public run attempt."""
+        self._last_completion_receipt = None
+        self._last_run_receipt = None
+        self._last_lowered_call = None
+
     def run(
         self,
         q,
@@ -1249,6 +1255,7 @@ class AttentionOperatorRuntime:
         profiler_buffer=None,
         kv_cache_sf=None,
     ):
+        self._clear_run_evidence()
         session = self.operator_session
         if self._executor is None:  # defensive; plan publication is atomic
             raise AttentionStateError("Attention operator executor is not initialized")
@@ -1353,17 +1360,15 @@ class AttentionOperatorRuntime:
             kv_cache_sf=kv_cache_sf,
         )
         lowered = session._lower_request(request)
-        self._last_completion_receipt = None
-        self._last_run_receipt = None
         result = self._executor.execute(lowered)
         if self._completion_validator is not None:
-            self._last_completion_receipt = self._completion_validator.validate(
+            completion_receipt = self._completion_validator.validate(
                 lowered, result
             )
             execution_receipt = self._executor.execution_receipt()
-            self._last_run_receipt = AttentionOperatorRunReceipt(
+            run_receipt = AttentionOperatorRunReceipt(
                 execution=execution_receipt,
-                completion=self._last_completion_receipt,
+                completion=completion_receipt,
                 jit_runtime_executor=self._jit_runtime_executor_binding,
                 runtime_declaration_fingerprint=(
                     self._runtime_declaration_fingerprints.get(
@@ -1404,6 +1409,8 @@ class AttentionOperatorRuntime:
                     else self._runtime_plan_scoring_binding[3]
                 ),
             )
+            self._last_completion_receipt = completion_receipt
+            self._last_run_receipt = run_receipt
         self._last_lowered_call = lowered
         return result
 
