@@ -26,6 +26,7 @@ from .operator_run import (
     AttentionOperatorRunAdapter,
     AttentionOperatorRunRequest,
     AttentionOperatorTensorMetadataInspector,
+    lower_attention_operator_run,
 )
 from .planner import AttentionFrameworkPlan
 from .schema import (
@@ -710,9 +711,9 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
                         )
 
         delegated_request = replace(request, kv_cache_sf=None)
-        lowered = self._base_adapter.lower(active_plan, delegated_request)
-        if not isinstance(lowered, AttentionLoweredOperatorCall):
-            raise TypeError("base run adapter returned an invalid call description")
+        lowered = lower_attention_operator_run(
+            self._base_adapter, active_plan, delegated_request
+        )
         scale_binding = binding.scale_factor_binding
         if packed_kv.structure == "combined":
             injected = ((scale_binding.combined_argument, request.kv_cache_sf),)

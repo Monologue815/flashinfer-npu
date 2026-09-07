@@ -17,6 +17,7 @@ from .operator_run import (
     AttentionOperatorRunAdapter,
     AttentionOperatorRunRequest,
     AttentionOperatorTensorMetadataInspector,
+    lower_attention_operator_run,
 )
 from .planner import AttentionFrameworkPlan
 from .schema import (
@@ -464,9 +465,9 @@ class AttentionOperatorNvfp4ScaleFactorRunAdapter:
                             "%s cannot alias %s" % (output_name, input_name)
                         )
         delegated_request = replace(request, kv_cache_sf=None)
-        lowered = self._base_adapter.lower(active_plan, delegated_request)
-        if not isinstance(lowered, AttentionLoweredOperatorCall):
-            raise TypeError("base run adapter returned an invalid call description")
+        lowered = lower_attention_operator_run(
+            self._base_adapter, active_plan, delegated_request
+        )
         if scale_factors.structure == "combined":
             injected = ((self._binding.combined_argument, request.kv_cache_sf),)
         else:

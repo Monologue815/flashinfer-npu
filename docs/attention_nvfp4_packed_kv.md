@@ -133,6 +133,12 @@ tensor。
 7. packed storage 与 scale-factor 的全部命名 view 进入 `validated_input_views`；
 8. 参数名或 view 名与其他 adapter 冲突时失败关闭。
 
+base adapter 返回的调用记录必须通过 `lower_attention_operator_run()` 校验，确认 provider、
+operation、active plan 身份一致，并明确消费了委托 request 的每个字段。该规则同时适用于
+独立 scale-factor adapter。外层只在此校验通过后补充 `kv_cache_sf` 消费记录；不能用完整字段
+列表掩盖 base adapter 漏报的 `k_scale`、`v_scale` 或其他参数。全局 calibration scale 与
+per-block scale 保持独立来源；消费记录的完整性仍需配合 provider 的参数语义与数值证据。
+
 不匹配的量化 plan 不会被该 adapter 截获。这样通用 INT8/INT4/FP8 quantization adapter 与
 NVFP4 packed route 可以在同一 operation runtime 中保持互斥语义，而不是根据 `uint8` dtype 或
 `kv_cache_sf` 参数名猜测格式。
