@@ -1388,8 +1388,14 @@ class AttentionOperatorQuantizationRunAdapter:
                 values_by_source[item.source], AttentionOperatorImplicitUnitScale
             )
         )
-        existing_names = {name for name, _ in lowered.keyword_arguments}
-        collision = existing_names.intersection(name for name, _ in injected)
+        existing_names = {
+            name for name, _ in lowered.positional_arguments + lowered.keyword_arguments
+        }
+        # Omitted unit/default scales still belong to this binding. A base
+        # argument must not replace the authorized omission with another value.
+        collision = existing_names.intersection(
+            item.argument_name for item in binding.argument_bindings
+        )
         if collision:
             raise SchemaError(
                 "quantization argument collides with provider lowering: %s"

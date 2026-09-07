@@ -188,6 +188,10 @@ base 返回记录必须通过 `lower_attention_operator_run()` 的身份及字�
 声称处理了委托 request 中不存在的字段都会失败。外层只有在此校验通过后才合并量化参数与
 消费记录，避免掩盖集成遗漏。失败不会发布新的 plan；原有 plan 保持可用。
 
+binding 声明的量化目标参数由量化 adapter 独占管理。即使某个运行 scale 缺省或使用获授权的
+virtual unit scale，base adapter 也不能通过 positional/keyword 参数自行填入该目标；否则会
+把“省略等价于 1”改成未经批准的倍率。冲突检查覆盖全部绑定目标，而不只覆盖本次注入的值。
+
 裸 FP8 canonicalization 中，`scale_k`/`scale_v` 成为内部 K/V quantized input 自带的
 `kv.key.scale`/`kv.value.scale`，不会再次注入 `run.k_head_scale`/`run.v_head_scale`；
 `scale_q` 仍作为 `run.q_head_scale`。这避免同一 scale 被 provider 应用两次。
