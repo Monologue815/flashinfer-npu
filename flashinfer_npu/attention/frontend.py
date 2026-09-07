@@ -27,6 +27,7 @@ from .schema import (
     PosEncodingMode,
     RaggedKVCacheSpec,
     SingleAttentionMetadata,
+    _as_int_tuple,
 )
 from .nvfp4_scale_factor import (
     flashinfer_nvfp4_kv_quant_spec,
@@ -74,7 +75,7 @@ class FrameworkSingleQKVPlanInput:
 def _framework_tensor_facts(value, name: str):
     shape = getattr(value, "shape", None)
     try:
-        shape = tuple(int(dim) for dim in shape)
+        shape = _as_int_tuple("%s shape" % name, shape)
     except (TypeError, ValueError) as error:
         raise SchemaError("%s must expose an integer shape" % name) from error
     if any(dim < 0 for dim in shape):

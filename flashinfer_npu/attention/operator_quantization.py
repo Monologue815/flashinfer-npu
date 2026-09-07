@@ -50,6 +50,7 @@ from .schema import (
     RaggedKVCacheSpec,
     RaggedKVMetadata,
     SingleAttentionMetadata,
+    _as_int_tuple,
 )
 from .tensor_contract import (
     AttentionTensorAccessPolicy,
@@ -180,7 +181,7 @@ class AttentionOperatorImplicitUnitScale:
             raise SchemaError("unsupported Attention implicit unit-scale version")
         if self.source not in _IMPLICIT_UNIT_SCALE_SOURCES:
             raise SchemaError("unknown Attention implicit unit-scale source")
-        shape = tuple(int(item) for item in self.shape)
+        shape = _as_int_tuple("implicit unit scale shape", self.shape)
         if len(shape) > 1 or any(item <= 0 for item in shape):
             raise SchemaError(
                 "implicit unit scale must be scalar or a non-empty rank-1 tensor"
@@ -400,7 +401,7 @@ class AttentionOperatorQuantizedTensorInput:
         if not isinstance(self.quant_spec, QuantSpec):
             raise TypeError("quant_spec must be QuantSpec")
         try:
-            logical_shape = tuple(int(dim) for dim in self.logical_shape)
+            logical_shape = _as_int_tuple("logical_shape", self.logical_shape)
         except (TypeError, ValueError) as error:
             raise SchemaError(
                 "quantized tensor input logical_shape must contain integers"
@@ -466,7 +467,7 @@ class AttentionOperatorQuantizedKVInput:
             normalized = []
             for value in logical_shapes:
                 try:
-                    shape = tuple(int(dim) for dim in value)
+                    shape = _as_int_tuple("logical_shape", value)
                 except (TypeError, ValueError) as error:
                     raise SchemaError(
                         "quantized KV logical shapes must contain integers"

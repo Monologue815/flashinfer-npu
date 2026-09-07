@@ -27,7 +27,7 @@ from .reference import (
     ReferenceQuantizedTensor,
     ReferenceTensor,
 )
-from .schema import KVCacheSpec, TensorSpec
+from .schema import KVCacheSpec, TensorSpec, _as_integer, _as_int_tuple
 
 
 ATTENTION_TENSOR_CONTRACT_SCHEMA_VERSION = 1
@@ -61,7 +61,7 @@ def dtype_itemsize(dtype: str) -> int:
 
 
 def contiguous_strides(shape: Sequence[int]) -> Tuple[int, ...]:
-    shape_tuple = tuple(int(dim) for dim in shape)
+    shape_tuple = _as_int_tuple("shape", shape)
     stride = 1
     result = []
     for dim in reversed(shape_tuple):
@@ -104,16 +104,13 @@ class TensorView:
     def __post_init__(self) -> None:
         if self.schema_version != ATTENTION_TENSOR_CONTRACT_SCHEMA_VERSION:
             raise SchemaError("unsupported TensorView schema version")
-        object.__setattr__(self, "shape", tuple(int(dim) for dim in self.shape))
+        object.__setattr__(self, "shape", _as_int_tuple("shape", self.shape))
         object.__setattr__(
-            self, "strides", tuple(int(stride) for stride in self.strides)
+            self, "strides", _as_int_tuple("strides", self.strides)
         )
         try:
-            object.__setattr__(self, "storage_nbytes", int(self.storage_nbytes))
-            object.__setattr__(self, "storage_offset", int(self.storage_offset))
-            object.__setattr__(
-                self, "data_ptr_alignment", int(self.data_ptr_alignment)
-            )
+            for name in ("storage_nbytes", "storage_offset", "data_ptr_alignment"):
+                object.__setattr__(self, name, _as_integer(name, getattr(self, name)))
         except (TypeError, ValueError) as error:
             raise SchemaError("TensorView storage fields must be integers") from error
         if len(self.shape) != len(self.strides):
@@ -238,7 +235,7 @@ class QuantizedTensorView:
 
     def __post_init__(self) -> None:
         object.__setattr__(
-            self, "logical_shape", tuple(int(dim) for dim in self.logical_shape)
+            self, "logical_shape", _as_int_tuple("logical_shape", self.logical_shape)
         )
         descriptor = self.physical_layout_descriptor
         if self.quant_spec.physical_layout == "logical":

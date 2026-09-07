@@ -53,6 +53,16 @@ flowchart LR
 允许 offset 位于 allocation 末端。v1 支持 contiguous、transpose 和有间隔的正 stride
 view；拒绝负 stride 与内部 overlap。
 
+shape、stride、storage byte 数、element offset 和 alignment 必须是整数；构造器使用
+Python `__index__` 协议规范化，不接受浮点数（包括 `2.0`）、布尔值、数字字符串或
+仅实现 `__int__` 的对象。类型错误以 `SchemaError` 报告，不能通过截断小数来改变
+storage bounds 或 alias 判定。`contiguous_strides()` 使用相同的维度类型规则。
+
+同一规则适用于 `QuantizedTensorView.logical_shape`、公开量化输入容器的 K/V
+logical shape、implicit unit-scale shape，以及 single Attention frontend 读取的 Q/K/V
+shape。整数类型校验之后，仍必须通过计划 shape、量化 storage/scale 布局和设备约束；
+构造了合法的输入容器，并不等于已经获得 provider 执行许可。
+
 `storage_id` 只表达同一次调用中的 alias 关系。它可以进入诊断信息，但不能跨进程持久化
 真实地址，也不能作为 workload/trace identity。Reference adapter 使用进程内对象 identity
 的不可逆摘要。
