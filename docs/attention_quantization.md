@@ -183,6 +183,11 @@ prefill 的校准倍率以及 ragged prefill 的 Q/K/V/O scale 只开放 `scalar
 provider 覆盖某个 mode 的全部公开形态，run lowering 再按实际值校验形态和元数据；provider
 即使支持更宽输入，也不能扩大 public facade 的契约。
 
+量化 adapter 在完成 scale/zero-point 检查后，将 storage 与其余运行参数委托给 base adapter。
+base 返回记录必须通过 `lower_attention_operator_run()` 的身份及字段消费校验；少报字段或
+声称处理了委托 request 中不存在的字段都会失败。外层只有在此校验通过后才合并量化参数与
+消费记录，避免掩盖集成遗漏。失败不会发布新的 plan；原有 plan 保持可用。
+
 裸 FP8 canonicalization 中，`scale_k`/`scale_v` 成为内部 K/V quantized input 自带的
 `kv.key.scale`/`kv.value.scale`，不会再次注入 `run.k_head_scale`/`run.v_head_scale`；
 `scale_q` 仍作为 `run.q_head_scale`。这避免同一 scale 被 provider 应用两次。

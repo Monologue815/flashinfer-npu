@@ -32,6 +32,7 @@ from .operator_run import (
     AttentionOperatorRunAdapter,
     AttentionOperatorRunRequest,
     AttentionOperatorTensorMetadataInspector,
+    lower_attention_operator_run,
 )
 from .planner import AttentionFrameworkPlan
 from .quant_physical_layout import (
@@ -1348,9 +1349,9 @@ class AttentionOperatorQuantizationRunAdapter:
             v_head_scale=None,
             o_scale=None,
         )
-        lowered = self._base_adapter.lower(active_plan, delegated_request)
-        if not isinstance(lowered, AttentionLoweredOperatorCall):
-            raise TypeError("base run adapter returned an invalid call description")
+        lowered = lower_attention_operator_run(
+            self._base_adapter, active_plan, delegated_request
+        )
         if lowered.validated_input_views:
             raise SchemaError(
                 "quantization base adapter cannot supply validated input views"
