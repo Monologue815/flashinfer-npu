@@ -39,6 +39,14 @@ flowchart LR
 4. **Plan**：冻结所有影响 dispatch/codegen 的字段；run-time 参数不得偷偷改变 plan feature。
 5. **Executor**：reference、functional、NPU 共享同一个规范化调用，不让 frontend 感知设备实现细节。
 
+Provider 路径的 `plan()` 接受整数序列或 `int32` tensor-like metadata。序列及
+`tolist()` 返回的元素按 Python `__index__` 协议读取，不接受浮点数（即使是 `1.0`）、
+布尔值、数字字符串或仅实现 `__int__` 的对象。类型错误以 `SchemaError` 报告，
+发生在 provider 解析与新计划提交之前；失败的重新规划不替换已有计划及 workspace。
+Host `ReferenceTensor` 的整数 metadata 仍由独立读取器校验：必须是 rank-1、`int32`，
+其浮点承载的每个数据值必须有限且无小数部分。这是 reference 存储约定，不是对普通
+序列或生产 tensor-like 输入放宽类型要求。
+
 ## 3. P0 公共符号
 
 | 上游符号 | 本地模块 | 当前内部模型 | Frontend 交付条件 |

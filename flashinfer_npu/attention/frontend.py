@@ -381,11 +381,9 @@ def framework_index_values(value, name: str) -> Tuple[int, ...]:
         if isinstance(item, bool):
             raise SchemaError("%s values must be integers" % name)
         try:
-            integer = int(item)
+            integer = integer_index(item)
         except (TypeError, ValueError) as error:
             raise SchemaError("%s values must be integers" % name) from error
-        if item != integer:
-            raise SchemaError("%s values must be integers" % name)
         result.append(integer)
     return tuple(result)
 
