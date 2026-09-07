@@ -122,6 +122,14 @@ evidence paths. Rejected candidates retain diagnostic reasons and are not scored
 their callables are not resolved. The selected candidate is checked again before
 callable binding. This is plan-time filtering, not execution-time fallback.
 
+Admission is short-circuiting: when adapter, quantization or evidence checks
+reject a candidate, the framework does not inspect that candidate's package
+version. Its report contains the admission reasons, not speculative package
+availability. An incompatible optional dependency therefore cannot interrupt
+another valid candidate's plan. Candidates that pass admission still undergo
+the exact package-version checks; unexpected errors from a relevant package
+loader propagate, and do not silently authorize another implementation.
+
 A wrapper may therefore plan dense KV, replan INT8 KV, and later replan dense KV
 again using the same public methods. Each successful plan owns its exact operation,
 adapter and scale bindings; `run()` neither selects again nor carries quantization

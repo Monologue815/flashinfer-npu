@@ -357,11 +357,13 @@ class AttentionOperatorPackageRuntimeImplementation:
         gate_reasons = _unique_reasons(
             self._plan_gate.rejection_reasons(plan, str(device))
         )
+        if gate_reasons:
+            return gate_reasons
         package_report = self._package_resolver.explain()
         package_reasons = tuple(
             "package: %s" % item for item in package_report.reasons
         )
-        return _unique_reasons(gate_reasons + package_reasons)
+        return _unique_reasons(package_reasons)
 
     def _validate_authority(
         self,
