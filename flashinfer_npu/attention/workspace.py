@@ -42,6 +42,17 @@ class AttentionWorkspaceContract:
         if not self.backend or not self.device:
             raise SchemaError("workspace backend/device must be non-empty")
         for name in (
+            "float_capacity_bytes", "int_capacity_bytes", "required_float_bytes",
+            "required_int_bytes", "binding_generation", "plan_generation",
+        ):
+            value = getattr(self, name)
+            if value is None and name in (
+                "required_float_bytes", "required_int_bytes", "plan_generation"
+            ):
+                continue
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise SchemaError("%s must be an integer" % name)
+        for name in (
             "float_capacity_bytes",
             "int_capacity_bytes",
             "binding_generation",
@@ -123,15 +134,19 @@ class AttentionWorkspaceContract:
         return replace(
             self,
             device=device,
-            float_capacity_bytes=int(float_capacity_bytes),
-            int_capacity_bytes=int(int_capacity_bytes),
+            float_capacity_bytes=float_capacity_bytes,
+            int_capacity_bytes=int_capacity_bytes,
             binding_generation=self.binding_generation + 1,
         )
 
     def bind_plan(self, generation: int) -> "AttentionWorkspaceContract":
-        if generation < 1:
-            raise SchemaError("plan generation must be positive")
-        return replace(self, plan_generation=int(generation))
+        if (
+            not isinstance(generation, int)
+            or isinstance(generation, bool)
+            or generation < 1
+        ):
+            raise SchemaError("plan generation must be a positive integer")
+        return replace(self, plan_generation=generation)
 
     def bind_requirements(
         self,
@@ -142,8 +157,12 @@ class AttentionWorkspaceContract:
     ) -> "AttentionWorkspaceContract":
         """Atomically bind provider requirements and one active plan."""
 
-        if plan_generation < 1:
-            raise SchemaError("plan generation must be positive")
+        if (
+            not isinstance(plan_generation, int)
+            or isinstance(plan_generation, bool)
+            or plan_generation < 1
+        ):
+            raise SchemaError("plan generation must be a positive integer")
         for name, value in (
             ("required_float_bytes", required_float_bytes),
             ("required_int_bytes", required_int_bytes),
@@ -154,10 +173,16 @@ class AttentionWorkspaceContract:
             self,
             required_float_bytes=required_float_bytes,
             required_int_bytes=required_int_bytes,
-            plan_generation=int(plan_generation),
+            plan_generation=plan_generation,
         )
 
     def validate_run(self, *, device: str, plan_generation: int) -> None:
+        if (
+            not isinstance(plan_generation, int)
+            or isinstance(plan_generation, bool)
+            or plan_generation < 1
+        ):
+            raise SchemaError("plan generation must be a positive integer")
         self.validate_capacity()
         if device != self.device:
             raise SchemaError("q and workspace must be on the same device")

@@ -36,6 +36,11 @@ flowchart LR
 - `plan_generation`：当前 binding 关联的 framework plan；
 - graph-enabled 标志和独立 schema version。
 
+capacity 与已知 required bytes 必须是非负整数，binding/plan generation 必须是正整数。
+构造、重新绑定和运行校验均拒绝布尔值、小数与数字字符串，不通过整数转换截断资源需求或
+改变 plan 身份。未知 requirement 和尚未关联的 plan generation 仍用 `None` 表示；验证失败
+不会修改已有的不可变合同。
+
 Workspace capacity 不进入 Attention 数学 workload fingerprint，因为更换更大的 caller buffer
 不应改变算子语义；它有自己的 resource fingerprint。
 
