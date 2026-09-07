@@ -625,10 +625,6 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             raise NotImplementedError(
                 "alternate block_tables/seq_lens metadata is not implemented"
             )
-        if q_len_per_req > 1 and not self.use_tensor_cores:
-            raise ValueError(
-                "q_len_per_req > 1 requires use_tensor_cores=True in the public contract"
-            )
         if data_type is not None:
             q_data_type = data_type
             if kv_data_type is None:
@@ -688,6 +684,10 @@ class BatchDecodeWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             rope_theta=_optional_plan_scalar(rope_theta, "rope_theta"),
             q_len_per_req=q_len_per_req,
         )
+        if spec.q_len_per_req > 1 and not self.use_tensor_cores:
+            raise ValueError(
+                "q_len_per_req > 1 requires use_tensor_cores=True in the public contract"
+            )
         self._commit_plan(spec, metadata, None)
 
     begin_forward = plan

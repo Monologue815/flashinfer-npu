@@ -47,6 +47,13 @@ Host `ReferenceTensor` 的整数 metadata 仍由独立读取器校验：必须�
 其浮点承载的每个数据值必须有限且无小数部分。这是 reference 存储约定，不是对普通
 序列或生产 tensor-like 输入放宽类型要求。
 
+用于规划的整数标量也遵循该类型约束：Q/KV head 数、QK/VO head dimension、
+`page_size`、`window_left/right`、decode 的 `q_len_per_req`，以及内部 single-request
+metadata 的 Q/KV 长度。先规范化为 Python `int`，再验证正值、head 整除关系、
+窗口范围和模式约束；Python schema 构造与反序列化使用同一规则。
+`head_dim_vo=None` 仍继承 QK dimension，未提供的 `sm_scale` 仍按 QK dimension
+推导。这里不改变浮点参数（如 `sm_scale`、RoPE 参数）的类型或语义。
+
 ## 3. P0 公共符号
 
 | 上游符号 | 本地模块 | 当前内部模型 | Frontend 交付条件 |

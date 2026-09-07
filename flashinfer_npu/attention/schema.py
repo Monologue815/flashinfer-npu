@@ -59,14 +59,18 @@ def _strict_construct(cls, data: Mapping[str, Any], name: str):
         raise SchemaError("%s fields are invalid" % name) from error
 
 
+def _as_integer(name: str, value: int) -> int:
+    try:
+        if isinstance(value, bool):
+            raise TypeError("boolean is not integer metadata")
+        return integer_index(value)
+    except (TypeError, ValueError) as error:
+        raise SchemaError("%s must be an integer" % name) from error
+
+
 def _as_int_tuple(name: str, values: Tuple[int, ...]) -> Tuple[int, ...]:
     try:
-        result = []
-        for value in values:
-            if isinstance(value, bool):
-                raise TypeError("boolean is not integer metadata")
-            result.append(integer_index(value))
-        return tuple(result)
+        return tuple(_as_integer(name, value) for value in values)
     except (TypeError, ValueError) as error:
         raise SchemaError("%s must contain integers" % name) from error
 
@@ -166,6 +170,7 @@ class PagedKVMetadata:
     def __post_init__(self) -> None:
         if self.schema_version != ATTENTION_SCHEMA_VERSION:
             raise SchemaError("unsupported PagedKVMetadata schema version")
+        object.__setattr__(self, "page_size", _as_integer("page_size", self.page_size))
         object.__setattr__(self, "indptr", _validate_indptr("indptr", self.indptr))
         object.__setattr__(self, "indices", _as_int_tuple("indices", self.indices))
         object.__setattr__(
@@ -333,6 +338,8 @@ class SingleAttentionMetadata:
     def __post_init__(self) -> None:
         if self.schema_version != ATTENTION_SCHEMA_VERSION:
             raise SchemaError("unsupported SingleAttentionMetadata schema version")
+        for name in ("qo_len", "kv_len"):
+            object.__setattr__(self, name, _as_integer(name, getattr(self, name)))
         if self.qo_len <= 0:
             raise SchemaError("qo_len must be positive")
         if self.kv_len <= 0:
@@ -369,6 +376,7 @@ class MixedPagedKVMetadata:
     def __post_init__(self) -> None:
         if self.schema_version != ATTENTION_SCHEMA_VERSION:
             raise SchemaError("unsupported MixedPagedKVMetadata schema version")
+        object.__setattr__(self, "page_size", _as_integer("page_size", self.page_size))
         object.__setattr__(
             self, "qo_indptr", _validate_indptr("qo_indptr", self.qo_indptr)
         )
@@ -691,6 +699,11 @@ class AttentionPlanSpec:
         )
         if self.schema_version != ATTENTION_SCHEMA_VERSION:
             raise SchemaError("unsupported AttentionPlanSpec schema version")
+        for name in ("num_qo_heads", "num_kv_heads", "head_dim_qk", "window_left",
+                     "window_right", "q_len_per_req"):
+            object.__setattr__(self, name, _as_integer(name, getattr(self, name)))
+        if self.head_dim_vo is not None:
+            object.__setattr__(self, "head_dim_vo", _as_integer("head_dim_vo", self.head_dim_vo))
         if self.num_qo_heads <= 0 or self.num_kv_heads <= 0:
             raise SchemaError("attention head counts must be positive")
         if self.num_qo_heads % self.num_kv_heads != 0:
