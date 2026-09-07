@@ -88,10 +88,13 @@ Canonical framework plan
 Runtime registry snapshot
         |
         v
-Candidate explain / select
+Adapter restrictions + capability/evidence admission
         |
         v
-Package authority + provider plan gate
+Candidate priority / score / select
+        |
+        v
+Selected package authority revalidation
         |
         +---- package callable path
         |
@@ -109,6 +112,24 @@ Run validation + lowering
         v
 Authorized executor
 ```
+
+The declarative package bootstrap composes each adapter's plan gate with the
+same evidence-bearing dispatch checks used by final authorization. A candidate
+must support the canonical mode, dtype, exact QuantSpec, dimensions and metadata,
+and have valid bound evidence, before it participates in priority or score
+selection. Logical and provider-specific physical KV layouts use their respective
+evidence paths. Rejected candidates retain diagnostic reasons and are not scored;
+their callables are not resolved. The selected candidate is checked again before
+callable binding. This is plan-time filtering, not execution-time fallback.
+
+A wrapper may therefore plan dense KV, replan INT8 KV, and later replan dense KV
+again using the same public methods. Each successful plan owns its exact operation,
+adapter and scale bindings; `run()` neither selects again nor carries quantization
+arguments over from an earlier plan. Inputs must match the current plan. If no
+candidate supports a newly requested QuantSpec, replanning fails and leaves the
+previous active plan usable. Actual choices depend on the installed, reviewed
+provider capabilities, not on a built-in assumption that one named package owns
+dense or quantized Attention.
 
 Each boundary has one owner:
 

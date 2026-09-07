@@ -18,7 +18,7 @@ from .capability import (
     validate_attention_kernel_bindings,
 )
 from .corpus import AttentionCoveragePolicy, AttentionTraceCorpus
-from .dispatch import select_attention_dispatch
+from .dispatch import AttentionDispatchError, select_attention_dispatch
 from .numerics import (
     DEFAULT_ATTENTION_NUMERICS_POLICY,
     AttentionNumericsPolicy,
@@ -163,6 +163,35 @@ class AttentionEvidenceOperatorRuntimeAuthorityResolver:
     def kernel_ids(self) -> Tuple[str, ...]:
         return tuple(item.kernel_id for item in self._descriptors)
 
+    def rejection_reasons(self, plan: AttentionFrameworkPlan, device: str) -> Tuple[str, ...]:
+        """Check declared evidence before ranking, without resolving a callable."""
+        if not isinstance(plan, AttentionFrameworkPlan):
+            raise TypeError("plan must be AttentionFrameworkPlan")
+        if _NPU_DEVICE_PATTERN.fullmatch(str(device)) is None:
+            return ("operator authority requires device npu[:index]",)
+        try:
+            self._select_receipt(plan)
+        except AttentionDispatchError as error:
+            return ("capability evidence: %s" % error,)
+        return ()
+
+    def _select_receipt(self, plan):
+        quant_spec = plan.spec.kv_quant_spec
+        if quant_spec is not None and quant_spec.physical_layout != "logical":
+            return select_attention_operator_physical_layout_dispatch(
+                plan, self._operation, self._profiles, self._descriptors,
+                self._observed_environment, self._physical_layout_catalog,
+                self._physical_layout_evidence, backend=self._backend,
+                tuned_kernel_ids=self._tuned_kernel_ids,
+                numerics_policy=self._numerics_policy,
+            )
+        return select_attention_dispatch(
+            plan, self._profiles, self._descriptors, self._observed_environment,
+            backend=self._backend, tuned_kernel_ids=self._tuned_kernel_ids,
+            numerics_policy=self._numerics_policy, corpus=self._corpus,
+            coverage_policy=self._coverage_policy, replay_evidence=self._replay_evidence,
+        )
+
     def authorize(
         self,
         plan: AttentionFrameworkPlan,
@@ -186,33 +215,7 @@ class AttentionEvidenceOperatorRuntimeAuthorityResolver:
             raise SchemaError("operator authority received a different operation")
         if not provider_probe.available or provider_probe.provider_id != self.provider_id:
             raise SchemaError("operator authority requires its available provider probe")
-        quant_spec = plan.spec.kv_quant_spec
-        if quant_spec is not None and quant_spec.physical_layout != "logical":
-            receipt = select_attention_operator_physical_layout_dispatch(
-                plan,
-                operation,
-                self._profiles,
-                self._descriptors,
-                self._observed_environment,
-                self._physical_layout_catalog,
-                self._physical_layout_evidence,
-                backend=self._backend,
-                tuned_kernel_ids=self._tuned_kernel_ids,
-                numerics_policy=self._numerics_policy,
-            )
-        else:
-            receipt = select_attention_dispatch(
-                plan,
-                self._profiles,
-                self._descriptors,
-                self._observed_environment,
-                backend=self._backend,
-                tuned_kernel_ids=self._tuned_kernel_ids,
-                numerics_policy=self._numerics_policy,
-                corpus=self._corpus,
-                coverage_policy=self._coverage_policy,
-                replay_evidence=self._replay_evidence,
-            )
+        receipt = self._select_receipt(plan)
         provider_record = AttentionOperatorProviderRecord(
             probe=provider_probe,
             profiles=self._profiles,

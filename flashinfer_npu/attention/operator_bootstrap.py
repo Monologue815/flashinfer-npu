@@ -511,6 +511,7 @@ def build_attention_operator_package_runtime(
         physical_layout_catalog=spec.quant_physical_layout_catalog,
         physical_layout_evidence=physical_layout_evidence,
     )
+    plan_gate = _EvidencePlanGate(plan_gate, authority_resolver)
     return AttentionOperatorPackageRuntimeImplementation(
         priority=spec.priority,
         package_resolver=package_resolver,
@@ -528,6 +529,22 @@ def build_attention_operator_package_runtime(
         jit_planner_binder=spec.jit_planner_binder,
         jit_executor_binder=spec.jit_executor_binder,
     )
+
+
+class _EvidencePlanGate:
+    """Keep adapter restrictions and evidence admission ahead of scoring."""
+
+    def __init__(self, base, authority):
+        self.provider_id = authority.provider_id
+        self.operation_id = authority.operation_id
+        self._base = base
+        self._authority = authority
+
+    def rejection_reasons(self, plan, device):
+        reasons = tuple(self._base.rejection_reasons(plan, device))
+        if reasons:
+            return reasons
+        return self._authority.rejection_reasons(plan, device)
 
 
 def build_attention_operator_runtime_resolvers(

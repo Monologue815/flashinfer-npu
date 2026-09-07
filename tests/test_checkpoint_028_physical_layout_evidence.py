@@ -4,7 +4,7 @@ import unittest
 from dataclasses import replace
 
 from flashinfer_npu.attention import (
-    AttentionDispatchError,
+    AttentionOperatorIntegrationError,
     AttentionOperatorEvidenceResultArtifact,
     AttentionOperatorPhysicalLayoutEvidence,
     AttentionOperatorPhysicalEvidenceManifest,
@@ -133,7 +133,7 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
         values, plan, spec, _, _ = physical_runtime()
 
         with self.assertRaisesRegex(
-            AttentionDispatchError, "requires exactly one physical-layout evidence"
+            AttentionOperatorIntegrationError, "requires exactly one physical-layout evidence"
         ):
             active_session(values, spec=spec, plan=plan)
 
@@ -177,7 +177,7 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
         )
         for evidence in cases:
             with self.subTest(field=evidence.fingerprint):
-                with self.assertRaises((SchemaError, AttentionDispatchError)):
+                with self.assertRaises((SchemaError, AttentionOperatorIntegrationError)):
                     active_session(
                         values,
                         spec=replace(
@@ -203,7 +203,7 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
         )
         for evidence in cases:
             with self.subTest(field=evidence.fingerprint):
-                with self.assertRaises(AttentionDispatchError):
+                with self.assertRaisesRegex(AttentionOperatorIntegrationError, "capability evidence"):
                     active_session(
                         values,
                         spec=replace(
@@ -222,7 +222,7 @@ class PhysicalLayoutEvidenceCheckpoint(unittest.TestCase):
             spec, values["operation"], quant_spec, descriptor
         )
         foreign = replace(base, operation_id="foreign.operation")
-        with self.assertRaises((SchemaError, AttentionDispatchError)):
+        with self.assertRaises((SchemaError, AttentionOperatorIntegrationError)):
             active_session(
                 values,
                 spec=replace(
