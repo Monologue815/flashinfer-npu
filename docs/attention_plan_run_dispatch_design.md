@@ -25,25 +25,37 @@ evidence are complete.
 
 ## 2. Public programming model
 
-The intended batch surface is conceptually:
+The mixed-batch public surface is:
 
 ```python
-wrapper = BatchAttention(workspace_buffer)
+from flashinfer_npu.attention import BatchAttention
+
+wrapper = BatchAttention(kv_layout="NHD", device="npu:0")
 
 wrapper.plan(
     qo_indptr,
     kv_indptr,
     kv_indices,
-    kv_last_page_len,
+    kv_len_arr,
     num_qo_heads,
     num_kv_heads,
-    head_dim,
+    head_dim_qk,
+    head_dim_vo,
     page_size,
-    **attention_options,
+    causal=True,
+    q_data_type="bfloat16",
+    kv_data_type="bfloat16",
 )
 
-output = wrapper.run(query, paged_kv_cache, **runtime_options)
+output, lse = wrapper.run(query, paged_kv_cache)
 ```
+
+`BatchAttention` owns its workspace. `kv_len_arr` holds each request's total KV
+length; it is not the classic paged wrapper's last-page-length array. The return
+value always contains both output and LSE. The NPU example requires an installed
+provider integration. A runnable dense/INT8 CPU example is available in
+[`examples/attention_plan_run.py`](../examples/attention_plan_run.py); run it from
+the repository root with `python3 -m examples.attention_plan_run`.
 
 The exact Python signatures are defined by the public modules. The architectural
 rules are:
@@ -160,7 +172,8 @@ facts that affect compatibility are represented explicitly and checked again at
 
 ## 5. Runtime registry snapshot
 
-The wrapper reads one immutable registry snapshot at the start of `plan()`.
+The provider wrapper captures one immutable registry snapshot when constructed;
+each subsequent `plan()` uses that captured generation.
 The snapshot contains registered runtime implementations, their priority,
 operation catalogs, package declarations and generation identity.
 

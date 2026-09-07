@@ -35,6 +35,14 @@ attention.plan(
 output, lse = attention.run(q, (k_cache, v_cache))
 ```
 
+For a runnable example using the existing CPU reference, run
+`python3 -m examples.attention_plan_run` from the repository checkout. The
+[example](examples/attention_plan_run.py) constructs a mixed decode/prefill
+batch, supplies dense or explicit INT8 KV storage, and reuses one plan and the
+caller-owned output buffers across runs. CPU reference containers demonstrate
+framework semantics; NPU execution requires provider-compatible tensors and an
+installed integration as described below.
+
 After `plan()`, `attention.plan_selection` provides optional read-only
 diagnostics about the chosen mode, provider operation, backend and registry
 generation. A scored selection also exposes its bounded score, source, reason
