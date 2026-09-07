@@ -479,7 +479,13 @@ class AttentionOperatorNvfp4ScaleFactorRunAdapter:
             name
             for name, _ in lowered.positional_arguments + lowered.keyword_arguments
         }
-        collision = existing.intersection(name for name, _ in injected)
+        collision = existing.intersection(
+            name for name in (
+                self._binding.combined_argument,
+                self._binding.key_argument,
+                self._binding.value_argument,
+            ) if name is not None
+        )
         if collision:
             raise SchemaError(
                 "NVFP4 argument collides with provider lowering: %s"

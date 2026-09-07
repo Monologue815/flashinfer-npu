@@ -139,6 +139,11 @@ operation、active plan 身份一致，并明确消费了委托 request 的每�
 列表掩盖 base adapter 漏报的 `k_scale`、`v_scale` 或其他参数。全局 calibration scale 与
 per-block scale 保持独立来源；消费记录的完整性仍需配合 provider 的参数语义与数值证据。
 
+同一 binding 同时支持 combined 与 separate 时，三类已绑定的 scale 目标参数均由外层独占。
+一次 run 只注入与实际 KV 结构对应的参数，base adapter 不得补入另一种结构的目标参数，
+也不能覆盖当前结构的目标。独立 scale-factor adapter 遵循相同规则，避免一次调用混入两套
+scale 来源。
+
 不匹配的量化 plan 不会被该 adapter 截获。这样通用 INT8/INT4/FP8 quantization adapter 与
 NVFP4 packed route 可以在同一 operation runtime 中保持互斥语义，而不是根据 `uint8` dtype 或
 `kv_cache_sf` 参数名猜测格式。

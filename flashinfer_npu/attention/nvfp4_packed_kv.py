@@ -726,7 +726,13 @@ class AttentionOperatorNvfp4PackedKVRunAdapter:
             name
             for name, _ in lowered.positional_arguments + lowered.keyword_arguments
         }
-        collision = existing_arguments.intersection(name for name, _ in injected)
+        collision = existing_arguments.intersection(
+            name for name in (
+                scale_binding.combined_argument,
+                scale_binding.key_argument,
+                scale_binding.value_argument,
+            ) if name is not None
+        )
         if collision:
             raise SchemaError(
                 "NVFP4 packed argument collides with provider lowering: %s"
