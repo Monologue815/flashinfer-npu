@@ -43,12 +43,16 @@ The remaining cross-cutting contracts are framework-level capabilities:
 | UINT8 | `reference` | `framework` | `integration-required` |
 | Packed INT4 | `reference` | `framework` | `integration-required` |
 | Packed UINT4 | `reference` | `framework` | `integration-required` |
-| FP8/NVFP4/MX | `planned` | `planned` | `planned` |
+| FP8 | `reference` | `framework` | `integration-required` |
+| NVFP4 | `framework` | `framework` | `integration-required` |
+| MX | `planned` | `planned` | `planned` |
 
 Scale granularity, independent K/V scale sources, asymmetric zero points,
 runtime multipliers, physical blocking and padding participate in exact plan
-and provider identities. A provider is not admitted merely because its Python
-API contains quantization-related parameter names.
+and provider identities. Public NVFP4 storage and scale-factor metadata are
+represented jointly, but the Host oracle does not execute packed NVFP4 data.
+A provider is not admitted merely because its Python API contains
+quantization-related parameter names.
 
 ## Backend integration
 

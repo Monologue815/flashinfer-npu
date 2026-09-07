@@ -90,7 +90,8 @@
       "upstream_kind": "stable",
       "semantic_status": "compatible",
       "implementation_status": "reference",
-      "priority": "P0"
+      "priority": "P0",
+      "notes": "On the private provider route, bare uint8 kv_data_type is canonicalized to the same FlashInfer-compatible NVFP4 QuantSpec used by classic paged wrappers. The plan remains internal; run-time packed KV storage and kv_cache_sf are validated and lowered together. No production NPU implementation is enabled by this framework contract."
     },
     {
       "upstream": "flashinfer.attention.BatchAttention.run",
