@@ -199,6 +199,64 @@ Dynamic tensor contents are not embedded in the reusable plan. Shape or layout
 facts that affect compatibility are represented explicitly and checked again at
 `run()`.
 
+### 4.1 Custom-mask provider binding design
+
+Status: proposed framework extension, not an enabled provider capability.
+The Host oracle and `CustomMaskSpec` already describe masks, but public provider
+single/paged/ragged prefill currently rejects `custom_mask` and
+`packed_custom_mask`. A capability profile alone cannot close this gap: it says
+which semantics an operation supports, not where the actual mask data comes from.
+
+The pinned [upstream prefill implementation](https://github.com/flashinfer-ai/flashinfer/blob/919a24e5b1d971d50c97a3cd38862f801527eab5/flashinfer/prefill.py)
+prepares masks during planning, packs an unpacked mask only when a packed one is
+absent, uses little-endian segment packing, and retains mask buffers in the batch
+wrapper. Graph-mode buffers have a separate lifetime/capacity contract. Ascend
+must preserve the public lifecycle, without assuming CUDA buffer operations or a
+particular provider's mask representation.
+
+The extension should divide responsibilities as follows:
+
+| Boundary | Required responsibility |
+|---|---|
+| Public frontend | Preserve packed-mask precedence; derive per-request QO/KV segment lengths; normalize rank, dtype and device facts without reading device values |
+| Canonical plan | Record mask kind, bit order, segment offsets and logical sizes; preserve existing effective-causal semantics |
+| Private plan resources | Carry an opaque mask payload separately from serializable plan metadata and keep it alive for every run using that plan |
+| Provider admission | Require both semantic capability and an exact mask binding/representation; reject unsupported formats before package resolution |
+| Materializer | Perform only declared copy/packing/format transformations through an injected implementation; account for buffers and workspace |
+| Prepared provider plan | Bind materialized mask resources to the exact active-plan generation and operation |
+| Run adapter | Inject the retained mask and any segment metadata into the catalog-authorized arguments, without adding a public run mask/plan handle |
+| Completion/lifetime | Retain resources until outstanding execution completes; replacement planning must not release resources still in use |
+
+Logical mask length for request `i` is `qo_len[i] * kv_len[i]`. Each request's
+packed storage uses `ceil(logical_length / 8)` bytes; padding bits must not join
+the next request. Element offsets and packed-byte offsets are different units
+and must never share an untyped field. Mapping this representation into an
+external dense/additive mask is an explicit provider transformation, not a
+silent reinterpretation of bytes.
+
+Mask ownership is part of the binding. A borrowed immutable tensor needs a
+documented no-mutation-until-completion rule and a retained owner/lease; a copied
+snapshot needs a declared copy operation and completion ordering before use.
+The framework must not promise a snapshot while merely retaining a Python
+reference. It also must not place device addresses or tensor payloads into the
+public plan fingerprint. Private resource identity and prepared-plan binding
+track the concrete payload separately from reusable semantic/cache identity.
+
+Publication remains transactional: validate metadata and admission, prepare all
+mask resources, then publish the new plan and resource set together. Failure
+keeps the previous plan and mask resources usable. Replanning without a mask
+must remove the previous mask binding. No automatic Host fallback, implicit
+device-to-host read or framework-written packing kernel is permitted.
+
+Implementation can proceed in independently verifiable increments: private
+resource/binding schemas; injected metadata/materialization contracts; adapter
+lowering with synthetic callables; public prefill activation after end-to-end
+lifetime and failed-replan checks. Graph capture needs its own stable-address
+and capacity proof and must remain unavailable until that proof exists. The
+current rejection guards must remain in place until the public payload path is
+complete. Real provider packing/copy/operator implementations require a separate
+integration decision; none is introduced by this design.
+
 ## 5. Runtime registry snapshot
 
 The provider wrapper captures one immutable registry snapshot when constructed;

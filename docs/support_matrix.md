@@ -31,9 +31,16 @@ The remaining cross-cutting contracts are framework-level capabilities:
 | Capability | Status | Notes |
 |---|---|---|
 | NHD/HND KV layouts | `framework` | Logical tensor and metadata contracts are defined |
-| Causal/window/custom masks | `framework` | Admission and reference semantics are defined |
+| Causal/window masks | `framework` | Canonical plan and reference semantics exist; provider support requires an exact capability and lowering |
+| Custom/packed custom masks | `reference` + partial `framework` | Host semantics and mask metadata exist; public provider prefill rejects these inputs because mask payload binding is not implemented |
 | RoPE/ALiBi | `framework` | Plan and reference semantics are defined |
 | Output and LSE | `framework` | Shape, allocation and normalization contracts are defined |
+
+An interface parameter is not itself evidence of provider support. In particular,
+custom-mask prefill still needs framework payload ownership, materialization and
+exact callable-argument binding; installing an otherwise capable package alone
+does not enable it. The proposed contract and implementation boundary are in
+[the custom-mask binding design](attention_plan_run_dispatch_design.md#41-custom-mask-provider-binding-design).
 
 ## Quantized KV cache
 
