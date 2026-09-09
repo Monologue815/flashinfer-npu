@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Optional, Protocol, Sequence, Tuple, runtime_checkable
 
 from flashinfer_npu.runtime import SchemaError
@@ -49,7 +49,7 @@ from .tensor_contract import (
 )
 
 
-ATTENTION_OPERATOR_RUN_VERSION = 9
+ATTENTION_OPERATOR_RUN_VERSION = 10
 
 ATTENTION_OPERATOR_RUN_REQUEST_FIELDS = (
     "query",
@@ -230,6 +230,9 @@ class AttentionLoweredOperatorCall:
     validated_input_views: Tuple[Tuple[str, TensorView], ...] = ()
     consumed_request_fields: Tuple[str, ...] = ()
     schema_version: int = ATTENTION_OPERATOR_RUN_VERSION
+    # Process-local owners, excluded from diagnostics and value comparisons.
+    # The execution integration must retain the call through device completion.
+    retained_resources: Tuple[Any, ...] = field(default=(), repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if self.schema_version != ATTENTION_OPERATOR_RUN_VERSION:
@@ -288,6 +291,13 @@ class AttentionLoweredOperatorCall:
         object.__setattr__(self, "mutable_argument_names", mutable)
         object.__setattr__(self, "validated_input_views", validated_inputs)
         object.__setattr__(self, "consumed_request_fields", consumed)
+        try:
+            retained = tuple(self.retained_resources)
+        except TypeError as error:
+            raise SchemaError("retained resources must be a sequence of owners") from error
+        if any(owner is None for owner in retained):
+            raise SchemaError("retained resources cannot contain a missing owner")
+        object.__setattr__(self, "retained_resources", retained)
 
 
 @runtime_checkable

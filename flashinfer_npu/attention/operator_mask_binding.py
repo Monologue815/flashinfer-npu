@@ -5,17 +5,26 @@ exact operation. No packaged operation receives that declaration automatically.
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Optional
 
 from flashinfer_npu.runtime import SchemaError
 
-from .operation_catalog import AttentionOperatorOperationSpec
+from .operation_catalog import (
+    AttentionOperatorOperationCatalog, AttentionOperatorOperationSpec,
+    bind_attention_operator_operation,
+)
 from .operator_mask import (
     AttentionInspectedMaskPlanResource,
     revalidate_attention_mask_plan_resource,
 )
 from .schema import _canonical_hash
+from .operator_plan import AttentionOperatorActivePlan
+from .operator_run import (
+    AttentionOperatorRunAdapter, AttentionOperatorTensorMetadataInspector,
+    lower_attention_operator_run, validate_attention_lowered_operator_call,
+)
+from .tensor_contract import TensorView
 
 
 @dataclass(frozen=True)
@@ -139,3 +148,72 @@ def lower_attention_mask_arguments(plan, inspected, operation, spec, inspector):
         raise SchemaError("mask operation is not a candidate for the planned mode")
     revalidate_attention_mask_plan_resource(plan, inspected, inspector)
     return fragment
+
+
+class AttentionOperatorMaskRunAdapter:
+    """Private active-plan-bound decorator; install outside tensor validators.
+
+    This adapter describes a call and retains owners, but neither launches it nor
+    tracks asynchronous completion. No public wrapper installs it automatically.
+    """
+
+    def __init__(self, base_adapter, active_plan, operation, inspected, spec, inspector):
+        if not isinstance(base_adapter, AttentionOperatorRunAdapter):
+            raise TypeError("base_adapter must implement AttentionOperatorRunAdapter")
+        if not isinstance(active_plan, AttentionOperatorActivePlan):
+            raise TypeError("active_plan must be AttentionOperatorActivePlan")
+        if not isinstance(spec, AttentionOperatorMaskArgumentSpec):
+            raise TypeError("spec must be AttentionOperatorMaskArgumentSpec")
+        spec.validate_operation(operation)
+        fragment = AttentionLoweredMaskArguments(inspected, spec)
+        inspected.validate_plan(active_plan.framework_plan)
+        binding = bind_attention_operator_operation(
+            AttentionOperatorOperationCatalog("private_mask_adapter", (operation,)), active_plan)
+        if base_adapter.provider_id != binding.provider_id:
+            raise SchemaError("mask adapter base provider differs from the active operation")
+        if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+            raise TypeError("inspector must implement AttentionOperatorTensorMetadataInspector")
+        self.provider_id = binding.provider_id
+        self.operation_id = binding.operation_id
+        self._binding = binding
+        self._operation = operation
+        self._base_adapter = base_adapter
+        self._fragment = fragment
+        self._inspector = inspector
+
+    def lower(self, active_plan, request):
+        if not isinstance(active_plan, AttentionOperatorActivePlan):
+            raise TypeError("active_plan must be AttentionOperatorActivePlan")
+        if active_plan.fingerprint != self._binding.active_plan_fingerprint:
+            raise SchemaError("mask adapter does not bind this active plan")
+        self._fragment.inspected.validate_plan(active_plan.framework_plan)
+        lowered = lower_attention_operator_run(self._base_adapter, active_plan, request)
+        validate_attention_lowered_operator_call(self._operation, self._binding, lowered)
+        spec = self._fragment.spec
+        names = {spec.mask_argument, *spec.offset_arguments}
+        arguments = dict(lowered.positional_arguments + lowered.keyword_arguments)
+        if names.intersection(arguments):
+            raise SchemaError("mask argument collides with provider lowering")
+        if "custom_mask" in dict(lowered.validated_input_views):
+            raise SchemaError("custom_mask input view collides with provider lowering")
+        fragment = lower_attention_mask_arguments(
+            active_plan.framework_plan, self._fragment.inspected,
+            self._operation, spec, self._inspector)
+        mask_view = fragment.inspected.view
+        # Borrowed mask contents must remain unchanged, even if an operation's
+        # general access policy permits output/query aliasing.
+        for name in lowered.mutable_argument_names:
+            view = self._inspector.to_view(arguments[name], name=name, writable=True)
+            if not isinstance(view, TensorView):
+                raise TypeError("mutable argument inspector must return TensorView")
+            if view.device != mask_view.device:
+                raise SchemaError("mutable argument and mask must share the planned device")
+            if view.overlaps(mask_view):
+                raise SchemaError("mutable argument cannot alias the borrowed custom mask")
+        result = replace(
+            lowered,
+            keyword_arguments=lowered.keyword_arguments + fragment.keyword_arguments,
+            validated_input_views=lowered.validated_input_views + (("custom_mask", mask_view),),
+            retained_resources=lowered.retained_resources + (fragment,),
+        )
+        return validate_attention_lowered_operator_call(self._operation, self._binding, result)

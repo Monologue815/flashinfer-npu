@@ -316,7 +316,28 @@ No packaged CANN or flash-attention-npu operation is given a mask mapping by
 default. Inverted, additive, dense provider masks and device-resident offset
 tables require explicit transformation/materialization support, not reinterpretation.
 
-Materialization, active-provider adapter composition with collision checks,
+`AttentionOperatorMaskRunAdapter` composes this fragment with an existing run
+adapter, outside the tensor-validation adapters. It is constructed for one exact
+active plan and catalog operation. A different prepared state or generation
+requires a new adapter. It validates the request, base call identity and signature
+before inspecting the mask, and rejects existing mask/offset arguments (including
+`None` placeholders) or a preexisting `custom_mask` input view instead of overwriting
+them. After source revalidation it appends the mask view for downstream completion
+checks and rejects writable operation arguments that alias the borrowed mask.
+Completion validation likewise rejects returned output/LSE views that alias
+`custom_mask`, even when a profile permits general output/input aliasing. This
+post-call check detects an invalid result; it cannot undo a provider's writes.
+
+Internal run contract version 10 adds `AttentionLoweredOperatorCall.retained_resources`:
+a process-local immutable tuple of owners, excluded from representation and value
+comparison. The mask adapter preserves existing retained resources and appends its
+mask fragment. Ordinary call decoration through `dataclasses.replace` preserves
+these owners. The execution integration must retain the call through completion;
+Python return, an output metadata receipt or a new plan is not proof that queued
+device reads have finished. This field is not a lease, event tracker or public
+model-facing run parameter.
+
+Materialization, transactional publication of mask-aware adapters, asynchronous
 completion/lifetime integration and public activation remain to be implemented
 before the rejection guards can be removed.
 

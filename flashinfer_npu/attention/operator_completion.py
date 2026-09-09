@@ -228,13 +228,15 @@ class AttentionOperatorCompletionValidator:
 
         if len(named_views) == 2 and named_views[0][1].overlaps(named_views[1][1]):
             raise SchemaError("output and softmax_lse results cannot alias")
-        if not self._access_policy.permit_output_input_alias:
-            for result_name, result_view in named_views:
-                for input_name, input_view in input_views:
-                    if result_view.overlaps(input_view):
-                        raise SchemaError(
-                            "%s result cannot alias %s" % (result_name, input_name)
-                        )
+        for result_name, result_view in named_views:
+            for input_name, input_view in input_views:
+                # A borrowed plan mask is immutable through completion; the
+                # generic permission for output/query aliasing cannot relax it.
+                protected = input_name == "custom_mask" or not self._access_policy.permit_output_input_alias
+                if protected and result_view.overlaps(input_view):
+                    raise SchemaError(
+                        "%s result cannot alias %s" % (result_name, input_name)
+                    )
         return AttentionOperatorCompletionReceipt(
             active_plan_fingerprint=self._active_plan.fingerprint,
             framework_plan_fingerprint=plan.fingerprint,
