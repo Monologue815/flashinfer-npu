@@ -174,3 +174,27 @@ def inspect_attention_mask_plan_resource(
         raise TypeError("inspector must implement AttentionOperatorTensorMetadataInspector")
     view = inspector.to_view(resource.payload, name="custom_mask", writable=False)
     return AttentionInspectedMaskPlanResource(resource, view, device, alignment)
+
+
+def revalidate_attention_mask_plan_resource(
+    plan: AttentionFrameworkPlan,
+    inspected: AttentionInspectedMaskPlanResource,
+    inspector: AttentionOperatorTensorMetadataInspector,
+) -> AttentionInspectedMaskPlanResource:
+    """Recheck a borrowed source before use, without refreshing its binding.
+
+    Even a still-compatible replacement allocation or slice is not the source
+    originally inspected for this plan. All view fields must match the retained
+    snapshot. Failure leaves that snapshot intact, so it cannot silently authorize
+    a changed source on a later attempt. The caller must separately protect the
+    interval between this check and completion from mutation or deallocation.
+    """
+    if not isinstance(inspected, AttentionInspectedMaskPlanResource):
+        raise TypeError("inspected must be AttentionInspectedMaskPlanResource")
+    current = inspect_attention_mask_plan_resource(
+        plan, inspected.resource, inspector, inspected.expected_device,
+        required_alignment=inspected.required_alignment,
+    )
+    if current.view != inspected.view:
+        raise SchemaError("mask tensor metadata changed since plan inspection; replan required")
+    return inspected

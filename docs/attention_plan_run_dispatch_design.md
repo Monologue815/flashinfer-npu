@@ -283,7 +283,19 @@ needs an explicit frontend normalization step before reaching this private bound
 The returned `AttentionInspectedMaskPlanResource` retains both the original resource
 and the metadata snapshot. It does not establish content immutability, inspect
 padding-bit values or create a device lease. The borrowed-owner contract still
-applies, and a later integration must define metadata revalidation at use time.
+applies. `revalidate_attention_mask_plan_resource()` rechecks the exact plan binding
+before inspecting the borrowed source again. All view fields must still match the
+original snapshot, including storage identity, offset, capacity and alignment;
+being compatible in shape and dtype alone is insufficient. A failed check never
+refreshes the retained snapshot or authorizes the changed source. A successful
+check returns the original retained resource, not a replacement binding.
+
+This private check is intended for materializer/run adapters immediately before
+use. It does not detect content-only mutation or allocation reuse hidden by an
+inspector's storage identity, and cannot prevent concurrent changes after the
+check. The integrating adapter must supply trustworthy storage identity and
+separately enforce ownership, allocation lifetime and execution ordering through
+completion. Public provider execution is not yet connected to this boundary.
 Materialization, provider argument binding and public activation remain to be
 implemented before the rejection guards can be removed.
 
