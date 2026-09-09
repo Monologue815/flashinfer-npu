@@ -296,8 +296,29 @@ inspector's storage identity, and cannot prevent concurrent changes after the
 check. The integrating adapter must supply trustworthy storage identity and
 separately enforce ownership, allocation lifetime and execution ordering through
 completion. Public provider execution is not yet connected to this boundary.
-Materialization, provider argument binding and public activation remain to be
-implemented before the rejection guards can be removed.
+`attention.operator_mask_binding` provides a private no-conversion argument
+fragment. An `AttentionOperatorMaskArgumentSpec` explicitly maps the payload and
+typed offsets to keyword arguments of one exact operation fingerprint. It accepts
+only canonical row-major allow-mask segments: bool values or little-endian packed
+bits, where true/set means visible. Packed-byte offsets are mandatory for the
+packed representation and distinct from logical-element offsets. Offset arguments
+must be declared host sequences; payload/offset arguments cannot overlap mutable,
+quantization, page-table, output or LSE control roles. This mapping is an integration
+declaration, not proof that a real package implements those semantics.
+
+`lower_attention_mask_arguments()` rejects an incompatible declaration, plan,
+mode or encoding before touching the tensor inspector, then revalidates the
+borrowed source. Its result retains the inspected resource and owner alongside
+the argument fragment. The run adapter must retain that result through completion;
+keeping only the extracted argument tuple does not retain a separate owner. The
+fragment alone is neither an active-provider binding nor execution authority.
+No packaged CANN or flash-attention-npu operation is given a mask mapping by
+default. Inverted, additive, dense provider masks and device-resident offset
+tables require explicit transformation/materialization support, not reinterpretation.
+
+Materialization, active-provider adapter composition with collision checks,
+completion/lifetime integration and public activation remain to be implemented
+before the rejection guards can be removed.
 
 ## 5. Runtime registry snapshot
 
