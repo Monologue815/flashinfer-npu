@@ -271,8 +271,21 @@ share semantic metadata. Borrowing requires the owner to keep the payload
 immutable; retaining the owner is not a device lease or a copied snapshot.
 Only metadata has a diagnostic dictionary/fingerprint. These types are private
 building blocks, not new model-facing parameters or provider execution authority.
-Tensor inspection, materialization, provider argument binding and public
-activation remain to be implemented before the rejection guards can be removed.
+`inspect_attention_mask_plan_resource()` supplies the next metadata-only boundary.
+It validates the plan binding before invoking the injected tensor inspector once,
+requests a read-only view, and requires a flat contiguous view with the exact
+planned element count, dtype, expected device and requested power-of-two alignment.
+Storage bounds are validated by the existing `TensorView` contract. Bool masks
+remain bool and packed masks remain uint8; there is no implicit reshape, flatten,
+packing, device transfer or contiguous copy. A higher-rank public source therefore
+needs an explicit frontend normalization step before reaching this private boundary.
+
+The returned `AttentionInspectedMaskPlanResource` retains both the original resource
+and the metadata snapshot. It does not establish content immutability, inspect
+padding-bit values or create a device lease. The borrowed-owner contract still
+applies, and a later integration must define metadata revalidation at use time.
+Materialization, provider argument binding and public activation remain to be
+implemented before the rejection guards can be removed.
 
 ## 5. Runtime registry snapshot
 

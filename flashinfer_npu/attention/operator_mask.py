@@ -9,8 +9,10 @@ from typing import Any, Tuple
 
 from flashinfer_npu.runtime import SchemaError
 
+from .operator_run import AttentionOperatorTensorMetadataInspector
 from .planner import AttentionFrameworkPlan
 from .schema import CustomMaskSpec, _as_integer, _as_int_tuple, _canonical_hash
+from .tensor_contract import TensorView
 
 
 @dataclass(frozen=True)
@@ -108,3 +110,67 @@ class AttentionMaskPlanResource:
 
     def validate_plan(self, plan: AttentionFrameworkPlan):
         self.metadata.validate_plan(plan)
+
+
+def _inspection_requirements(expected_device, required_alignment):
+    if not isinstance(expected_device, str) or not expected_device:
+        raise SchemaError("mask expected_device must be a non-empty string")
+    alignment = _as_integer("mask required_alignment", required_alignment)
+    if alignment < 1 or alignment & (alignment - 1):
+        raise SchemaError("mask required_alignment must be a positive power of two")
+    return expected_device, alignment
+
+
+@dataclass(frozen=True, eq=False)
+class AttentionInspectedMaskPlanResource:
+    """A retained source and its validated metadata snapshot, not launch authority."""
+
+    resource: AttentionMaskPlanResource = field(repr=False)
+    view: TensorView
+    expected_device: str
+    required_alignment: int = 1
+
+    def __post_init__(self):
+        if not isinstance(self.resource, AttentionMaskPlanResource):
+            raise TypeError("resource must be AttentionMaskPlanResource")
+        if not isinstance(self.view, TensorView):
+            raise TypeError("mask tensor metadata inspector must return TensorView")
+        device, alignment = _inspection_requirements(self.expected_device, self.required_alignment)
+        object.__setattr__(self, "required_alignment", alignment)
+        spec = self.resource.metadata.mask_spec
+        if self.view.shape != (spec.numel,):
+            raise SchemaError("mask view must be a rank-1 view with the planned element count")
+        if self.view.dtype != spec.dtype:
+            raise SchemaError("mask view dtype does not match the planned mask encoding")
+        if self.view.device != device:
+            raise SchemaError("mask view device does not match the expected device")
+        if not self.view.is_contiguous:
+            raise SchemaError("mask view must be contiguous; implicit materialization is forbidden")
+        self.view.require_alignment(alignment, "mask view")
+
+    def validate_plan(self, plan: AttentionFrameworkPlan):
+        self.resource.validate_plan(plan)
+
+
+def inspect_attention_mask_plan_resource(
+    plan: AttentionFrameworkPlan,
+    resource: AttentionMaskPlanResource,
+    inspector: AttentionOperatorTensorMetadataInspector,
+    expected_device: str,
+    *,
+    required_alignment: int = 1,
+) -> AttentionInspectedMaskPlanResource:
+    """Inspect one already-flattened source without reading or transforming data.
+
+    Unpacked sources remain bool arrays; packed sources remain uint8 arrays.
+    A successful check proves metadata consistency, not mask values, immutable
+    storage, completion ordering, or a provider's supported representation.
+    """
+    if not isinstance(resource, AttentionMaskPlanResource):
+        raise TypeError("resource must be AttentionMaskPlanResource")
+    resource.validate_plan(plan)
+    device, alignment = _inspection_requirements(expected_device, required_alignment)
+    if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+        raise TypeError("inspector must implement AttentionOperatorTensorMetadataInspector")
+    view = inspector.to_view(resource.payload, name="custom_mask", writable=False)
+    return AttentionInspectedMaskPlanResource(resource, view, device, alignment)
