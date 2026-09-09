@@ -124,6 +124,9 @@ class CustomMaskSpec:
     bit_order: Optional[str] = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "numel", _as_integer("custom mask numel", self.numel))
+        if not isinstance(self.packed, bool):
+            raise SchemaError("custom mask packed must be boolean")
         if self.numel < 0:
             raise SchemaError("custom mask numel cannot be negative")
         expected_dtype = "uint8" if self.packed else "bool"

@@ -257,6 +257,23 @@ current rejection guards must remain in place until the public payload path is
 complete. Real provider packing/copy/operator implementations require a separate
 integration decision; none is introduced by this design.
 
+The first internal building block is `attention.operator_mask`.
+`AttentionMaskPlanMetadata.from_plan()` derives separately named
+`logical_element_indptr` and `packed_byte_indptr` from the existing mask semantics,
+and binds them to the plan fingerprint, admission fingerprint and generation.
+Reusing equivalent semantics in a new generation still requires a new resource
+binding. `CustomMaskSpec.numel` is strictly integer-valued and `packed` is a boolean.
+
+`AttentionMaskPlanResource` retains an opaque payload and its owner by reference.
+It never inspects payload contents, performs packing/copying, or serializes the
+payload as part of its metadata. Two resources are not equal merely because they
+share semantic metadata. Borrowing requires the owner to keep the payload
+immutable; retaining the owner is not a device lease or a copied snapshot.
+Only metadata has a diagnostic dictionary/fingerprint. These types are private
+building blocks, not new model-facing parameters or provider execution authority.
+Tensor inspection, materialization, provider argument binding and public
+activation remain to be implemented before the rejection guards can be removed.
+
 ## 5. Runtime registry snapshot
 
 The provider wrapper captures one immutable registry snapshot when constructed;
