@@ -7,7 +7,7 @@ events on the execution stream and poll them; public wrappers do not opt in yet.
 
 from dataclasses import dataclass, field
 from threading import RLock
-from typing import Optional, Protocol, runtime_checkable
+from typing import Optional, Protocol, Tuple, runtime_checkable
 from uuid import uuid4
 
 from .operator_run import AttentionLoweredOperatorCall
@@ -45,6 +45,29 @@ class _PendingCall:
     call: AttentionLoweredOperatorCall = field(repr=False)
     event: Optional[AttentionRetainedCallEvent] = field(default=None, repr=False)
     querying: bool = False
+
+
+@dataclass(frozen=True)
+class AttentionCallCompletionPollFailure:
+    token: AttentionRetainedCallToken
+    error_type: str
+    message: str
+
+
+@dataclass(frozen=True)
+class AttentionCallCompletionCollection:
+    """Metadata-only collection snapshot; no exceptions, events or owners."""
+
+    released: Tuple[AttentionRetainedCallToken, ...]
+    pending: Tuple[AttentionRetainedCallToken, ...]
+    unrecorded: Tuple[AttentionRetainedCallToken, ...]
+    failures: Tuple[AttentionCallCompletionPollFailure, ...]
+
+
+class AttentionCallCompletionCollectionError(AttentionCallRetentionError):
+    def __init__(self, report):
+        super().__init__("Attention completion collection failed; affected calls remain retained")
+        self.report = report
 
 
 class AttentionOperatorCallRetention:
@@ -104,11 +127,20 @@ class AttentionOperatorCallRetention:
         queries for the same invocation are rejected; independent calls may progress.
         A completed token is removed, and cannot be polled or rebound again.
         """
+        return self._poll(token, skip_unavailable=False)
+
+    def _poll(self, token, *, skip_unavailable):
         with self._lock:
+            if skip_unavailable and token.invocation_id not in self._pending:
+                return None
             record = self._record(token)
             if record.event is None:
+                if skip_unavailable:
+                    return None
                 raise AttentionCallRetentionError("retained call has no completion event")
             if record.querying:
+                if skip_unavailable:
+                    return None
                 raise AttentionCallRetentionError("completion query is already in progress")
             event = record.event
             record.querying = True
@@ -129,6 +161,32 @@ class AttentionOperatorCallRetention:
             if completed:
                 del self._pending[token.invocation_id]
             return completed
+
+    def collect_completed(self):
+        """Make one non-waiting pass without aborting on an ordinary query error.
+
+        A snapshot bounds the work: calls added during the pass wait for a later
+        pass. Calls lacking events, already being queried or removed by another
+        poll are skipped. Strict single-token poll semantics remain unchanged.
+        Failures contain text only, avoiding traceback-held resource references.
+        """
+        tokens = self.pending_tokens
+        released, failures = [], []
+        for token in tokens:
+            try:
+                if self._poll(token, skip_unavailable=True):
+                    released.append(token)
+            except Exception as error:
+                try:
+                    message = str(error)
+                except Exception:
+                    message = "completion query failed; error message unavailable"
+                failures.append(AttentionCallCompletionPollFailure(
+                    token, type(error).__name__, message))
+        with self._lock:
+            pending = tuple(record.token for record in self._pending.values())
+            unrecorded = tuple(record.token for record in self._pending.values() if record.event is None)
+        return AttentionCallCompletionCollection(tuple(released), pending, unrecorded, tuple(failures))
 
     def close(self):
         with self._lock:

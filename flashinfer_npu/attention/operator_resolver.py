@@ -43,6 +43,7 @@ from .operator_completion import (
 )
 from .operator_run_receipt import AttentionOperatorRunReceipt
 from .operator_retention import (
+    AttentionCallCompletionCollectionError,
     AttentionOperatorCallRetention,
     AttentionRetainedCallEventRecorder,
     execute_attention_retained_call,
@@ -1048,6 +1049,7 @@ class AttentionOperatorRuntime:
         """Resolve and prepare completely, then publish all wrapper state."""
 
         candidate_plan = self._framework_session.prepare_plan(spec, metadata)
+        self._collect_completed_calls()
         if run_adapter_plan_binder is not None:
             if not isinstance(run_adapter_plan_binder, AttentionOperatorPlanRunAdapterBinder):
                 raise TypeError("run_adapter_plan_binder must implement AttentionOperatorPlanRunAdapterBinder")
@@ -1303,6 +1305,12 @@ class AttentionOperatorRuntime:
             candidate_runtime_provider_integration_bundle_binding
         )
 
+    def _collect_completed_calls(self):
+        if self._completion_event_recorder is not None:
+            report = self._call_retention.collect_completed()
+            if report.failures:
+                raise AttentionCallCompletionCollectionError(report)
+
     def _clear_run_evidence(self):
         """Invalidate runtime publication before a new public run attempt."""
         self._last_completion_receipt = None
@@ -1328,6 +1336,7 @@ class AttentionOperatorRuntime:
         kv_cache_sf=None,
     ):
         self._clear_run_evidence()
+        self._collect_completed_calls()
         session = self.operator_session
         if self._executor is None:  # defensive; plan publication is atomic
             raise AttentionStateError("Attention operator executor is not initialized")

@@ -347,6 +347,12 @@ event recorder, calls carrying explicit retained owners fail before execution.
 This is an opt-in internal runtime path, not an automatic device-event integration
 or a change to public `run()` results.
 
+With a recorder configured, later `plan()`/`run()` entries make one non-waiting
+collection pass over prior calls. Only completed invocations are released;
+unfinished or unrecorded calls remain retained. Query failures stop new work with
+a metadata-only collection report, while independent completed calls can still
+be reclaimed. This does not supply idle-time polling or a teardown drain.
+
 `AttentionMaskPlanRunAdapterBinder` prepares a borrowed canonical source during
 the private plan transaction. It derives resource metadata from the actual
 candidate generation, validates the selected operation mapping and encoding,

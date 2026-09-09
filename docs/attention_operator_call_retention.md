@@ -24,7 +24,7 @@ an explicit integration obligation; garbage collection is not a shutdown protoco
    because some work may already have been submitted.
 4. Bind that event to the exact invocation token. The same event object cannot
    be attached to two pending calls, and an attached event cannot be replaced.
-5. Poll explicitly. Only a strict boolean `True` from the matching event releases
+5. Poll at a runtime collection point. Only a strict boolean `True` from the matching event releases
    the registry's references. Calls can complete out of order.
 
 `execute_attention_retained_call(registry, call, invoke, recorder)` combines the
@@ -65,6 +65,14 @@ Concurrent/reentrant polling of the same invocation is rejected. Completed token
 are removed rather than retained indefinitely as history; polling a removed token
 is an error. Diagnostic `pending_tokens` contains no tensor payloads or owners.
 
+`collect_completed()` makes one bounded, non-waiting pass over the pending-token
+snapshot. It skips calls with no event, calls already being queried, and tokens
+another poll has removed. Calls added during the pass are left for a subsequent
+pass. An ordinary query exception does not stop independent completed calls from
+being released. The result reports released and remaining tokens, unrecorded
+tokens, and per-token failure text. It retains no event, call, exception or traceback
+objects. Interrupts are not converted into ordinary query failures.
+
 ## Remaining integration responsibilities
 
 ### Internal runtime connection
@@ -77,6 +85,16 @@ already-bound executor. The helper's token stays internal; `run()` still returns
 the original output or output/LSE convention. Result validation and success
 receipt publication happen after event recording, so a result-validation failure
 cannot remove the pending invocation.
+
+Configured runtimes collect previously completed calls during `plan()` after
+canonical plan validation and during `run()` before new submission. Successful
+collection does not change the output/LSE return convention or expose tokens to
+the model caller. Unfinished and unrecorded calls stay retained without waiting.
+Query failures raise `AttentionCallCompletionCollectionError` with the collection
+report and prevent that new plan/submission from proceeding. The active plan
+remains usable after recovery; a failed `run()` attempt clears last-run success
+diagnostics as usual. A failed `plan()` preserves them. Collection may still have
+safely released other completed calls before reporting a query failure.
 
 Each runtime owns a stable `call_retention` registry. Neither successful or failed
 planning, executor replacement nor clearing last-run diagnostics replaces it.
@@ -95,8 +113,11 @@ submissions. Closing while pending calls exist remains an error.
 
 ### Device and public-wrapper integration
 
-The runtime must preserve the registry, arrange event recording and polling, and
-drain it before teardown. It must also retain returned/output allocations where
+The runtime must preserve the registry, supply correctly ordered event recording,
+and drain it before teardown. Entry-point collection is not background polling:
+an idle wrapper can retain its final calls until an explicit collection or a
+later `plan()`/`run()`. Teardown must not rely on another call arriving. It must
+also retain returned/output allocations where
 the provider's lifetime contract requires them. Registry removal releases only
 its own references; other calls, diagnostics or exception tracebacks may still
 hold references. This mechanism does not establish immutable mask contents,
