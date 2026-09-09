@@ -399,6 +399,38 @@ integration and public activation remain to be implemented before the rejection
 guards can be removed. The bundled provider catalogs still have no automatically
 installed real mask representation mappings.
 
+### 4.2 Quantized KV and custom-mask composition
+
+Quantization and mask bindings describe independent inputs to the same selected
+operation. The quantization adapter validates the active `QuantSpec`, logical
+storage and scale metadata, then maps K/V storage and their scales to authorized
+arguments. The outer plan-bound mask adapter preserves those arguments and adds
+the borrowed mask and segment offsets. Neither adapter dequantizes KV, converts
+mask encodings or performs Attention arithmetic.
+
+Bool masks carry logical segment offsets; packed masks additionally carry
+per-segment byte offsets. These offsets describe QO/KV sequence lengths, not
+quantization groups. A provider must independently satisfy both bindings and all
+existing capability and authorization checks; support for either feature alone
+does not establish support for their combination.
+
+With the default access policy, caller-owned output/LSE buffers must not overlap
+quantized storage or scales. These checks precede invocation. Borrowed masks
+remain protected even when general output/input aliasing is explicitly allowed.
+Completion validation includes quantized input views and the mask view; invalid
+returned aliases do not produce a successful run receipt. Post-invocation checks
+cannot undo writes already performed by an external callable.
+
+An input validation failure leaves the active plan reusable and submits no call.
+Replanning between quantized and dense KV replaces the adapter chain, so dense
+runs do not inherit scale arguments from an earlier generation. Already submitted
+calls retain their own lowered arguments and mask resources until their matching
+completion events report completion, including when result validation fails.
+
+This composition is an internal framework contract. It does not enable public
+provider mask paths, prove numerical accuracy or establish a real package's
+quantized-mask capability. Model-facing interfaces remain unchanged.
+
 ## 5. Runtime registry snapshot
 
 The provider wrapper captures one immutable registry snapshot when constructed;
