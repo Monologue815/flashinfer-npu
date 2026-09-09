@@ -113,6 +113,35 @@ submissions. Closing while pending calls exist remains an error.
 
 ### Device and public-wrapper integration
 
+Internal `AttentionOperatorRuntime.close()` provides a non-waiting teardown
+handshake for runtimes configured with a completion event recorder:
+
+- The first attempt enters **closing**, rejecting new planning, submissions,
+  workspace rebinding and unplanned forks.
+- It makes one completion collection pass. Pending or unrecorded calls raise
+  `AttentionCallRetentionClosePending` with the collection report. Query failures
+  raise `AttentionCallCompletionCollectionError`. Both leave the runtime closing
+  and retain the resources still needed by outstanding work.
+- The integration may supply recovery events and retry `close()`. It must keep
+  the runtime alive throughout this process; no timeout or error permits dropping
+  the registry or forcing a release.
+- Once no tracked calls remain, the registry closes and the runtime drops its
+  active plan, executor, workspace binding and last-call diagnostics. The runtime
+  becomes **closed**, cannot be reused and accepts repeated `close()` calls without
+  further polling. Shared provider registrations are not unloaded.
+
+An untracked legacy runtime cannot establish this completion proof, so its close
+attempt is rejected without changing its state. Lifecycle checks also prevent
+late candidate publication or submission when an injected preparation/lowering
+callback has already closed the runtime. This is not a claim that arbitrary
+concurrent use of one wrapper is thread-safe; integrations must serialize its
+planning, execution entry and teardown operations.
+
+The handshake covers tracked invocation resources. It does not prove completion
+of independently queued plan-time materialization or other provider work; those
+operations need their own lifetime and completion contracts. No Python destructor
+or public wrapper teardown installs this handshake automatically yet.
+
 The runtime must preserve the registry, supply correctly ordered event recording,
 and drain it before teardown. Entry-point collection is not background polling:
 an idle wrapper can retain its final calls until an explicit collection or a

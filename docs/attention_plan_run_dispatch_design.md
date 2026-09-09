@@ -351,7 +351,11 @@ With a recorder configured, later `plan()`/`run()` entries make one non-waiting
 collection pass over prior calls. Only completed invocations are released;
 unfinished or unrecorded calls remain retained. Query failures stop new work with
 a metadata-only collection report, while independent completed calls can still
-be reclaimed. This does not supply idle-time polling or a teardown drain.
+be reclaimed. This does not supply idle-time polling. The internal runtime's
+non-waiting `close()` enters a closing state and rejects new work, then can be
+retried until all tracked calls complete. It drops active-plan and execution
+references only after the retention registry becomes empty. Public-wrapper
+teardown and independently queued preparation work still need integration.
 
 `AttentionMaskPlanRunAdapterBinder` prepares a borrowed canonical source during
 the private plan transaction. It derives resource metadata from the actual

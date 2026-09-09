@@ -44,6 +44,7 @@ from .operator_completion import (
 from .operator_run_receipt import AttentionOperatorRunReceipt
 from .operator_retention import (
     AttentionCallCompletionCollectionError,
+    AttentionCallRetentionClosePending,
     AttentionOperatorCallRetention,
     AttentionRetainedCallEventRecorder,
     execute_attention_retained_call,
@@ -859,6 +860,8 @@ class AttentionOperatorRuntime:
         # clearing result diagnostics. The integration supplies stream events.
         self._call_retention = AttentionOperatorCallRetention()
         self._completion_event_recorder = completion_event_recorder
+        self._closing = False
+        self._closed = False
         self._operator_session = None
         self._executor = None
         self._completion_validator = None
@@ -880,6 +883,49 @@ class AttentionOperatorRuntime:
     @property
     def is_planned(self) -> bool:
         return self._operator_session is not None
+
+    @property
+    def is_closing(self) -> bool:
+        return self._closing
+
+    @property
+    def is_closed(self) -> bool:
+        return self._closed
+
+    def _ensure_open(self):
+        if self._closing or self._closed:
+            raise AttentionStateError("Attention operator runtime is closing or closed")
+
+    def close(self):
+        """Non-waiting, retryable teardown for event-tracked call resources.
+
+        The integration must retain this runtime until close succeeds. No
+        destructor, device synchronization or force-release is performed.
+        """
+        if self._closed:
+            return
+        if self._completion_event_recorder is None:
+            raise AttentionStateError("runtime close requires a completion event recorder")
+        self._closing = True
+        report = self._collect_completed_calls()
+        if report.pending:
+            raise AttentionCallRetentionClosePending(report)
+        self._call_retention.close()
+        # Drop only this runtime's plan/execution references, after every tracked
+        # invocation has completed. Shared provider registrations remain owned
+        # by the integration and are not unloaded here.
+        for name in (
+            "_operator_session", "_executor", "_completion_validator",
+            "_last_completion_receipt", "_last_run_receipt", "_last_lowered_call",
+            "_jit_plan_binding", "_jit_artifact_binding", "_jit_module_binding",
+            "_jit_planner_binding", "_jit_executor_binding", "_jit_runtime_executor_binding",
+            "_workspace_contract", "_runtime_plan_score", "_runtime_resolution_fingerprint",
+            "_runtime_plan_scoring_binding", "_runtime_provider_integration_bundle_binding",
+        ):
+            setattr(self, name, None)
+        self._framework_session = AttentionFrameworkSession(self.mode)
+        self._closed = True
+        self._closing = False
 
     @property
     def call_retention(self) -> AttentionOperatorCallRetention:
@@ -965,6 +1011,7 @@ class AttentionOperatorRuntime:
     def fork_unplanned(self) -> "AttentionOperatorRuntime":
         """Create an empty runtime over the exact same frozen resolver inputs."""
 
+        self._ensure_open()
         return AttentionOperatorRuntime(
             self.device,
             self._resolver_registry,
@@ -983,6 +1030,7 @@ class AttentionOperatorRuntime:
     def rebind_workspace_contract(self, workspace_contract) -> None:
         """Publish a same-device package-managed workspace replacement."""
 
+        self._ensure_open()
         if not self.is_planned:
             raise AttentionStateError(
                 "Attention operator runtime must be planned before workspace rebind"
@@ -1048,8 +1096,10 @@ class AttentionOperatorRuntime:
     ) -> None:
         """Resolve and prepare completely, then publish all wrapper state."""
 
+        self._ensure_open()
         candidate_plan = self._framework_session.prepare_plan(spec, metadata)
         self._collect_completed_calls()
+        self._ensure_open()
         if run_adapter_plan_binder is not None:
             if not isinstance(run_adapter_plan_binder, AttentionOperatorPlanRunAdapterBinder):
                 raise TypeError("run_adapter_plan_binder must implement AttentionOperatorPlanRunAdapterBinder")
@@ -1278,6 +1328,7 @@ class AttentionOperatorRuntime:
         # commit_prepared_plan cannot fail after the same candidate was prepared;
         # it is deliberately last so resolver/prepare/binding failures preserve
         # the old framework plan and executable runtime as one atomic generation.
+        self._ensure_open()
         self._framework_session.commit_prepared_plan(candidate_plan)
         self._operator_session = candidate_operator_session
         self._executor = candidate_executor
@@ -1310,6 +1361,7 @@ class AttentionOperatorRuntime:
             report = self._call_retention.collect_completed()
             if report.failures:
                 raise AttentionCallCompletionCollectionError(report)
+            return report
 
     def _clear_run_evidence(self):
         """Invalidate runtime publication before a new public run attempt."""
@@ -1335,8 +1387,10 @@ class AttentionOperatorRuntime:
         profiler_buffer=None,
         kv_cache_sf=None,
     ):
+        self._ensure_open()
         self._clear_run_evidence()
         self._collect_completed_calls()
+        self._ensure_open()
         session = self.operator_session
         if self._executor is None:  # defensive; plan publication is atomic
             raise AttentionStateError("Attention operator executor is not initialized")
@@ -1441,6 +1495,7 @@ class AttentionOperatorRuntime:
             kv_cache_sf=kv_cache_sf,
         )
         lowered = session._lower_request(request)
+        self._ensure_open()
         if self._completion_event_recorder is None:
             if lowered.retained_resources:
                 raise AttentionStateError(
@@ -1500,9 +1555,11 @@ class AttentionOperatorRuntime:
                     else self._runtime_plan_scoring_binding[3]
                 ),
             )
-            self._last_completion_receipt = completion_receipt
-            self._last_run_receipt = run_receipt
-        self._last_lowered_call = lowered
+            if not self._closed:
+                self._last_completion_receipt = completion_receipt
+                self._last_run_receipt = run_receipt
+        if not self._closed:
+            self._last_lowered_call = lowered
         return result
 
 

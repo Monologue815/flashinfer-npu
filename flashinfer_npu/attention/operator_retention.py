@@ -70,6 +70,12 @@ class AttentionCallCompletionCollectionError(AttentionCallRetentionError):
         self.report = report
 
 
+class AttentionCallRetentionClosePending(AttentionCallRetentionError):
+    def __init__(self, report):
+        super().__init__("runtime close is pending; calls still retain resources")
+        self.report = report
+
+
 class AttentionOperatorCallRetention:
     """Long-lived owner of calls across replans, failures and executor replacement.
 
