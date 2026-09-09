@@ -52,6 +52,7 @@ from .operator_provider import AttentionOperatorProviderSelection
 from .operator_run import (
     AttentionLoweredOperatorCall,
     AttentionOperatorRunAdapter,
+    AttentionOperatorPlanRunAdapterBinder,
     AttentionOperatorRunRequest,
     AttentionOperatorWrapperSession,
 )
@@ -948,6 +949,7 @@ class AttentionOperatorRuntime:
             provider_integration_bundle_binding=(
                 self._provider_integration_bundle_binding
             ),
+            completion_event_recorder=self._completion_event_recorder,
         )
 
     def rebind_workspace_contract(self, workspace_contract) -> None:
@@ -1014,10 +1016,20 @@ class AttentionOperatorRuntime:
         metadata: AttentionMetadata,
         *,
         workspace_contract=None,
+        run_adapter_plan_binder=None,
     ) -> None:
         """Resolve and prepare completely, then publish all wrapper state."""
 
         candidate_plan = self._framework_session.prepare_plan(spec, metadata)
+        if run_adapter_plan_binder is not None:
+            if not isinstance(run_adapter_plan_binder, AttentionOperatorPlanRunAdapterBinder):
+                raise TypeError("run_adapter_plan_binder must implement AttentionOperatorPlanRunAdapterBinder")
+            if not isinstance(run_adapter_plan_binder.requires_call_retention, bool):
+                raise SchemaError("plan binder requires_call_retention must be boolean")
+            if run_adapter_plan_binder.requires_call_retention and self._completion_event_recorder is None:
+                raise AttentionStateError("plan resources require a completion event recorder")
+        elif candidate_plan.spec.custom_mask is not None:
+            raise AttentionStateError("custom-mask runtime plans require a plan-bound resource adapter")
         resolved = self._resolver_registry.resolve(candidate_plan, self.device)
         candidate_operator_session = AttentionOperatorWrapperSession(
             self._operation_catalog
@@ -1055,6 +1067,7 @@ class AttentionOperatorRuntime:
                 else None
             ),
             resolved.runtime_resolution_fingerprint,
+            run_adapter_plan_binder=run_adapter_plan_binder,
         )
         candidate_workspace_contract = None
         if workspace_contract is not None:

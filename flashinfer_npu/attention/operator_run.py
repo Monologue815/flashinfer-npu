@@ -328,6 +328,16 @@ class AttentionOperatorRunAdapterFactory(Protocol):
 
 
 @runtime_checkable
+class AttentionOperatorPlanRunAdapterBinder(Protocol):
+    """Private per-plan resource preparation, before candidate publication."""
+
+    requires_call_retention: bool
+
+    def bind(self, base_adapter, active_plan, operation) -> AttentionOperatorRunAdapter:
+        """Return an exact-operation adapter without publishing or executing it."""
+
+
+@runtime_checkable
 class AttentionOperatorTensorMetadataInspector(Protocol):
     """Read opaque provider tensors without importing or touching device data."""
 
@@ -925,11 +935,17 @@ class AttentionOperatorWrapperSession:
         jit_planner_binding_fingerprint: Optional[str] = None,
         jit_executor_binding_fingerprint: Optional[str] = None,
         runtime_resolution_fingerprint: Optional[str] = None,
+        *,
+        run_adapter_plan_binder=None,
     ) -> None:
         """Prepare a complete runtime candidate, then atomically publish it."""
 
         if not isinstance(run_adapter, AttentionOperatorRunAdapter):
             raise TypeError("run_adapter must implement AttentionOperatorRunAdapter")
+        if run_adapter_plan_binder is not None and not isinstance(
+            run_adapter_plan_binder, AttentionOperatorPlanRunAdapterBinder
+        ):
+            raise TypeError("run_adapter_plan_binder must implement AttentionOperatorPlanRunAdapterBinder")
         if run_adapter.provider_id != selection.provider_id:
             raise SchemaError("operator run adapter does not match selected provider")
         if not isinstance(callable_binding, AttentionOperatorCallableBinding):
@@ -981,8 +997,19 @@ class AttentionOperatorWrapperSession:
             != candidate_resource_binding.fingerprint
         ):
             raise SchemaError("runtime binding did not freeze provider resources")
+        candidate_run_adapter = run_adapter
+        if run_adapter_plan_binder is not None:
+            candidate_run_adapter = run_adapter_plan_binder.bind(
+                run_adapter, candidate_session.active_plan, operation)
+            if not isinstance(candidate_run_adapter, AttentionOperatorRunAdapter):
+                raise TypeError("plan run adapter binder returned an invalid adapter")
+            if (
+                candidate_run_adapter.provider_id != operation.provider_id
+                or getattr(candidate_run_adapter, "operation_id", None) != operation.operation_id
+            ):
+                raise SchemaError("plan-bound run adapter changed the selected operation")
         self._plan_session = candidate_session
-        self._run_adapter = run_adapter
+        self._run_adapter = candidate_run_adapter
         self._operation_binding = candidate_binding
         self._callable_binding = callable_binding
         self._runtime_binding = candidate_runtime_binding

@@ -16,6 +16,8 @@ from .operation_catalog import (
 )
 from .operator_mask import (
     AttentionInspectedMaskPlanResource,
+    AttentionMaskPlanMetadata, AttentionMaskPlanResource,
+    _inspection_requirements, inspect_attention_mask_plan_resource,
     revalidate_attention_mask_plan_resource,
 )
 from .schema import _canonical_hash
@@ -217,3 +219,49 @@ class AttentionOperatorMaskRunAdapter:
             retained_resources=lowered.retained_resources + (fragment,),
         )
         return validate_attention_lowered_operator_call(self._operation, self._binding, result)
+
+
+class AttentionMaskPlanRunAdapterBinder:
+    """Prepare one borrowed canonical mask inside the plan transaction.
+
+    This private request is consumed after operation selection. The frontend must
+    still provide mask-aware admission before probing real packages. No copying,
+    packing, public signature change or automatic provider registration occurs.
+    """
+
+    requires_call_retention = True
+
+    def __init__(self, payload, owner, inspector, spec, expected_device, *, required_alignment=1):
+        if payload is None or owner is None:
+            raise SchemaError("mask preparation requires a payload and retained owner")
+        if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
+            raise TypeError("inspector must implement AttentionOperatorTensorMetadataInspector")
+        if not isinstance(spec, AttentionOperatorMaskArgumentSpec):
+            raise TypeError("spec must be AttentionOperatorMaskArgumentSpec")
+        device, alignment = _inspection_requirements(expected_device, required_alignment)
+        self._payload = payload
+        self._owner = owner
+        self._inspector = inspector
+        self._spec = spec
+        self._device = device
+        self._alignment = alignment
+
+    def bind(self, base_adapter, active_plan, operation):
+        if not isinstance(active_plan, AttentionOperatorActivePlan):
+            raise TypeError("active_plan must be AttentionOperatorActivePlan")
+        self._spec.validate_operation(operation)
+        if (
+            active_plan.provider_selection.provider_id != operation.provider_id
+            or active_plan.prepared_plan.implementation_id != operation.operation_id
+        ):
+            raise SchemaError("mask preparation operation differs from the active plan")
+        plan = active_plan.framework_plan
+        metadata = AttentionMaskPlanMetadata.from_plan(plan)
+        encoding = "packed_allow_little_segments" if metadata.mask_spec.packed else "bool_allow_flat"
+        if encoding != self._spec.encoding:
+            raise SchemaError("mask preparation requires explicit encoding transformation")
+        resource = AttentionMaskPlanResource(metadata, self._payload, self._owner)
+        inspected = inspect_attention_mask_plan_resource(
+            plan, resource, self._inspector, self._device, required_alignment=self._alignment)
+        return AttentionOperatorMaskRunAdapter(
+            base_adapter, active_plan, operation, inspected, self._spec, self._inspector)

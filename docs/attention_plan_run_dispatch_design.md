@@ -347,9 +347,29 @@ event recorder, calls carrying explicit retained owners fail before execution.
 This is an opt-in internal runtime path, not an automatic device-event integration
 or a change to public `run()` results.
 
-Materialization, transactional publication of mask-aware adapters, device-specific
-event recording/polling and wrapper teardown integration, and public activation
-remain to be implemented before the rejection guards can be removed.
+`AttentionMaskPlanRunAdapterBinder` prepares a borrowed canonical source during
+the private plan transaction. It derives resource metadata from the actual
+candidate generation, validates the selected operation mapping and encoding,
+inspects the source, and constructs the plan-bound mask adapter. Internal
+`AttentionOperatorRuntime.plan()` accepts a `run_adapter_plan_binder`; the wrapper
+session invokes it before publishing its candidate adapter. Later workspace or
+executor-binding failures still leave the runtime's old plan and adapter intact.
+Successful planning without a binder installs the ordinary adapter, removing any
+old mask binding while pending calls continue to retain their own resources.
+
+The binder protocol declares whether call retention is required. A mask binder
+requires a configured event recorder, and a custom-mask runtime plan requires a
+resource adapter; both missing-input checks precede package resolution. Binder
+results must match the selected provider and operation. These are private
+integration hooks, not additional model-facing `plan()` parameters. No CANN or
+flash-attention-npu mask binder is registered automatically.
+
+Selection still precedes concrete mask preparation in this internal extension.
+Before public activation, provider admission must include representation support
+so selection can exclude incompatible operations before package probing, rather
+than relying on a late binder failure. Materialization, device-specific event
+recording/polling, wrapper teardown integration and public activation also remain
+to be implemented before the rejection guards can be removed.
 
 ## 5. Runtime registry snapshot
 

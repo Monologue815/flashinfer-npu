@@ -54,6 +54,12 @@ time, Python return, an output metadata receipt, or a new plan. There is no
 force-release API. `close()` rejects any pending call and prevents new retention
 after the registry becomes empty and closes successfully.
 
+An unplanned runtime fork preserves the configured recorder but owns a fresh,
+empty retention registry. This supports plan-equivalent workspace probes without
+giving them control of the original runtime's pending calls. If an integration
+executes calls through such a fork, it must drain that fork's registry separately;
+the recorder must correctly record each supplied invocation token.
+
 External queries run outside the registry lock so independent calls can progress.
 Concurrent/reentrant polling of the same invocation is rejected. Completed tokens
 are removed rather than retained indefinitely as history; polling a removed token
