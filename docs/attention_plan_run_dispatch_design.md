@@ -337,9 +337,15 @@ Python return, an output metadata receipt or a new plan is not proof that queued
 device reads have finished. This field is not a lease, event tracker or public
 model-facing run parameter.
 
-Materialization, transactional publication of mask-aware adapters, asynchronous
-completion/lifetime integration and public activation remain to be implemented
-before the rejection guards can be removed.
+The private [call retention registry](attention_operator_call_retention.md) can
+retain complete lowered calls before invocation and release each only after its
+own injected event reports completion. It preserves pending calls on invocation,
+recording or query failures. This supplies a lifecycle building block, not an
+automatic device-event integration or a change to public `run()` results.
+
+Materialization, transactional publication of mask-aware adapters, runtime-owned
+retention/event integration and public activation remain to be implemented before
+the rejection guards can be removed.
 
 ## 5. Runtime registry snapshot
 
