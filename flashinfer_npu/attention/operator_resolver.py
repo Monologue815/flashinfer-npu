@@ -42,6 +42,11 @@ from .operator_completion import (
     AttentionOperatorCompletionValidatorFactory,
 )
 from .operator_run_receipt import AttentionOperatorRunReceipt
+from .operator_retention import (
+    AttentionOperatorCallRetention,
+    AttentionRetainedCallEventRecorder,
+    execute_attention_retained_call,
+)
 from .operator_plan import AttentionOperatorPlanFactory
 from .operator_provider import AttentionOperatorProviderSelection
 from .operator_run import (
@@ -707,6 +712,7 @@ class AttentionOperatorRuntime:
         runtime_declaration_bindings=(),
         plan_scoring_manifest_binding=None,
         provider_integration_bundle_binding=None,
+        completion_event_recorder=None,
     ) -> None:
         if not str(device):
             raise SchemaError("Attention operator device must be non-empty")
@@ -724,6 +730,10 @@ class AttentionOperatorRuntime:
             )
         if not isinstance(mode, AttentionMode):
             raise TypeError("mode must be AttentionMode")
+        if completion_event_recorder is not None and not isinstance(
+            completion_event_recorder, AttentionRetainedCallEventRecorder
+        ):
+            raise TypeError("completion_event_recorder must implement AttentionRetainedCallEventRecorder")
         try:
             declaration_bindings = tuple(
                 (str(provider_id), str(operation_id), str(fingerprint))
@@ -816,6 +826,10 @@ class AttentionOperatorRuntime:
             provider_integration_bundle_binding
         )
         self._framework_session = AttentionFrameworkSession(mode)
+        # Wrapper-lifetime state, never replaced by plan publication or by
+        # clearing result diagnostics. The integration supplies stream events.
+        self._call_retention = AttentionOperatorCallRetention()
+        self._completion_event_recorder = completion_event_recorder
         self._operator_session = None
         self._executor = None
         self._completion_validator = None
@@ -837,6 +851,11 @@ class AttentionOperatorRuntime:
     @property
     def is_planned(self) -> bool:
         return self._operator_session is not None
+
+    @property
+    def call_retention(self) -> AttentionOperatorCallRetention:
+        """Internal completion polling/recovery handle, not a public run result."""
+        return self._call_retention
 
     @property
     def plan_state(self) -> AttentionFrameworkPlan:
@@ -1360,7 +1379,17 @@ class AttentionOperatorRuntime:
             kv_cache_sf=kv_cache_sf,
         )
         lowered = session._lower_request(request)
-        result = self._executor.execute(lowered)
+        if self._completion_event_recorder is None:
+            if lowered.retained_resources:
+                raise AttentionStateError(
+                    "calls with retained resources require a completion event recorder"
+                )
+            result = self._executor.execute(lowered)
+        else:
+            result, _ = execute_attention_retained_call(
+                self._call_retention, lowered, self._executor.execute,
+                self._completion_event_recorder,
+            )
         if self._completion_validator is not None:
             completion_receipt = self._completion_validator.validate(
                 lowered, result
@@ -1426,6 +1455,7 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
         runtime_declaration_bindings=(),
         plan_scoring_manifest_binding=None,
         provider_integration_bundle_binding=None,
+        completion_event_recorder=None,
     ) -> None:
         super().__init__(
             device,
@@ -1437,6 +1467,7 @@ class AttentionOperatorBatchRuntime(AttentionOperatorRuntime):
             provider_integration_bundle_binding=(
                 provider_integration_bundle_binding
             ),
+            completion_event_recorder=completion_event_recorder,
         )
 
 

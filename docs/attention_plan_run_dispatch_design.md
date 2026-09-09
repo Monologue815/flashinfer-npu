@@ -340,12 +340,16 @@ model-facing run parameter.
 The private [call retention registry](attention_operator_call_retention.md) can
 retain complete lowered calls before invocation and release each only after its
 own injected event reports completion. It preserves pending calls on invocation,
-recording or query failures. This supplies a lifecycle building block, not an
-automatic device-event integration or a change to public `run()` results.
+recording or query failures. Internal runtimes can receive an event recorder at
+construction and keep a stable registry across plan publication and executor
+replacement. Result-validation failures do not release pending calls. Without an
+event recorder, calls carrying explicit retained owners fail before execution.
+This is an opt-in internal runtime path, not an automatic device-event integration
+or a change to public `run()` results.
 
-Materialization, transactional publication of mask-aware adapters, runtime-owned
-retention/event integration and public activation remain to be implemented before
-the rejection guards can be removed.
+Materialization, transactional publication of mask-aware adapters, device-specific
+event recording/polling and wrapper teardown integration, and public activation
+remain to be implemented before the rejection guards can be removed.
 
 ## 5. Runtime registry snapshot
 

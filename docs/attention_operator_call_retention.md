@@ -5,7 +5,7 @@
 `attention.operator_retention` is a private framework building block for keeping
 opaque call arguments and `retained_resources` alive until execution has finished.
 It imports no device package, creates no NPU event and performs no synchronization.
-Public wrappers do not install it automatically. The existing result completion
+Public wrappers do not configure event recording automatically. The existing result completion
 receipt proves tensor metadata consistency, not asynchronous device completion.
 
 The integrating runtime must own one `AttentionOperatorCallRetention` registry
@@ -60,6 +60,34 @@ are removed rather than retained indefinitely as history; polling a removed toke
 is an error. Diagnostic `pending_tokens` contains no tensor payloads or owners.
 
 ## Remaining integration responsibilities
+
+### Internal runtime connection
+
+`AttentionOperatorRuntime` and `AttentionOperatorBatchRuntime` accept an optional
+`completion_event_recorder` during internal construction. This is not a public
+wrapper argument, a `plan()` option or a model-facing `run()` input. When supplied,
+the runtime retains every successfully lowered call before invoking its selected,
+already-bound executor. The helper's token stays internal; `run()` still returns
+the original output or output/LSE convention. Result validation and success
+receipt publication happen after event recording, so a result-validation failure
+cannot remove the pending invocation.
+
+Each runtime owns a stable `call_retention` registry. Neither successful or failed
+planning, executor replacement nor clearing last-run diagnostics replaces it.
+Integrations use this internal registry to inspect pending tokens, poll events or
+bind recovery proof. Polling does not rewrite numerical/result completion receipts.
+Last-call diagnostics may retain an additional reference even after the registry
+has released its own reference; this is safe extra retention, not event completion.
+
+Without a recorder, existing calls with no `retained_resources` keep their prior
+execution path. Calls carrying explicit retained owners are rejected before
+execution, because the runtime has no proof that releasing those owners on Python
+return is safe. This guard does not certify asynchronous lifetime safety for older
+provider paths; it prevents new owner-dependent integrations from silently using
+them. With a recorder configured, closing the empty registry prevents subsequent
+submissions. Closing while pending calls exist remains an error.
+
+### Device and public-wrapper integration
 
 The runtime must preserve the registry, arrange event recording and polling, and
 drain it before teardown. It must also retain returned/output allocations where
