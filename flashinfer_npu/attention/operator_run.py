@@ -338,6 +338,14 @@ class AttentionOperatorPlanRunAdapterBinder(Protocol):
 
 
 @runtime_checkable
+class AttentionOperatorPlanRunAdapterAdmission(Protocol):
+    """Metadata-only candidate checks, before provider probing or scoring."""
+
+    def rejection_reasons(self, plan, device, operation):
+        """Return reasons without inspecting payloads or observing packages/devices."""
+
+
+@runtime_checkable
 class AttentionOperatorTensorMetadataInspector(Protocol):
     """Read opaque provider tensors without importing or touching device data."""
 

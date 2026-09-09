@@ -9,6 +9,7 @@ from flashinfer_npu.attention import (
     AttentionOperatorPackageResolver, AttentionOperatorPackageRuntimeImplementation,
     AttentionOperatorRuntime, AttentionOperatorRuntimeImplementationRegistry,
     AttentionOperatorRuntimeResolverRegistry, AttentionStateError,
+    AttentionOperatorRuntimeResolutionError,
 )
 from flashinfer_npu.attention.operator_mask_binding import (
     AttentionMaskPlanRunAdapterBinder, AttentionOperatorMaskArgumentSpec,
@@ -169,12 +170,12 @@ class TransactionalMaskPlanCheckpoint(unittest.TestCase):
     def test_mapping_and_encoding_drift_fail_before_tensor_inspection(self):
         _, operation, runtime = mask_runtime(Recorder())
         plan, binder, inspector, _, _ = mask_request(replace(operation, api_version="v2"))
-        with self.assertRaisesRegex(SchemaError, "exact operation"):
+        with self.assertRaisesRegex(AttentionOperatorRuntimeResolutionError, "exact operation"):
             runtime.plan(plan.spec, plan.metadata, run_adapter_plan_binder=binder)
         self.assertEqual(inspector.calls, [])
         unpacked, _, _, _, _ = mask_request(operation)
         _, packed_binder, packed_inspector, _, _ = mask_request(operation, packed=True)
-        with self.assertRaisesRegex(SchemaError, "encoding transformation"):
+        with self.assertRaisesRegex(AttentionOperatorRuntimeResolutionError, "encoding transformation"):
             runtime.plan(unpacked.spec, unpacked.metadata, run_adapter_plan_binder=packed_binder)
         self.assertEqual(packed_inspector.calls, [])
 
@@ -192,6 +193,9 @@ class TransactionalMaskPlanCheckpoint(unittest.TestCase):
         class BadBinder:
             requires_call_retention = True
             result = None
+
+            def rejection_reasons(self, plan, device, selected):
+                return ()
 
             def bind(self, base, active, selected):
                 return self.result

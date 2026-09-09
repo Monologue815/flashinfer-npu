@@ -53,6 +53,7 @@ from .operator_run import (
     AttentionLoweredOperatorCall,
     AttentionOperatorRunAdapter,
     AttentionOperatorPlanRunAdapterBinder,
+    AttentionOperatorPlanRunAdapterAdmission,
     AttentionOperatorRunRequest,
     AttentionOperatorWrapperSession,
 )
@@ -545,13 +546,25 @@ class AttentionOperatorRuntimeImplementationRegistry:
         return tuple(self._implementation_map)
 
     def explain(
-        self, plan: AttentionFrameworkPlan, device: str
+        self, plan: AttentionFrameworkPlan, device: str, *, candidate_admission=None
     ) -> AttentionOperatorRuntimeResolutionReport:
         if not isinstance(plan, AttentionFrameworkPlan):
             raise TypeError("plan must be AttentionFrameworkPlan")
+        if candidate_admission is not None and not callable(candidate_admission):
+            raise TypeError("candidate_admission must be a metadata-only callable")
         admissions = []
         for implementation in self._implementations:
-            raw_reasons = implementation.rejection_reasons(plan, str(device))
+            preliminary = ()
+            if candidate_admission is not None:
+                raw = candidate_admission(implementation.provider_id, implementation.operation_id)
+                if isinstance(raw, (str, bytes)):
+                    raise TypeError("candidate admission reasons must be a sequence of strings")
+                preliminary = tuple(raw)
+                if any(not isinstance(reason, str) or not reason for reason in preliminary):
+                    raise TypeError("candidate admission reasons must be non-empty strings")
+                if len(set(preliminary)) != len(preliminary):
+                    raise SchemaError("candidate admission reasons must be unique")
+            raw_reasons = preliminary or implementation.rejection_reasons(plan, str(device))
             try:
                 reasons = tuple(str(item) for item in raw_reasons)
             except TypeError as error:
@@ -601,9 +614,9 @@ class AttentionOperatorRuntimeImplementationRegistry:
         )
 
     def resolve(
-        self, plan: AttentionFrameworkPlan, device: str
+        self, plan: AttentionFrameworkPlan, device: str, *, candidate_admission=None
     ) -> AttentionResolvedOperatorRuntime:
-        report = self.explain(plan, device)
+        report = self.explain(plan, device, candidate_admission=candidate_admission)
         selected = report.selected
         if selected is None:
             if not report.accepted:
@@ -649,6 +662,15 @@ class AttentionOperatorRuntimeImplementationRegistry:
             runtime_resolution_fingerprint=report.fingerprint,
         )
 
+    def resolve_with_admission(self, plan, device, candidate_admission):
+        return self.resolve(plan, device, candidate_admission=candidate_admission)
+
+
+@runtime_checkable
+class AttentionOperatorAdmissionAwareResolver(Protocol):
+    def resolve_with_admission(self, plan, device, candidate_admission):
+        """Apply per-call candidate admission before provider observation."""
+
 
 @dataclass(frozen=True)
 class AttentionOperatorRuntimeResolverRegistry:
@@ -678,12 +700,17 @@ class AttentionOperatorRuntimeResolverRegistry:
         )
 
     def resolve(
-        self, plan: AttentionFrameworkPlan, device: str
+        self, plan: AttentionFrameworkPlan, device: str, *, candidate_admission=None
     ) -> AttentionResolvedOperatorRuntime:
         device_type = str(device).split(":", 1)[0]
         for candidate_type, resolver in self.resolvers:
             if candidate_type == device_type:
-                resolved = resolver.resolve(plan, str(device))
+                if candidate_admission is None:
+                    resolved = resolver.resolve(plan, str(device))
+                elif isinstance(resolver, AttentionOperatorAdmissionAwareResolver):
+                    resolved = resolver.resolve_with_admission(plan, str(device), candidate_admission)
+                else:
+                    raise AttentionStateError("resolver does not support pre-probe candidate admission")
                 if not isinstance(resolved, AttentionResolvedOperatorRuntime):
                     raise TypeError("Attention resolver returned an invalid runtime")
                 if resolved.framework_plan_fingerprint != plan.fingerprint:
@@ -1030,7 +1057,20 @@ class AttentionOperatorRuntime:
                 raise AttentionStateError("plan resources require a completion event recorder")
         elif candidate_plan.spec.custom_mask is not None:
             raise AttentionStateError("custom-mask runtime plans require a plan-bound resource adapter")
-        resolved = self._resolver_registry.resolve(candidate_plan, self.device)
+        candidate_admission = None
+        if isinstance(run_adapter_plan_binder, AttentionOperatorPlanRunAdapterAdmission):
+            def candidate_admission(provider_id, operation_id):
+                try:
+                    operation = self._operation_catalog.get(operation_id)
+                except SchemaError:
+                    return ("plan-resource candidate is absent from the operation catalog",)
+                if operation.provider_id != provider_id:
+                    return ("plan-resource candidate provider differs from the operation catalog",)
+                return run_adapter_plan_binder.rejection_reasons(candidate_plan, self.device, operation)
+        elif candidate_plan.spec.custom_mask is not None:
+            raise AttentionStateError("custom-mask resource adapters require pre-probe candidate admission")
+        resolved = self._resolver_registry.resolve(
+            candidate_plan, self.device, candidate_admission=candidate_admission)
         candidate_operator_session = AttentionOperatorWrapperSession(
             self._operation_catalog
         )

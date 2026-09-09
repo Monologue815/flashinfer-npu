@@ -224,9 +224,9 @@ class AttentionOperatorMaskRunAdapter:
 class AttentionMaskPlanRunAdapterBinder:
     """Prepare one borrowed canonical mask inside the plan transaction.
 
-    This private request is consumed after operation selection. The frontend must
-    still provide mask-aware admission before probing real packages. No copying,
-    packing, public signature change or automatic provider registration occurs.
+    Mappings participate in candidate admission before provider observation and
+    are checked again during binding. No copying, packing, public signature
+    change or automatic provider registration occurs.
     """
 
     requires_call_retention = True
@@ -236,20 +236,47 @@ class AttentionMaskPlanRunAdapterBinder:
             raise SchemaError("mask preparation requires a payload and retained owner")
         if not isinstance(inspector, AttentionOperatorTensorMetadataInspector):
             raise TypeError("inspector must implement AttentionOperatorTensorMetadataInspector")
-        if not isinstance(spec, AttentionOperatorMaskArgumentSpec):
-            raise TypeError("spec must be AttentionOperatorMaskArgumentSpec")
+        specs = (spec,) if isinstance(spec, AttentionOperatorMaskArgumentSpec) else tuple(spec)
+        if not specs or any(not isinstance(item, AttentionOperatorMaskArgumentSpec) for item in specs):
+            raise TypeError("spec must contain AttentionOperatorMaskArgumentSpec mappings")
+        keys = tuple((item.operation_fingerprint, item.encoding) for item in specs)
+        if len(set(keys)) != len(keys):
+            raise SchemaError("mask preparation mappings must have unique operation/encoding pairs")
         device, alignment = _inspection_requirements(expected_device, required_alignment)
         self._payload = payload
         self._owner = owner
         self._inspector = inspector
-        self._spec = spec
+        self._specs = dict(zip(keys, specs))
         self._device = device
         self._alignment = alignment
+
+    def _matching_spec(self, plan, device, operation):
+        metadata = AttentionMaskPlanMetadata.from_plan(plan)
+        encoding = "packed_allow_little_segments" if metadata.mask_spec.packed else "bool_allow_flat"
+        fingerprints = {key[0] for key in self._specs}
+        if operation.fingerprint not in fingerprints:
+            raise SchemaError("mask preparation has no mapping for the exact operation")
+        spec = self._specs.get((operation.fingerprint, encoding))
+        if spec is None:
+            raise SchemaError("mask preparation requires explicit encoding transformation")
+        spec.validate_operation(operation)
+        if plan.spec.mode not in operation.candidate_modes:
+            raise SchemaError("mask preparation operation does not support the planned mode")
+        if str(device) != self._device:
+            raise SchemaError("mask preparation device differs from the planned device")
+        return spec
+
+    def rejection_reasons(self, plan, device, operation):
+        try:
+            self._matching_spec(plan, device, operation)
+        except SchemaError as error:
+            return (str(error),)
+        return ()
 
     def bind(self, base_adapter, active_plan, operation):
         if not isinstance(active_plan, AttentionOperatorActivePlan):
             raise TypeError("active_plan must be AttentionOperatorActivePlan")
-        self._spec.validate_operation(operation)
+        spec = self._matching_spec(active_plan.framework_plan, self._device, operation)
         if (
             active_plan.provider_selection.provider_id != operation.provider_id
             or active_plan.prepared_plan.implementation_id != operation.operation_id
@@ -257,11 +284,8 @@ class AttentionMaskPlanRunAdapterBinder:
             raise SchemaError("mask preparation operation differs from the active plan")
         plan = active_plan.framework_plan
         metadata = AttentionMaskPlanMetadata.from_plan(plan)
-        encoding = "packed_allow_little_segments" if metadata.mask_spec.packed else "bool_allow_flat"
-        if encoding != self._spec.encoding:
-            raise SchemaError("mask preparation requires explicit encoding transformation")
         resource = AttentionMaskPlanResource(metadata, self._payload, self._owner)
         inspected = inspect_attention_mask_plan_resource(
             plan, resource, self._inspector, self._device, required_alignment=self._alignment)
         return AttentionOperatorMaskRunAdapter(
-            base_adapter, active_plan, operation, inspected, self._spec, self._inspector)
+            base_adapter, active_plan, operation, inspected, spec, self._inspector)

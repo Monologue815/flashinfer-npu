@@ -364,12 +364,30 @@ results must match the selected provider and operation. These are private
 integration hooks, not additional model-facing `plan()` parameters. No CANN or
 flash-attention-npu mask binder is registered automatically.
 
-Selection still precedes concrete mask preparation in this internal extension.
-Before public activation, provider admission must include representation support
-so selection can exclude incompatible operations before package probing, rather
-than relying on a late binder failure. Materialization, device-specific event
-recording/polling, wrapper teardown integration and public activation also remain
-to be implemented before the rejection guards can be removed.
+Mask binders also implement metadata-only candidate admission. One binder can
+carry several `AttentionOperatorMaskArgumentSpec` mappings, keyed by exact
+operation fingerprint and encoding. Duplicate operation/encoding pairs are
+rejected. Admission checks the mapping, encoding, argument roles, mode and planned
+device without inspecting the source tensor. The implementation registry applies
+this check before a candidate's own package/evidence probe and before priority or
+score selection. Incompatible candidates remain in the resolution report with
+reasons, receive no score and cannot shadow compatible lower-priority candidates.
+Candidates that pass still undergo all existing capability/evidence checks;
+declaring a mask mapping does not authorize an operation.
+
+These checks are per-plan and do not mutate the frozen registry. An unmasked plan
+without a resource binder uses ordinary selection again. Concrete source inspection
+and adapter binding remain after selection and revalidate the chosen mapping
+before publication. A late tensor-metadata failure rolls back the plan; it does
+not trigger an implicit retry with another provider. Custom-mask binders must
+provide pre-probe admission. Custom resolver implementations must implement
+`resolve_with_admission()` to participate; unsupported resolvers are rejected
+before their ordinary resolution method is called.
+
+Materialization, device-specific event recording/polling, wrapper teardown
+integration and public activation remain to be implemented before the rejection
+guards can be removed. The bundled provider catalogs still have no automatically
+installed real mask representation mappings.
 
 ## 5. Runtime registry snapshot
 
