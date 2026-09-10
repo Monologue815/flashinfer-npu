@@ -170,6 +170,26 @@ tensor、量化参数、alias、caller buffer 和 completion 校验；失败后�
 因此 bundle 回答的是“这一代 registry 是否由一组完整且一致的审核配置产生”，而不是
 跳过既有的运行时证据门禁。
 
+## 进程内批量资源配置
+
+声明式 registry、bundle、bootstrap manifest 和 bootstrap document 的安装入口均接受
+`batch_completion_event_recorder_factory`、`batch_runtime_owner` 和
+`batch_mask_integration`。这些对象由部署服务在代码中显式提供，不进入 bundle 或
+bootstrap JSON，也不改变已有声明、评分清单和 bundle 的指纹含义。
+
+安装入口把它们传递到同一个 registry 发布事务：mask 映射必须匹配最终 operation catalog，
+并具备完成事件记录与 runtime 所有权依赖。依赖、映射或预期 generation 不合法时，不发布
+部分配置。数据文档的已有受控 adapter factory 加载/组装流程仍然存在；该扩展不会在安装时
+创建完成记录器、记录设备事件或探测真实算子包。
+
+已创建的 wrapper 保留捕获的配置。重新安装时省略这些参数只影响未来 wrapper，不会清理
+旧 owner 的 runtime；部署服务必须分别完成各代 owner 的关闭。配置对象的 Python 身份
+不是数值正确性或流顺序的证据，bundle 指纹也不为这些非序列化对象提供额外执行授权。
+
+模型代码仍只调用原有 `plan()` / `run()`；具体生命周期要求见
+[调用资源托管](attention_operator_call_retention.md)，批量 mask 契约见
+[自动规划与运行](attention_plan_run_dispatch_design.md)。
+
 ## 不属于集成包的内容
 
 - NPU kernel、Ascend C 源码或从其他仓库复制的算子；

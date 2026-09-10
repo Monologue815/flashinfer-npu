@@ -453,6 +453,9 @@ def _install_declared_attention_operator_runtime_resolvers(
         AttentionOperatorPlanScoringManifest
     ] = None,
     provider_integration_bundle_binding=None,
+    batch_completion_event_recorder_factory=None,
+    batch_runtime_owner=None,
+    batch_mask_integration=None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     """Internal install root shared by declared and bundled integrations."""
@@ -485,6 +488,9 @@ def _install_declared_attention_operator_runtime_resolvers(
         provider_integration_bundle_binding=(
             provider_integration_bundle_binding
         ),
+        batch_completion_event_recorder_factory=batch_completion_event_recorder_factory,
+        batch_runtime_owner=batch_runtime_owner,
+        batch_mask_integration=batch_mask_integration,
         expected_generation=expected_generation,
     )
 
@@ -497,6 +503,9 @@ def install_declared_attention_operator_runtime_resolvers(
     plan_scoring_manifest: Optional[
         AttentionOperatorPlanScoringManifest
     ] = None,
+    batch_completion_event_recorder_factory=None,
+    batch_runtime_owner=None,
+    batch_mask_integration=None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     """Atomically install declaration-bound external integrations."""
@@ -506,6 +515,9 @@ def install_declared_attention_operator_runtime_resolvers(
         operation_catalog=operation_catalog,
         package_loader=package_loader,
         plan_scoring_manifest=plan_scoring_manifest,
+        batch_completion_event_recorder_factory=batch_completion_event_recorder_factory,
+        batch_runtime_owner=batch_runtime_owner,
+        batch_mask_integration=batch_mask_integration,
         expected_generation=expected_generation,
     )
 

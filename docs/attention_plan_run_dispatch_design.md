@@ -425,7 +425,7 @@ their payloads.
 
 The bootstrap-only `AttentionBatchMaskIntegration` contains a frozen sequence of
 exact operation/encoding mappings, a metadata inspector and alignment requirement.
-Install it through `install_attention_operator_runtime_resolvers()` using
+Install it through the legacy, declared, bundle or bootstrap installers using
 `batch_mask_integration`, together with a completion recorder factory and a
 service-owned `AttentionBatchRuntimeOwner`. Missing lifetime dependencies,
 duplicate mappings, invalid argument roles or mappings absent from the installed

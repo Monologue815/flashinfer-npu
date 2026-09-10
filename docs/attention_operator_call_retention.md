@@ -136,8 +136,10 @@ wrappers. It neither replaces existing recorders nor drains their pending calls.
 Factory implementations remain process-local integration objects and must not
 mutate their behavior incompatibly while captured wrappers are alive.
 
-This hook belongs to the legacy/synthetic registry installer. Declared or bundled
-installation does not automatically carry it forward. Single-request facades do
+The same explicit hooks are accepted by the declared registry, provider bundle,
+bootstrap-manifest and bootstrap-document installers. They are process-local
+arguments, not JSON fields; each installation must explicitly supply them or
+future wrappers receive the default unconfigured state. Single-request facades do
 not use this batch-only hook: their short-lived runtime needs a separate owner
 before asynchronous resource tracking can be connected safely. Neither this hook
 nor a matching Python protocol proves stream ordering or authorizes a provider.

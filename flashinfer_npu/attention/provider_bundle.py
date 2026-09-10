@@ -723,6 +723,9 @@ class AttentionOperatorProviderIntegrationBundle:
 def install_attention_operator_provider_integration_bundle(
     bundle: AttentionOperatorProviderIntegrationBundle,
     *,
+    batch_completion_event_recorder_factory=None,
+    batch_runtime_owner=None,
+    batch_mask_integration=None,
     expected_generation=None,
 ):
     """Validate and atomically install one complete provider integration."""
@@ -738,6 +741,9 @@ def install_attention_operator_provider_integration_bundle(
         package_loader=package_loader,
         plan_scoring_manifest=bundle.scoring_manifest,
         provider_integration_bundle_binding=bundle.binding,
+        batch_completion_event_recorder_factory=batch_completion_event_recorder_factory,
+        batch_runtime_owner=batch_runtime_owner,
+        batch_mask_integration=batch_mask_integration,
         expected_generation=expected_generation,
     )
 
@@ -1039,6 +1045,9 @@ def install_attention_operator_provider_integration_bootstrap(
     ),
     factory_loader: AttentionOperatorProviderContributionFactoryLoader,
     approval_manifest: AttentionOperatorProviderContributionManifest,
+    batch_completion_event_recorder_factory=None,
+    batch_runtime_owner=None,
+    batch_mask_integration=None,
     expected_generation=None,
 ):
     """Assemble reviewed inputs and atomically publish one registry generation."""
@@ -1051,6 +1060,9 @@ def install_attention_operator_provider_integration_bootstrap(
     )
     return install_attention_operator_provider_integration_bundle(
         bundle,
+        batch_completion_event_recorder_factory=batch_completion_event_recorder_factory,
+        batch_runtime_owner=batch_runtime_owner,
+        batch_mask_integration=batch_mask_integration,
         expected_generation=expected_generation,
     )
 
@@ -1083,6 +1095,9 @@ def install_attention_operator_provider_integration_bootstrap_document(
     *,
     bootstrap_document: AttentionOperatorProviderIntegrationBootstrapDocument,
     factory_loader: AttentionOperatorProviderContributionFactoryLoader,
+    batch_completion_event_recorder_factory=None,
+    batch_runtime_owner=None,
+    batch_mask_integration=None,
     expected_generation=None,
 ):
     """Assemble one deployment document and atomically publish its bundle."""
@@ -1093,6 +1108,9 @@ def install_attention_operator_provider_integration_bootstrap_document(
     )
     return install_attention_operator_provider_integration_bundle(
         bundle,
+        batch_completion_event_recorder_factory=batch_completion_event_recorder_factory,
+        batch_runtime_owner=batch_runtime_owner,
+        batch_mask_integration=batch_mask_integration,
         expected_generation=expected_generation,
     )
 
