@@ -24,6 +24,9 @@
 
 ## 阅读顺序
 
+模型调用者可以先阅读 [`attention_usage.md`](attention_usage.md)：量化 KV、mask、
+plan/buffer 复用及自动选择的使用方法与前提。内部设计按以下顺序阅读：
+
 1. [`architecture.md`](architecture.md)：总体目标、分层和架构决策。
 2. [`flashinfer_attention_alignment.md`](flashinfer_attention_alignment.md)：明确哪些是
    NVIDIA FlashInfer 公开语义，哪些是 FlashInfer-NPU 的昇腾内部适配。

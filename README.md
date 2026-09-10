@@ -2,8 +2,8 @@
 
 FlashInfer-NPU is a work-in-progress inference kernel library for the Ascend
 software stack. It follows FlashInfer's API domains and plan/run execution
-model while implementing kernels for Ascend AI Core rather than translating
-CUDA kernels.
+model, targeting version-pinned external Attention implementations through
+Ascend-specific adapters rather than translating CUDA kernels.
 
 The active development track is currently limited to the framework layer of
 FlashInfer-compatible Attention: single/batch prefill and decode, paged/ragged
@@ -42,6 +42,11 @@ batch, supplies dense or explicit INT8 KV storage, and reuses one plan and the
 caller-owned output buffers across runs. CPU reference containers demonstrate
 framework semantics; NPU execution requires provider-compatible tensors and an
 installed integration as described below.
+
+For caller-facing quantized paged prefill, mask inputs and buffer reuse, see the
+[Attention usage guide](docs/attention_usage.md). Its examples keep deployment
+bootstrap separate from ordinary `plan()` / `run()` calls and state the required
+integration and lifetime constraints.
 
 After `plan()`, `attention.plan_selection` provides optional read-only
 diagnostics about the chosen mode, provider operation, backend and registry
@@ -151,8 +156,8 @@ binding; neither public input exposes a provider plan or callable handle.
 The documentation map and content policy are in
 [`docs/README.md`](docs/README.md). The authoritative design is in
 [`docs/architecture.md`](docs/architecture.md). The current repository is a
-Phase 0 host-side architecture skeleton; it does not yet contain runnable
-Ascend C kernels.
+framework-layer implementation; it does not ship or enable production NPU
+operators by default.
 
 The Attention-specific framework contract is documented in
 [`docs/attention_framework.md`](docs/attention_framework.md).
