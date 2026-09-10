@@ -20,7 +20,7 @@ from .operator_mask import (
     _inspection_requirements, inspect_attention_mask_plan_resource,
     revalidate_attention_mask_plan_resource,
 )
-from .schema import _canonical_hash
+from .schema import AttentionMode, _canonical_hash
 from .operator_plan import AttentionOperatorActivePlan
 from .operator_run import (
     AttentionOperatorRunAdapter, AttentionOperatorTensorMetadataInspector,
@@ -156,7 +156,8 @@ class AttentionOperatorMaskRunAdapter:
     """Private active-plan-bound decorator; install outside tensor validators.
 
     This adapter describes a call and retains owners, but neither launches it nor
-    tracks asynchronous completion. No public wrapper installs it automatically.
+    tracks asynchronous completion. Batch prefill installs it only through a
+    complete, explicitly configured bootstrap integration.
     """
 
     def __init__(self, base_adapter, active_plan, operation, inspected, spec, inspector):
@@ -289,3 +290,48 @@ class AttentionMaskPlanRunAdapterBinder:
             plan, resource, self._inspector, self._device, required_alignment=self._alignment)
         return AttentionOperatorMaskRunAdapter(
             base_adapter, active_plan, operation, inspected, spec, self._inspector)
+
+
+@dataclass(frozen=True, eq=False)
+class AttentionBatchMaskIntegration:
+    """Bootstrap-only direct mask mappings for borrowed batch-prefill inputs."""
+
+    mappings: tuple
+    inspector: AttentionOperatorTensorMetadataInspector = field(repr=False)
+    required_alignment: int = 1
+
+    def __post_init__(self):
+        mappings = tuple(self.mappings)
+        if not mappings or any(not isinstance(item, AttentionOperatorMaskArgumentSpec) for item in mappings):
+            raise TypeError("batch mask integration requires mask argument mappings")
+        keys = tuple((item.operation_fingerprint, item.encoding) for item in mappings)
+        if len(set(keys)) != len(keys):
+            raise SchemaError("batch mask mappings must have unique operation/encoding pairs")
+        if not isinstance(self.inspector, AttentionOperatorTensorMetadataInspector) or not callable(
+            getattr(self.inspector, "to_view", None)
+        ):
+            raise TypeError("batch mask integration requires a tensor metadata inspector")
+        _, alignment = _inspection_requirements("npu", self.required_alignment)
+        object.__setattr__(self, "mappings", mappings)
+        object.__setattr__(self, "required_alignment", alignment)
+
+    def validate_catalog(self, catalog):
+        if not isinstance(catalog, AttentionOperatorOperationCatalog):
+            raise TypeError("catalog must be AttentionOperatorOperationCatalog")
+        operations = {operation.fingerprint: operation for operation in catalog.operations}
+        for mapping in self.mappings:
+            operation = operations.get(mapping.operation_fingerprint)
+            if operation is None:
+                raise SchemaError("batch mask mapping is absent from the installed operation catalog")
+            mapping.validate_operation(operation)
+            if not set(operation.candidate_modes).intersection((
+                AttentionMode.BATCH_PREFILL_PAGED, AttentionMode.BATCH_PREFILL_RAGGED,
+            )):
+                raise SchemaError("batch mask mapping requires a batch prefill operation")
+
+    def prepare(self, payload, device):
+        # Borrowing the tensor itself preserves its allocation owner; no copies,
+        # transformations or asynchronous plan-time work are introduced here.
+        return AttentionMaskPlanRunAdapterBinder(
+            payload, payload, self.inspector, self.mappings, device,
+            required_alignment=self.required_alignment)

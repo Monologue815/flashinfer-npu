@@ -9,6 +9,7 @@ from typing import Optional, Sequence
 from flashinfer_npu.runtime import DispatchError, SchemaError
 
 from .frontend import (
+    adapt_framework_batch_custom_mask,
     finalize_reference_result,
     require_reference_backend,
     require_reference_tensor,
@@ -317,6 +318,15 @@ class HostBatchReferenceWrapper:
 
         return self._capture_record
 
+    def _adapt_provider_batch_mask(self, custom_mask, packed_custom_mask, segment_sizes):
+        if custom_mask is None and packed_custom_mask is None:
+            return None, None
+        if self._operator_runtime_registry_snapshot.batch_mask_integration is None:
+            raise NotImplementedError("provider custom-mask plan binding is not implemented")
+        return adapt_framework_batch_custom_mask(
+            custom_mask, packed_custom_mask, segment_sizes=segment_sizes,
+            device=self._workspace_contract.device)
+
     def _commit_plan(
         self,
         spec: AttentionPlanSpec,
@@ -324,14 +334,19 @@ class HostBatchReferenceWrapper:
         custom_mask_data,
     ) -> None:
         if self._operator_runtime is not None:
+            binder = None
             if custom_mask_data is not None or spec.custom_mask is not None:
-                raise NotImplementedError(
-                    "provider custom-mask plan binding is not implemented"
-                )
+                integration = self._operator_runtime_registry_snapshot.batch_mask_integration
+                if integration is None:
+                    raise NotImplementedError("provider custom-mask plan binding is not implemented")
+                if custom_mask_data is None or spec.custom_mask is None:
+                    raise SchemaError("provider mask plan requires both metadata and payload")
+                binder = integration.prepare(custom_mask_data, self._workspace_contract.device)
             self._operator_runtime.plan(
                 spec,
                 metadata,
                 workspace_contract=self._workspace_contract,
+                run_adapter_plan_binder=binder,
             )
             self._workspace_contract = self._operator_runtime.workspace_contract
             self._capture_record = None

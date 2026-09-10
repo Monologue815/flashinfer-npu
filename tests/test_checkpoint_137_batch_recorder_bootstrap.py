@@ -58,7 +58,8 @@ class BatchRecorderBootstrapCheckpoint(unittest.TestCase):
             plan_scoring_manifest_binding=old.plan_scoring_manifest_binding,
             provider_integration_bundle_binding=old.provider_integration_bundle_binding,
             batch_completion_event_recorder_factory=old.batch_completion_event_recorder_factory,
-            batch_runtime_owner=old.batch_runtime_owner)
+            batch_runtime_owner=old.batch_runtime_owner,
+            batch_mask_integration=old.batch_mask_integration)
 
     def install(self, factory):
         return install_attention_operator_runtime_resolvers(

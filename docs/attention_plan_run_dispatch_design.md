@@ -201,11 +201,12 @@ facts that affect compatibility are represented explicitly and checked again at
 
 ### 4.1 Custom-mask provider binding design
 
-Status: proposed framework extension, not an enabled provider capability.
-The Host oracle and `CustomMaskSpec` already describe masks, but public provider
-single/paged/ragged prefill currently rejects `custom_mask` and
-`packed_custom_mask`. A capability profile alone cannot close this gap: it says
-which semantics an operation supports, not where the actual mask data comes from.
+Status: opt-in borrowed batch-mask framework integration; no real provider is
+enabled by default. Paged/ragged prefill accepts `custom_mask` and
+`packed_custom_mask` only when a complete bootstrap integration is installed.
+Single prefill and provider graph paths remain closed. A capability profile alone
+is insufficient: it describes supported semantics, not the source and lifetime
+of the actual mask data.
 
 The pinned [upstream prefill implementation](https://github.com/flashinfer-ai/flashinfer/blob/919a24e5b1d971d50c97a3cd38862f801527eab5/flashinfer/prefill.py)
 prepares masks during planning, packs an unpacked mask only when a packed one is
@@ -295,7 +296,7 @@ use. It does not detect content-only mutation or allocation reuse hidden by an
 inspector's storage identity, and cannot prevent concurrent changes after the
 check. The integrating adapter must supply trustworthy storage identity and
 separately enforce ownership, allocation lifetime and execution ordering through
-completion. Public provider execution is not yet connected to this boundary.
+completion. Configured batch prefill uses this boundary before invocation.
 `attention.operator_mask_binding` provides a private no-conversion argument
 fragment. An `AttentionOperatorMaskArgumentSpec` explicitly maps the payload and
 typed offsets to keyword arguments of one exact operation fingerprint. It accepts
@@ -394,10 +395,10 @@ provide pre-probe admission. Custom resolver implementations must implement
 `resolve_with_admission()` to participate; unsupported resolvers are rejected
 before their ordinary resolution method is called.
 
-Materialization, device-specific event recording/polling, wrapper teardown
-integration and public activation remain to be implemented before the rejection
-guards can be removed. The bundled provider catalogs still have no automatically
-installed real mask representation mappings.
+Device-specific transformations, event implementations and graph preparation
+remain separate integrations. The borrowed batch path requires no plan-time
+device work. Bundled provider catalogs still have no automatically installed
+real mask mappings, recorders or runtime owners.
 
 ### 4.2 Borrowed batch-mask frontend metadata
 
@@ -418,8 +419,33 @@ This helper does not flatten single-request rank-two masks.
 Frontend acceptance establishes plan facts only. Integration must still pass the
 borrowed payload and its owner to the plan-bound mask binder, whose inspector
 checks storage, contiguity and alignment and whose admission checks the selected
-operation. Public provider wrappers do not yet call this helper: their rejection
-guards remain until resource preparation and completion tracking are integrated.
+operation. Configured public paged/ragged prefill wrappers call this helper during
+their existing `plan()` method; unconfigured wrappers reject masks before reading
+their payloads.
+
+The bootstrap-only `AttentionBatchMaskIntegration` contains a frozen sequence of
+exact operation/encoding mappings, a metadata inspector and alignment requirement.
+Install it through `install_attention_operator_runtime_resolvers()` using
+`batch_mask_integration`, together with a completion recorder factory and a
+service-owned `AttentionBatchRuntimeOwner`. Missing lifetime dependencies,
+duplicate mappings, invalid argument roles or mappings absent from the installed
+catalog are rejected before installation. Registration itself does not inspect
+mask tensors or establish provider execution authority.
+
+The wrapper captures this configuration at construction. A masked plan creates
+its binder internally, applies format admission before candidate probing and
+publishes the selected adapter transactionally. The model caller still supplies
+only the existing `custom_mask` or `packed_custom_mask` plan argument, then calls
+ordinary `run()`. There is no public binder, provider selection or executable plan
+handle. Replanning without a mask removes the active binding; pending old calls
+retain their own source through completion. A failed plan preserves the previous
+plan, workspace and binding. Registry replacement affects future wrappers only.
+
+This direct path preserves canonical bool or packed sources without conversion.
+A package needing packing, inversion or another layout must provide a separately
+authorized transformation; the framework does not silently convert or fall back
+to Host computation. Service ownership and shutdown responsibilities are defined
+in [call resource retention](attention_operator_call_retention.md).
 
 ### 4.3 Quantized KV and custom-mask composition
 
@@ -449,9 +475,9 @@ runs do not inherit scale arguments from an earlier generation. Already submitte
 calls retain their own lowered arguments and mask resources until their matching
 completion events report completion, including when result validation fails.
 
-This composition is an internal framework contract. It does not enable public
-provider mask paths, prove numerical accuracy or establish a real package's
-quantized-mask capability. Model-facing interfaces remain unchanged.
+The configured public paged-prefill path uses this same composition. Its framework
+contracts do not prove numerical accuracy or establish a real package's
+quantized-mask capability. Model-facing signatures remain unchanged.
 
 ## 5. Runtime registry snapshot
 

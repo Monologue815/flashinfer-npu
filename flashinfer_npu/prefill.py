@@ -779,11 +779,8 @@ class BatchPrefillWithPagedKVCacheWrapper(HostBatchReferenceWrapper):
             )
         )
         if self._operator_runtime is not None:
-            if custom_mask is not None or packed_custom_mask is not None:
-                raise NotImplementedError(
-                    "provider custom-mask plan binding is not implemented"
-                )
-            mask_spec, mask_data = None, None
+            mask_spec, mask_data = self._adapt_provider_batch_mask(
+                custom_mask, packed_custom_mask, segment_sizes)
         else:
             mask_spec, mask_data = adapt_batch_custom_mask(
                 custom_mask,
@@ -1185,11 +1182,8 @@ class BatchPrefillWithRaggedKVCacheWrapper(HostBatchReferenceWrapper):
             for q_len, kv_len in zip(metadata.qo_lengths, metadata.kv_lengths)
         )
         if self._operator_runtime is not None:
-            if custom_mask is not None or packed_custom_mask is not None:
-                raise NotImplementedError(
-                    "provider custom-mask plan binding is not implemented"
-                )
-            mask_spec, mask_data = None, None
+            mask_spec, mask_data = self._adapt_provider_batch_mask(
+                custom_mask, packed_custom_mask, segment_sizes)
         else:
             mask_spec, mask_data = adapt_batch_custom_mask(
                 custom_mask,

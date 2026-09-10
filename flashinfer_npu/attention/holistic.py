@@ -57,6 +57,7 @@ from .operator_retention import (
     AttentionRetainedCallEventRecorder,
 )
 from .operator_runtime_owner import AttentionBatchRuntimeOwner
+from .operator_mask_binding import AttentionBatchMaskIntegration
 
 
 # Package integrations replace this immutable registry at bootstrap.  Keeping
@@ -68,6 +69,7 @@ _operator_runtime_plan_scoring_manifest_binding = None
 _operator_runtime_provider_integration_bundle_binding = None
 _operator_runtime_batch_completion_event_recorder_factory = None
 _operator_runtime_batch_runtime_owner = None
+_operator_runtime_batch_mask_integration = None
 _operator_runtime_resolvers_generation = 0
 _operator_runtime_resolvers_lock = RLock()
 
@@ -95,6 +97,9 @@ class AttentionOperatorRuntimeRegistrySnapshot:
         AttentionBatchCompletionEventRecorderFactory
     ] = field(default=None, repr=False, compare=False)
     batch_runtime_owner: Optional[AttentionBatchRuntimeOwner] = field(
+        default=None, repr=False, compare=False
+    )
+    batch_mask_integration: Optional[AttentionBatchMaskIntegration] = field(
         default=None, repr=False, compare=False
     )
 
@@ -126,6 +131,12 @@ class AttentionOperatorRuntimeRegistrySnapshot:
             raise TypeError(
                 "operation_catalog must be AttentionOperatorOperationCatalog"
             )
+        if self.batch_mask_integration is not None:
+            if not isinstance(self.batch_mask_integration, AttentionBatchMaskIntegration):
+                raise TypeError("batch_mask_integration must be AttentionBatchMaskIntegration")
+            if self.batch_runtime_owner is None or factory is None:
+                raise SchemaError("batch mask integration requires runtime ownership and completion recording")
+            self.batch_mask_integration.validate_catalog(catalog)
         device_types = tuple(str(item) for item in self.device_types)
         actual_types = tuple(item[0] for item in self.registry.resolvers)
         if device_types != actual_types:
@@ -304,6 +315,7 @@ def attention_operator_runtime_registry_snapshot(
         bundle_binding = _operator_runtime_provider_integration_bundle_binding
         recorder_factory = _operator_runtime_batch_completion_event_recorder_factory
         runtime_owner = _operator_runtime_batch_runtime_owner
+        mask_integration = _operator_runtime_batch_mask_integration
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
         generation=generation,
@@ -315,6 +327,7 @@ def attention_operator_runtime_registry_snapshot(
         provider_integration_bundle_binding=bundle_binding,
         batch_completion_event_recorder_factory=recorder_factory,
         batch_runtime_owner=runtime_owner,
+        batch_mask_integration=mask_integration,
     )
 
 
@@ -327,6 +340,7 @@ def _install_attention_operator_runtime_resolvers(
     provider_integration_bundle_binding=None,
     batch_completion_event_recorder_factory=None,
     batch_runtime_owner=None,
+    batch_mask_integration=None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     device_types = tuple(item[0] for item in registry.resolvers)
@@ -350,6 +364,7 @@ def _install_attention_operator_runtime_resolvers(
         ),
         batch_completion_event_recorder_factory=batch_completion_event_recorder_factory,
         batch_runtime_owner=batch_runtime_owner,
+        batch_mask_integration=batch_mask_integration,
     )
     global _operator_runtime_resolvers
     global _operator_runtime_operation_catalog
@@ -358,6 +373,7 @@ def _install_attention_operator_runtime_resolvers(
     global _operator_runtime_provider_integration_bundle_binding
     global _operator_runtime_batch_completion_event_recorder_factory
     global _operator_runtime_batch_runtime_owner
+    global _operator_runtime_batch_mask_integration
     global _operator_runtime_resolvers_generation
     with _operator_runtime_resolvers_lock:
         if (
@@ -378,6 +394,7 @@ def _install_attention_operator_runtime_resolvers(
             candidate.batch_completion_event_recorder_factory
         )
         _operator_runtime_batch_runtime_owner = candidate.batch_runtime_owner
+        _operator_runtime_batch_mask_integration = candidate.batch_mask_integration
         _operator_runtime_resolvers_generation += 1
         generation = _operator_runtime_resolvers_generation
     return AttentionOperatorRuntimeRegistrySnapshot(
@@ -394,6 +411,7 @@ def _install_attention_operator_runtime_resolvers(
         ),
         batch_completion_event_recorder_factory=candidate.batch_completion_event_recorder_factory,
         batch_runtime_owner=candidate.batch_runtime_owner,
+        batch_mask_integration=candidate.batch_mask_integration,
     )
 
 
@@ -403,6 +421,7 @@ def install_attention_operator_runtime_resolvers(
     operation_catalog: AttentionOperatorOperationCatalog = None,
     batch_completion_event_recorder_factory=None,
     batch_runtime_owner=None,
+    batch_mask_integration=None,
     expected_generation=None,
 ) -> AttentionOperatorRuntimeRegistrySnapshot:
     """Atomically install legacy or synthetic framework integrations."""
@@ -420,6 +439,7 @@ def install_attention_operator_runtime_resolvers(
         operation_catalog=operation_catalog,
         batch_completion_event_recorder_factory=batch_completion_event_recorder_factory,
         batch_runtime_owner=batch_runtime_owner,
+        batch_mask_integration=batch_mask_integration,
         expected_generation=expected_generation,
     )
 

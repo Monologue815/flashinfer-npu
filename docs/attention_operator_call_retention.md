@@ -142,7 +142,8 @@ not use this batch-only hook: their short-lived runtime needs a separate owner
 before asynchronous resource tracking can be connected safely. Neither this hook
 nor a matching Python protocol proves stream ordering or authorizes a provider.
 The integrating service must keep configured wrappers/runtimes alive and complete
-the teardown handshake below. Public mask rejection guards remain in place.
+the teardown handshake below. A recorder alone does not enable public masks;
+batch prefill additionally requires explicit mask mappings and service ownership.
 
 ### Service ownership across wrapper disposal
 
@@ -175,9 +176,11 @@ serialization.
 
 This is opt-in service shutdown, not a new public wrapper teardown method. An
 owner keeps even idle runtimes until shutdown; it is not a cache-eviction policy.
-Model callers retain ordinary `plan()` / `run()` usage. Single-request runtimes,
-independently queued plan-time work and public mask activation remain separate
-integration responsibilities.
+Model callers retain ordinary `plan()` / `run()` usage. Single-request runtimes
+and independently queued plan-time work remain separate integration
+responsibilities. Borrowed batch prefill masks can use this owner when the
+complete [mask bootstrap configuration](attention_plan_run_dispatch_design.md)
+is installed.
 
 ### Device and public-wrapper integration
 
@@ -219,5 +222,7 @@ the provider's lifetime contract requires them. Registry removal releases only
 its own references; other calls, diagnostics or exception tracebacks may still
 hold references. This mechanism does not establish immutable mask contents,
 allocator generations, device leases, graph-capture safety or numerical accuracy.
-Those are separate contracts, and the public custom-mask provider path remains
-closed until its full preparation and lifetime integration is complete.
+Those are separate contracts. Public borrowed batch-mask execution is conditional
+on explicit metadata mappings, event recording and runtime ownership; no real
+provider or device event implementation is installed by default. Single-request
+mask and provider graph paths remain closed.
