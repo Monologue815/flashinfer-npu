@@ -399,7 +399,29 @@ integration and public activation remain to be implemented before the rejection
 guards can be removed. The bundled provider catalogs still have no automatically
 installed real mask representation mappings.
 
-### 4.2 Quantized KV and custom-mask composition
+### 4.2 Borrowed batch-mask frontend metadata
+
+The private `adapt_framework_batch_custom_mask()` frontend adapter accepts flat
+bool or per-segment packed uint8 tensor-like inputs and returns a `CustomMaskSpec`
+with the original selected payload. It reads only shape, dtype and device facts;
+it does not inspect tensor values, pack bits, copy data or invoke a tensor library.
+When both inputs are present, the packed input takes precedence and the bool
+input is not inspected. Invalid packed metadata is an error, not a reason to
+fall back to the bool input.
+
+Segment sizes must be nonnegative integers. Bool length is their sum; packed
+length is the sum of each segment's individually rounded byte count. Empty
+segments contribute no elements or bytes. The selected payload must be rank one
+with exactly that length, the corresponding dtype and the workspace device.
+This helper does not flatten single-request rank-two masks.
+
+Frontend acceptance establishes plan facts only. Integration must still pass the
+borrowed payload and its owner to the plan-bound mask binder, whose inspector
+checks storage, contiguity and alignment and whose admission checks the selected
+operation. Public provider wrappers do not yet call this helper: their rejection
+guards remain until resource preparation and completion tracking are integrated.
+
+### 4.3 Quantized KV and custom-mask composition
 
 Quantization and mask bindings describe independent inputs to the same selected
 operation. The quantization adapter validates the active `QuantSpec`, logical

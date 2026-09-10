@@ -1,4 +1,4 @@
-"""Host-only adapters shared by FlashInfer-compatible Attention facades."""
+"""Reference and metadata-only adapters for Attention facades."""
 
 from __future__ import annotations
 
@@ -443,6 +443,43 @@ def validate_framework_workspace_buffer(
     if device is not None and actual_device != str(device):
         raise SchemaError("workspace buffers must be on the same device")
     return value
+
+
+def adapt_framework_batch_custom_mask(
+    custom_mask,
+    packed_custom_mask,
+    *,
+    segment_sizes: Sequence[int],
+    device: str,
+) -> Tuple[Optional[CustomMaskSpec], Any]:
+    """Normalize borrowed batch mask metadata without reading tensor contents.
+
+    This private frontend boundary neither packs bool masks nor validates device
+    storage. The plan-bound resource inspector must still check the selected
+    payload's storage, strides and alignment before an operation can consume it.
+    """
+
+    if custom_mask is None and packed_custom_mask is None:
+        return None, None
+    sizes = _as_int_tuple("mask segment sizes", segment_sizes)
+    if any(size < 0 for size in sizes):
+        raise SchemaError("mask segment sizes cannot be negative")
+    if not isinstance(device, str) or not device:
+        raise SchemaError("mask workspace device must be a non-empty string")
+    # Select first: an ignored bool mask must not be inspected or converted.
+    packed = packed_custom_mask is not None
+    payload = packed_custom_mask if packed else custom_mask
+    name = "packed_custom_mask" if packed else "custom_mask"
+    expected = sum((size + 7) // 8 for size in sizes) if packed else sum(sizes)
+    shape, dtype, actual_device = _framework_tensor_facts(payload, name)
+    if shape != (expected,):
+        raise SchemaError("%s shape must be (%d,)" % (name, expected))
+    expected_dtype = "uint8" if packed else "bool"
+    if dtype != expected_dtype:
+        raise SchemaError("%s dtype must be %s" % (name, expected_dtype))
+    if actual_device != device:
+        raise SchemaError("%s must be on the workspace device" % name)
+    return CustomMaskSpec(expected, packed=packed), payload
 
 
 def adapt_batch_custom_mask(
