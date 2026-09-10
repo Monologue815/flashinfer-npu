@@ -2,7 +2,8 @@
 
 No device events, synchronization, package imports or background polling are
 implemented here. The integrating runtime must keep the registry alive, record
-events on the execution stream and poll them; public wrappers do not opt in yet.
+events on the execution stream and poll them. Batch wrappers may receive a
+recorder from an explicitly installed bootstrap factory; no default is provided.
 """
 
 from dataclasses import dataclass, field
@@ -37,6 +38,12 @@ class AttentionRetainedCallEvent(Protocol):
 class AttentionRetainedCallEventRecorder(Protocol):
     def record(self, token: AttentionRetainedCallToken) -> AttentionRetainedCallEvent:
         """Record after the invocation's last queued use, including partial failure."""
+
+
+@runtime_checkable
+class AttentionBatchCompletionEventRecorderFactory(Protocol):
+    def create(self, *, device: str, mode) -> AttentionRetainedCallEventRecorder:
+        """Prepare a batch runtime's recorder, without recording an event yet."""
 
 
 @dataclass

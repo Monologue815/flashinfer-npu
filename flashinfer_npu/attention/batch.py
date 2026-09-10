@@ -135,6 +135,9 @@ class HostBatchReferenceWrapper:
                 provider_integration_bundle_binding=(
                     snapshot.provider_integration_bundle_binding
                 ),
+                completion_event_recorder=snapshot.create_batch_completion_event_recorder(
+                    device, mode
+                ),
             )
             self._float_workspace_buffer = float_workspace_buffer
             self._int_workspace_buffer = None

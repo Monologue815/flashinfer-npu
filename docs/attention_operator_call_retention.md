@@ -5,8 +5,9 @@
 `attention.operator_retention` is a private framework building block for keeping
 opaque call arguments and `retained_resources` alive until execution has finished.
 It imports no device package, creates no NPU event and performs no synchronization.
-Public wrappers do not configure event recording automatically. The existing result completion
-receipt proves tensor metadata consistency, not asynchronous device completion.
+Batch wrappers can obtain event recording from an explicitly installed bootstrap
+factory; no device recorder is installed by default. The existing result
+completion receipt proves tensor metadata consistency, not asynchronous device completion.
 
 The integrating runtime must own one `AttentionOperatorCallRetention` registry
 across replans and executor replacement. Replacing a plan must not replace or
@@ -110,6 +111,38 @@ return is safe. This guard does not certify asynchronous lifetime safety for old
 provider paths; it prevents new owner-dependent integrations from silently using
 them. With a recorder configured, closing the empty registry prevents subsequent
 submissions. Closing while pending calls exist remains an error.
+
+### Batch-wrapper bootstrap configuration
+
+`install_attention_operator_runtime_resolvers()` accepts an optional internal
+`batch_completion_event_recorder_factory`. Its `create(device=..., mode=...)`
+method returns a recorder implementing `record(token)`. Installation validates
+the factory interface but does not call it, import device packages, probe
+operations or record an event. The factory reference is captured atomically with
+the runtime registry generation and excluded from snapshot representation and
+comparison; the snapshot is not a serialization format for executable factories.
+
+Classic paged prefill, ragged prefill and paged decode wrappers, plus holistic
+`BatchAttention`, call the captured factory during provider-wrapper construction.
+The factory receives that wrapper's device and Attention mode. Its result must
+provide a callable `record` method. Creation failure prevents construction before
+any provider probe; it never falls back to untracked execution. The ordinary
+public constructors, `plan()` parameters and `run()` return conventions do not
+change. Host reference execution does not request a recorder.
+
+Replanning uses the same recorder and retention registry. Installing a new
+factory, or omitting it in a subsequent installation, affects only future
+wrappers. It neither replaces existing recorders nor drains their pending calls.
+Factory implementations remain process-local integration objects and must not
+mutate their behavior incompatibly while captured wrappers are alive.
+
+This hook belongs to the legacy/synthetic registry installer. Declared or bundled
+installation does not automatically carry it forward. Single-request facades do
+not use this batch-only hook: their short-lived runtime needs a separate owner
+before asynchronous resource tracking can be connected safely. Neither this hook
+nor a matching Python protocol proves stream ordering or authorizes a provider.
+The integrating service must keep configured wrappers/runtimes alive and complete
+the teardown handshake below. Public mask rejection guards remain in place.
 
 ### Device and public-wrapper integration
 
