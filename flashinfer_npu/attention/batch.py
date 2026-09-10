@@ -139,6 +139,8 @@ class HostBatchReferenceWrapper:
                     device, mode
                 ),
             )
+            if snapshot.batch_runtime_owner is not None:
+                snapshot.batch_runtime_owner.adopt(self._operator_runtime)
             self._float_workspace_buffer = float_workspace_buffer
             self._int_workspace_buffer = None
             self._session = None

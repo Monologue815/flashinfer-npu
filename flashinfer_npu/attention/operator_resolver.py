@@ -885,6 +885,10 @@ class AttentionOperatorRuntime:
         return self._operator_session is not None
 
     @property
+    def completion_tracking_enabled(self) -> bool:
+        return self._completion_event_recorder is not None
+
+    @property
     def is_closing(self) -> bool:
         return self._closing
 

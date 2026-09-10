@@ -144,6 +144,41 @@ nor a matching Python protocol proves stream ordering or authorizes a provider.
 The integrating service must keep configured wrappers/runtimes alive and complete
 the teardown handshake below. Public mask rejection guards remain in place.
 
+### Service ownership across wrapper disposal
+
+The same internal installer accepts an optional `batch_runtime_owner`, an
+`AttentionBatchRuntimeOwner` from `attention.operator_runtime_owner`. An owner
+requires a completion recorder factory. Both references are captured atomically
+in the bootstrap snapshot; neither becomes a model-facing constructor or plan
+argument. Each provider batch wrapper adopts its newly constructed runtime into
+the captured owner before the wrapper becomes available. The owner does not own
+the wrapper, so disposing of a wrapper cannot discard its tracked runtime.
+
+The service must hold a strong reference to this owner until `owner.close()`
+succeeds. Registry replacement does not drain an old owner; the service remains
+responsible for all generations it installed. There is no global immortal owner,
+garbage-collection callback, implicit synchronization or background cleanup.
+Untracked runtimes, duplicate adoption within one owner, and adoption after owner
+shutdown begins are rejected. Integrations should assign one owner per runtime;
+cross-owner lifecycle coordination is not provided.
+
+`owner.close()` stops new adoption and makes one non-waiting close attempt on
+each owned runtime. It releases a runtime only after its internal close has
+established a closed state. Independent completed runtimes can be released even
+when others fail. Remaining runtimes produce `AttentionRuntimeOwnerClosePending`
+with opaque runtime identifiers and error text, not tensor objects or exception
+tracebacks in the report. The service can use `get_runtime(id)` for internal
+event recovery, then retry close. After successful shutdown, repeated close is
+harmless and the owner cannot be reused. Concurrent or reentrant owner close is
+rejected; planning, execution and service shutdown still require integration-level
+serialization.
+
+This is opt-in service shutdown, not a new public wrapper teardown method. An
+owner keeps even idle runtimes until shutdown; it is not a cache-eviction policy.
+Model callers retain ordinary `plan()` / `run()` usage. Single-request runtimes,
+independently queued plan-time work and public mask activation remain separate
+integration responsibilities.
+
 ### Device and public-wrapper integration
 
 Internal `AttentionOperatorRuntime.close()` provides a non-waiting teardown
