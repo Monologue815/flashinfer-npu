@@ -212,7 +212,81 @@ responsibilities. Borrowed batch prefill masks can use this owner when the
 complete [mask bootstrap configuration](attention_plan_run_dispatch_design.md)
 is installed.
 
-### Device and public-wrapper integration
+### Service integration example
+
+The following process-local example assumes the service already supplies a
+reviewed `resolver_registry`, its matching `operation_catalog`, a
+`completion_event_recorder_factory`, and `mask_integration` (or `None` for no
+borrowed-mask support). These are integration objects, not model inputs. This
+example neither constructs operators nor discovers or approves installed device
+packages. Applications using declared/bundle installers pass the same lifetime
+hooks to those installers instead of also installing this raw registry.
+
+<!-- service-example: install -->
+```python
+from flashinfer_npu.attention import install_attention_operator_runtime_resolvers
+from flashinfer_npu.attention.operator_runtime_owner import (
+    AttentionBatchRuntimeOwner, AttentionRuntimeOwnerClosePending,
+)
+
+runtime_owner = AttentionBatchRuntimeOwner()
+runtime_snapshot = install_attention_operator_runtime_resolvers(
+    resolver_registry,
+    operation_catalog=operation_catalog,
+    batch_completion_event_recorder_factory=completion_event_recorder_factory,
+    batch_runtime_owner=runtime_owner,
+    batch_mask_integration=mask_integration,
+)
+```
+
+Construct model wrappers only after installation. Keep `runtime_owner` strongly
+owned by the service, including after registry replacement. Model calls continue
+to use ordinary `plan()` and `run()`; they do not receive the owner. Schedule the
+following pass explicitly in the service, serialized with model submissions:
+
+<!-- service-example: collect -->
+```python
+collection = runtime_owner.collect_completed()
+query_failures = tuple(
+    (runtime_id, failure)
+    for runtime_id, report in collection.collections
+    for failure in report.failures
+)
+unrecorded_calls = tuple(
+    (runtime_id, token)
+    for runtime_id, report in collection.collections
+    for token in report.unrecorded
+)
+```
+
+Nonempty diagnostics require integration attention, not operator resubmission.
+An unrecorded call needs a trustworthy event covering its original queued work;
+never synthesize success or release it on timeout. Collection does not wait for
+pending calls, and cannot establish permission to overwrite an output buffer.
+
+Stop accepting new submissions before shutdown. Each execution of the next
+block makes one attempt, without a busy loop or forced device synchronization:
+
+<!-- service-example: close -->
+```python
+try:
+    runtime_owner.close()
+except AttentionRuntimeOwnerClosePending as error:
+    shutdown_complete = False
+    shutdown_report = error.report
+else:
+    shutdown_complete = True
+    shutdown_report = None
+```
+
+When `shutdown_complete` is false, retain the owner and its dependencies, resolve
+any recording/query failures through the integration, and retry this close block
+on a later service lifecycle tick. Do not resume submissions or call the open
+owner collection path after shutdown begins. Successful close is idempotent;
+the closed owner cannot be reused. Reports contain metadata, not completion
+events or tensors. Other unexpected exceptions are deliberately not swallowed.
+
+### Runtime teardown contract
 
 Internal `AttentionOperatorRuntime.close()` provides a non-waiting teardown
 handshake for runtimes configured with a completion event recorder:
