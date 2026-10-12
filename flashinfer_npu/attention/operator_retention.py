@@ -55,6 +55,7 @@ class _PendingCall:
     returned_result: object = field(default=None, repr=False)
     returned_members: tuple = field(default=(), repr=False)
     result_bound: bool = False
+    invocation_owner: object = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -104,7 +105,7 @@ class AttentionOperatorCallRetention:
         with self._lock:
             return tuple(record.token for record in self._pending.values())
 
-    def retain(self, call):
+    def retain(self, call, *, invocation_owner=None):
         if not isinstance(call, AttentionLoweredOperatorCall):
             raise TypeError("call must be AttentionLoweredOperatorCall")
         with self._lock:
@@ -112,7 +113,8 @@ class AttentionOperatorCallRetention:
                 raise AttentionCallRetentionError("call retention registry is closed")
             token = AttentionRetainedCallToken(
                 uuid4().hex, call.provider_id, call.operation_id, call.active_plan_fingerprint)
-            self._pending[token.invocation_id] = _PendingCall(token, call)
+            self._pending[token.invocation_id] = _PendingCall(
+                token, call, invocation_owner=invocation_owner)
             return token
 
     def _record(self, token):
@@ -255,7 +257,10 @@ def execute_attention_retained_call(registry, call, invoke, recorder):
         raise TypeError("invoke must be an already-authorized executor callable")
     if not isinstance(recorder, AttentionRetainedCallEventRecorder):
         raise TypeError("recorder must implement AttentionRetainedCallEventRecorder")
-    token = registry.retain(call)
+    # A bound method owns its executor; a callable object/closure may own module
+    # leases or other execution resources not present in the lowered arguments.
+    # Keep the exact callback across runtime replans and partial failures.
+    token = registry.retain(call, invocation_owner=invoke)
     try:
         result = invoke(call)
         registry.retain_result(token, result)

@@ -49,6 +49,17 @@ does not copy tensors, read tensor values or invoke custom iteration hooks.
 Keeping these references does not validate result arity, shape or numerical
 contents; an invalid returned result still needs lifetime protection.
 
+The invocation helper retains the exact execution callback before entering it.
+A bound method keeps its executor alive; callable objects and closures keep their
+own execution dependencies alive. Replanning may replace the active executor,
+but cannot discard this reference while the original invocation is pending.
+Recording failures and partial invocation failures preserve it as well. It is
+released with the call only after that call's completion proof, and is excluded
+from diagnostics. This does not prevent explicit provider unload or retain a
+module lease that the callback does not own; providers must represent those
+dependencies in their callable or explicit retained resources. Retention is not
+permission to invoke the callback again or change its implementation in place.
+
 Returned ownership binds once to the existing invocation token, before its event.
 Result metadata failure, event-recording failure or query failure does not release
 these references. The call and its returned owners are released together only on
