@@ -181,6 +181,18 @@ Untracked runtimes, duplicate adoption within one owner, and adoption after owne
 shutdown begins are rejected. Integrations should assign one owner per runtime;
 cross-owner lifecycle coordination is not provided.
 
+`owner.collect_completed()` makes one non-waiting pass across a snapshot of owned
+runtimes while keeping the service open. Its metadata-only `collections` report
+contains `(runtime_id, collection_report)` pairs; each collection lists released,
+pending and unrecorded invocation tokens plus query failure text. An ordinary
+query failure does not prevent independent calls or runtimes from being polled.
+This allows idle returned outputs to be released without another model call or
+service shutdown. It does not evict runtimes, clear active plans or release other
+diagnostic references. Runtimes adopted during the pass wait for the next pass.
+No background polling is started. The service schedules collection explicitly
+and serializes it with planning/execution. Reentrant or concurrent collection and
+close are rejected; once shutdown starts, use the retryable close handshake.
+
 `owner.close()` stops new adoption and makes one non-waiting close attempt on
 each owned runtime. It releases a runtime only after its internal close has
 established a closed state. Independent completed runtimes can be released even

@@ -18,6 +18,13 @@ class AttentionRuntimeOwnerCloseReport:
     failures: tuple
 
 
+@dataclass(frozen=True)
+class AttentionRuntimeOwnerCollectionReport:
+    """Per-runtime metadata snapshots, without runtime or tensor references."""
+
+    collections: tuple
+
+
 class AttentionRuntimeOwnerClosePending(RuntimeError):
     def __init__(self, report):
         super().__init__("batch runtime owner close is pending; runtimes remain owned")
@@ -71,6 +78,29 @@ class AttentionBatchRuntimeOwner:
             runtime_id = uuid4().hex
             self._runtimes[runtime_id] = runtime
             return runtime_id
+
+    def collect_completed(self):
+        """Poll a bounded snapshot without closing or evicting any runtime.
+
+        Ordinary event query failures remain in each registry's metadata report.
+        The service must serialize this pass with planning and execution.
+        """
+        with self._lock:
+            if self._closing or self._closed:
+                raise AttentionStateError("batch runtime owner is closing or closed")
+            if self._collecting:
+                raise AttentionStateError("batch runtime owner collection is already running")
+            self._collecting = True
+            runtimes = tuple(self._runtimes.items())
+        try:
+            collections = tuple(
+                (runtime_id, runtime.call_retention.collect_completed())
+                for runtime_id, runtime in runtimes
+            )
+            return AttentionRuntimeOwnerCollectionReport(collections)
+        finally:
+            with self._lock:
+                self._collecting = False
 
     def close(self):
         """Close all owned runtimes once; retain each failed/pending runtime.
