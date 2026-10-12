@@ -35,6 +35,7 @@ The remaining cross-cutting contracts are framework-level capabilities:
 | Custom/packed custom masks | `reference` + partial `framework` | Borrowed batch prefill masks have an opt-in public plan/run path with exact mappings, completion recording and service ownership; single-request and provider graph paths remain closed |
 | RoPE/ALiBi | `framework` | Plan and reference semantics are defined |
 | Output and LSE | `framework` | Shape, allocation and normalization contracts are defined |
+| Asynchronous invocation ownership | partial `framework` | Batch calls support injected completion events and service ownership; ephemeral single-request ownership is designed but not connected |
 
 An interface parameter is not itself evidence of provider support. In particular,
 custom-mask prefill needs explicit bootstrap mappings and lifetime configuration;

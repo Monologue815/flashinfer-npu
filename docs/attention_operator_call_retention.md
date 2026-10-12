@@ -223,6 +223,68 @@ responsibilities. Borrowed batch prefill masks can use this owner when the
 complete [mask bootstrap configuration](attention_plan_run_dispatch_design.md)
 is installed.
 
+### Single-request ownership design (not connected)
+
+Single prefill/decode currently construct an ephemeral runtime without the batch
+recorder hook. Python function return is not device completion. The batch
+retention guarantees above therefore must not be attributed to these single
+facades. Their default provider registry remains empty; a future asynchronous
+integration needs the following additional framework contract before enabling
+borrowed resources such as single custom masks.
+
+The public single-request signatures and return values stay unchanged. Ownership
+is configured only in the process bootstrap snapshot, using a single-request
+recorder factory and a service owner as one dependency pair. Supplying only one
+must fail atomically. The single configuration is independent of the batch
+configuration: enabling batch events must not silently change single execution.
+No default events, package probing, operators or background workers are created
+at installation time.
+
+The proposed private lifecycle is:
+
+```text
+capture snapshot -> create tracked runtime -> adopt before planning
+                 -> plan -> run -> seal submission (also on exception)
+                 -> service collection -> completion proof -> close and remove
+```
+
+An adopted runtime starts in a **preparing** state. Collection skips preparing
+runtimes, because a plan or call has not finished submitting yet. The facade
+seals it in a `finally` path after the one-shot attempt, whether planning,
+invocation, event recording or result validation succeeds or fails. Sealing is
+not completion proof and must not discard the runtime. Only sealed runtimes
+are eligible for per-request teardown. The service can keep the returned result
+alive independently; closing a runtime drops only framework-owned references.
+
+Unlike batch collection, single-request collection closes and removes each
+completed sealed runtime while leaving the service owner open for new requests.
+It makes one bounded, non-waiting pass. Pending or unrecorded calls and query
+failures remain owned, with metadata-only diagnostics and private recovery access.
+One failing request must not prevent independent completed requests from being
+removed. A callback or invocation token is not a public executable plan handle.
+
+Shutdown first stops new adoption. It cannot infer that preparing requests have
+finished merely because their registries are empty. Preparing requests remain
+owned until the facade seals them, and sealed pending requests retain the existing
+event-recovery/close handshake. Retrying shutdown must not resubmit a provider
+call, force-release a resource, or rely on a timeout. The service retains every
+owner generation after bootstrap replacement until its shutdown completes.
+Planning that independently queues device work is outside invocation tracking
+and still needs its own provider lifetime contract.
+
+Implementation acceptance must exercise the public single prefill and decode
+facades with synthetic providers: completion after Python return; preparation
+failure; partial submission and recording failure; invalid returned metadata;
+collection during preparation; independent request release; bootstrap replacement;
+and shutdown rejecting new work while preserving pending recovery. Weak-reference
+checks must cover runtime, executor, inputs and provider-allocated outputs without
+test fixtures or exception tracebacks accidentally keeping them alive. No real
+device safety or numerical claim follows from these framework tests.
+
+This section is a design boundary, not an available bootstrap API. Single custom
+masks remain disabled until this ownership path and exact mask lowering are both
+implemented; adding ownership alone must not advertise mask support.
+
 ### Service integration example
 
 The following process-local example assumes the service already supplies a
