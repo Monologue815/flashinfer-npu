@@ -40,6 +40,22 @@ correct device/stream ordering and trustworthy completion proof. Matching Python
 metadata alone cannot prove that an event covers the device work. Host synthetic
 events can exercise the lifecycle but are not evidence of NPU execution safety.
 
+After the executor returns, the registry also retains the returned object before
+event recording and result validation. This covers provider-allocated output/LSE
+that are not part of caller-supplied arguments. For tuple/list returns it takes a
+shallow snapshot of the built-in sequence's member references, so clearing a
+returned list cannot prematurely discard its original output allocations. It
+does not copy tensors, read tensor values or invoke custom iteration hooks.
+Keeping these references does not validate result arity, shape or numerical
+contents; an invalid returned result still needs lifetime protection.
+
+Returned ownership binds once to the existing invocation token, before its event.
+Result metadata failure, event-recording failure or query failure does not release
+these references. The call and its returned owners are released together only on
+that token's completion proof. A provider exception before returning gives the
+framework no returned allocation handle; private allocations not exposed in the
+call or result remain the provider's lifetime responsibility.
+
 ## Failure and recovery
 
 An invocation or recording failure raises `AttentionRetainedInvocationError`,
@@ -219,8 +235,9 @@ The runtime must preserve the registry, supply correctly ordered event recording
 and drain it before teardown. Entry-point collection is not background polling:
 an idle wrapper can retain its final calls until an explicit collection or a
 later `plan()`/`run()`. Teardown must not rely on another call arriving. It must
-also retain returned/output allocations where
-the provider's lifetime contract requires them. Registry removal releases only
+also account for private provider allocations not exposed in the call or result.
+Returned output/LSE and caller-supplied output buffers are retained by the same
+invocation registry. Registry removal releases only
 its own references; other calls, diagnostics or exception tracebacks may still
 hold references. This mechanism does not establish immutable mask contents,
 allocator generations, device leases, graph-capture safety or numerical accuracy.

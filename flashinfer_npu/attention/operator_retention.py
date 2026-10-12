@@ -52,6 +52,9 @@ class _PendingCall:
     call: AttentionLoweredOperatorCall = field(repr=False)
     event: Optional[AttentionRetainedCallEvent] = field(default=None, repr=False)
     querying: bool = False
+    returned_result: object = field(default=None, repr=False)
+    returned_members: tuple = field(default=(), repr=False)
+    result_bound: bool = False
 
 
 @dataclass(frozen=True)
@@ -132,6 +135,24 @@ class AttentionOperatorCallRetention:
             if any(other.event is event for other in self._pending.values()):
                 raise AttentionCallRetentionError("completion event is already bound to another invocation")
             record.event = event
+
+    def retain_result(self, token, result):
+        """Retain returned allocations before recording or validating completion.
+
+        Built-in list/tuple storage is snapshotted as references only, preserving
+        members even if a caller later clears a returned list. Tensor contents
+        and custom iteration hooks are never read. This is not result validation.
+        """
+        with self._lock:
+            record = self._record(token)
+            if record.result_bound or record.event is not None:
+                raise AttentionCallRetentionError("returned result must bind once before its event")
+            record.returned_result = result
+            record.result_bound = True
+            if isinstance(result, list):
+                record.returned_members = tuple(list.__iter__(result))
+            elif isinstance(result, tuple):
+                record.returned_members = tuple(tuple.__iter__(result))
 
     def poll(self, token):
         """Release one call only on strict True, preserving it on every error.
@@ -221,7 +242,8 @@ class AttentionRetainedInvocationError(RuntimeError):
 def execute_attention_retained_call(registry, call, invoke, recorder):
     """Wrap an already-authorized executor, returning (unchanged result, token).
 
-    Retention starts before invoke(call). Event recording is attempted afterward,
+    Call retention starts before invoke(call); returned objects are retained
+    before event recording and downstream result validation. Event recording is attempted afterward,
     even if invocation failed after potentially queuing device work. On failure,
     the raised error exposes the token for recovery; no retry or release is implied.
     A record failure can be recovered only by supplying valid completion proof to
@@ -236,6 +258,7 @@ def execute_attention_retained_call(registry, call, invoke, recorder):
     token = registry.retain(call)
     try:
         result = invoke(call)
+        registry.retain_result(token, result)
     except BaseException as invocation_error:
         try:
             registry.bind_event(token, recorder.record(token))
