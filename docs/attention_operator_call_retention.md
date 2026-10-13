@@ -285,6 +285,17 @@ This section is a design boundary, not an available bootstrap API. Single custom
 masks remain disabled until this ownership path and exact mask lowering are both
 implemented; adding ownership alone must not advertise mask support.
 
+The internal `AttentionSingleRuntimeOwner` primitive in
+`attention.operator_single_owner` implements adoption, explicit `seal(id)`,
+bounded collection and retryable shutdown. Its collection report separates
+released, preparing and sealed-pending identifiers, with text-only failures.
+It accepts only completion-tracked single prefill/decode runtimes. Sealing marks
+collection eligibility; the integrating facade must prohibit further submissions
+and call it in its `finally` path. Preparing requests can still be sealed after
+shutdown starts. Collection snapshots eligibility, so requests sealed during a
+pass wait for the next pass. This primitive is not yet connected to bootstrap or
+public single functions, and does not change their current execution behavior.
+
 ### Service integration example
 
 The following process-local example assumes the service already supplies a
