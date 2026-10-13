@@ -296,6 +296,20 @@ shutdown starts. Collection snapshots eligibility, so requests sealed during a
 pass wait for the next pass. This primitive is not yet connected to bootstrap or
 public single functions, and does not change their current execution behavior.
 
+`AttentionSingleRuntimeResources` in `attention.operator_single_resources`
+groups the required recorder factory and single owner into one immutable,
+process-local configuration object. Its internal
+`submission(snapshot, device=..., mode=...)` context manager validates the
+captured registry snapshot, single mode and NPU device, creates and validates
+the recorder, then adopts the runtime before yielding it for planning/execution.
+Its `finally` path seals the request on ordinary errors and cancellation as well
+as successful return. It does not collect, synchronize or swallow submission
+errors. If recorder creation or adoption fails, the body is never entered.
+Factory implementations must not submit device work during recorder creation.
+The service still holds the owner and performs explicit collection or shutdown.
+This scope is an internal integration building block, not a public model API;
+bootstrap and single facades do not use it yet.
+
 ### Service integration example
 
 The following process-local example assumes the service already supplies a
